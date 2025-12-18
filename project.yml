@@ -47,6 +47,9 @@ targets:
         excludes:
           - "**/.DS_Store"
           - "**/ManagedObjects/**"  # Use auto-generated CoreData classes, exclude manual duplicates
+          - "**/SelfHostedSTTService.swift"  # Has duplicate STTMetrics/STTError types
+          - "**/SelfHostedTTSService.swift"  # Has duplicate TTSMetrics type
+          - "**/OnDeviceLLMService.swift"  # Uses incompatible llama.cpp API, use SelfHostedLLMService instead
       - path: models/llama-3.2-3b-instruct-q4_k_m.gguf
         buildPhase: resources
         type: file
