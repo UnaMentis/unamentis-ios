@@ -467,7 +467,7 @@ public actor UMLCFParser {
 
     // MARK: - Helpers
 
-    private func parseDate(_ dateString: String?) -> Date? {
+    nonisolated private func parseDate(_ dateString: String?) -> Date? {
         guard let dateString = dateString else { return nil }
 
         let formatter = ISO8601DateFormatter()

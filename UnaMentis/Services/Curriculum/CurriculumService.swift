@@ -387,14 +387,15 @@ public actor CurriculumService {
     // MARK: - Download and Import
 
     /// Download and import a curriculum to Core Data
+    @MainActor
     public func downloadAndImport(
         curriculumId: String,
         parser: UMLCFParser
     ) async throws -> Curriculum {
-        // Fetch full UMLCF document
+        // Fetch full UMLCF document (crosses from MainActor to CurriculumService actor)
         let umlcfDocument = try await fetchFullCurriculum(id: curriculumId)
 
-        // Import to Core Data
+        // Import to Core Data (runs on MainActor)
         return try await parser.importToCoreData(document: umlcfDocument, replaceExisting: true)
     }
 }
