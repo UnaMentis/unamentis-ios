@@ -714,6 +714,10 @@ class SessionViewModel: ObservableObject {
     /// Full conversation history for display
     @Published var conversationHistory: [ConversationMessage] = []
 
+    /// VLCF transcript data for this topic (if available)
+    @Published var vlcfTranscript: TopicTranscriptResponse?
+    @Published var currentSegmentIndex: Int = 0
+
     /// Track last known transcripts to detect changes
     private var lastUserTranscript: String = ""
     private var lastAiResponse: String = ""
@@ -730,8 +734,71 @@ class SessionViewModel: ObservableObject {
         topic != nil
     }
 
+    /// Whether we have VLCF transcript data to use
+    var hasTranscript: Bool {
+        vlcfTranscript?.segments.isEmpty == false
+    }
+
     init(topic: Topic? = nil) {
         self.topic = topic
+
+        // If we have a topic, try to load transcript data
+        if topic != nil {
+            Task { await loadTranscriptData() }
+        }
+    }
+
+    /// Load transcript data from local Core Data or fetch from server
+    private func loadTranscriptData() async {
+        guard let topic = topic,
+              let topicId = topic.id else { return }
+
+        // First, try to get transcript from local Core Data (document with transcript type)
+        if let document = topic.documentSet.first(where: { $0.documentType == .transcript }),
+           let transcriptData = document.decodedTranscript() {
+            // Convert local TranscriptData to TopicTranscriptResponse format
+            vlcfTranscript = TopicTranscriptResponse(
+                topicId: topicId.uuidString,
+                topicTitle: topic.title,
+                segments: transcriptData.segments.map { segment in
+                    TranscriptSegmentInfo(
+                        id: segment.id,
+                        type: segment.type,
+                        content: segment.content,
+                        speakingNotes: segment.speakingNotes.map { notes in
+                            SpeakingNotesInfo(
+                                pace: notes.pace,
+                                emotionalTone: notes.emotionalTone,
+                                pauseAfter: notes.pauseAfter
+                            )
+                        },
+                        checkpoint: segment.checkpointQuestion.map { q in
+                            CheckpointInfo(type: "question", question: q)
+                        }
+                    )
+                }
+            )
+            logger.info("Loaded transcript from local Core Data: \(transcriptData.segments.count) segments")
+            return
+        }
+
+        // If no local transcript, try to fetch from server
+        if let curriculum = topic.curriculum,
+           let curriculumId = curriculum.id {
+            do {
+                // Configure service if needed
+                try await CurriculumService.shared.configure(host: "localhost", port: 8765)
+
+                vlcfTranscript = try await CurriculumService.shared.fetchTopicTranscript(
+                    curriculumId: curriculumId.uuidString,
+                    topicId: topicId.uuidString
+                )
+                logger.info("Fetched transcript from server: \(vlcfTranscript?.segments.count ?? 0) segments")
+            } catch {
+                logger.warning("Could not fetch transcript from server: \(error)")
+                // Not fatal - we'll fall back to AI-generated content
+            }
+        }
     }
 
     /// Generate system prompt based on topic and depth level
@@ -749,6 +816,12 @@ class SessionViewModel: ObservableObject {
         let depth = topic.depthLevel
         let objectives = topic.objectives ?? []
 
+        // If we have VLCF transcript data, use it as the primary source
+        if let transcript = vlcfTranscript, !transcript.segments.isEmpty {
+            return generateTranscriptBasedPrompt(topic: topic, transcript: transcript)
+        }
+
+        // Otherwise, fall back to AI-generated content
         var prompt = """
         You are an expert lecturer delivering an audio-only educational lecture.
 
@@ -788,6 +861,88 @@ class SessionViewModel: ObservableObject {
         """
 
         return prompt
+    }
+
+    /// Generate system prompt that uses VLCF transcript content
+    private func generateTranscriptBasedPrompt(topic: Topic, transcript: TopicTranscriptResponse) -> String {
+        let topicTitle = topic.title ?? "the topic"
+        let depth = topic.depthLevel
+
+        // Collect all transcript segments as the content to deliver
+        let transcriptContent = transcript.segments.enumerated().map { (index, segment) in
+            var segmentText = "[\(segment.type.uppercased())] \(segment.content)"
+
+            // Add speaking notes if available
+            if let notes = segment.speakingNotes {
+                if let pace = notes.pace {
+                    segmentText += " [Pace: \(pace)]"
+                }
+                if let tone = notes.emotionalTone {
+                    segmentText += " [Tone: \(tone)]"
+                }
+            }
+
+            // Mark checkpoint segments
+            if let checkpoint = segment.checkpoint, let question = checkpoint.question {
+                segmentText += "\n[CHECKPOINT: \(question)]"
+            }
+
+            return "SEGMENT \(index + 1):\n\(segmentText)"
+        }.joined(separator: "\n\n---\n\n")
+
+        return """
+        You are an expert lecturer delivering an audio-only educational lecture.
+        You have been provided with a complete, professionally written transcript to deliver.
+
+        TOPIC: \(topicTitle)
+        DEPTH LEVEL: \(depth.displayName)
+
+        IMPORTANT INSTRUCTIONS:
+        1. Deliver the transcript content naturally, as if speaking it for the first time.
+        2. Follow the speaking notes (pace, tone, pauses) when indicated.
+        3. At CHECKPOINT segments, pause and ask the checkpoint question.
+        4. Wait for the learner to respond before continuing.
+        5. If the learner asks a question, answer it using your knowledge, then continue with the transcript.
+        6. Maintain a conversational, engaging tone throughout.
+
+        AUDIO-FRIENDLY REMINDERS:
+        - This is audio-only. Never reference visuals or written content.
+        - Speak mathematical concepts verbally (e.g., "x squared" not "x^2").
+        - Use natural transitions between segments.
+
+        === TRANSCRIPT TO DELIVER ===
+
+        \(transcriptContent)
+
+        === END TRANSCRIPT ===
+
+        BEGIN NOW:
+        Start delivering the first segment naturally. Speak as if you're having a one-on-one tutoring session.
+        """
+    }
+
+    /// Get the current segment to deliver (for progressive transcript delivery)
+    func getCurrentSegment() -> TranscriptSegmentInfo? {
+        guard let transcript = vlcfTranscript,
+              currentSegmentIndex < transcript.segments.count else {
+            return nil
+        }
+        return transcript.segments[currentSegmentIndex]
+    }
+
+    /// Advance to the next transcript segment
+    func advanceToNextSegment() -> Bool {
+        guard let transcript = vlcfTranscript else { return false }
+        if currentSegmentIndex < transcript.segments.count - 1 {
+            currentSegmentIndex += 1
+            return true
+        }
+        return false
+    }
+
+    /// Reset to the beginning of the transcript
+    func resetTranscript() {
+        currentSegmentIndex = 0
     }
 
     /// Generate the initial lecture opening for AI to speak first
