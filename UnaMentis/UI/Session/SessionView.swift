@@ -841,6 +841,12 @@ struct ConversationMessage: Identifiable {
 
 // MARK: - Audio Player Delegate
 
+/// Wrapper to make AVAudioPCMBuffer usable across actor boundaries
+/// This is safe because we only use it for passing buffers to STT services
+private struct SendableAudioBufferWrapper: @unchecked Sendable {
+    let buffer: AVAudioPCMBuffer
+}
+
 /// Delegate to handle audio playback completion for sequential segment playback
 final class AudioPlayerDelegate: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
     private let onFinish: () -> Void
@@ -887,6 +893,53 @@ class SessionViewModel: ObservableObject {
 
     /// Transcript streaming service for direct TTS playback (bypasses LLM)
     private let transcriptStreamer = TranscriptStreamingService()
+
+    // MARK: - Barge-In Support for Direct Streaming Mode
+
+    /// Audio engine for microphone monitoring during direct streaming (barge-in detection)
+    private var bargeInAudioEngine: AudioEngine?
+
+    /// VAD service for barge-in detection
+    private var bargeInVADService: SileroVADService?
+
+    /// STT service for transcribing user speech during barge-in
+    private var bargeInSTTService: (any STTService)?
+
+    /// LLM service for handling barge-in questions
+    private var bargeInLLMService: (any LLMService)?
+
+    /// TTS service for speaking barge-in AI responses
+    private var bargeInTTSService: (any TTSService)?
+
+    /// Barge-in confirmation timer (600ms window to confirm real speech vs noise)
+    private var bargeInConfirmationTask: Task<Void, Never>?
+
+    /// Whether we're in tentative barge-in state (paused, waiting for confirmation)
+    @Published var isTentativeBargeIn: Bool = false
+
+    /// Barge-in threshold (higher = less sensitive, fewer false positives)
+    private let bargeInThreshold: Float = 0.7
+
+    /// Barge-in confirmation window in seconds
+    private let bargeInConfirmationWindow: TimeInterval = 0.6
+
+    /// Minimum silence duration to consider end of utterance (seconds)
+    private let endOfUtteranceSilenceDuration: TimeInterval = 1.0
+
+    /// Timestamp when silence started (for end-of-utterance detection)
+    private var silenceStartTime: Date?
+
+    /// Whether we've detected any speech during confirmed barge-in
+    private var hasDetectedSpeechInBargeIn: Bool = false
+
+    /// Audio buffers collected during barge-in for STT processing
+    private var bargeInAudioBuffers: [AVAudioPCMBuffer] = []
+
+    /// Segment index where we paused for barge-in (to resume from)
+    private var bargeInPauseSegmentIndex: Int = 0
+
+    /// Position in current segment's audio where we paused
+    private var bargeInPauseTime: TimeInterval = 0
 
     /// Audio player for direct transcript playback
     private var audioPlayer: AVAudioPlayer?
@@ -1294,6 +1347,9 @@ class SessionViewModel: ObservableObject {
 
             logger.info("Starting direct transcript streaming (bypassing LLM)")
 
+            // Start barge-in monitoring (microphone + VAD) in parallel with playback
+            await startBargeInMonitoring(appState: appState)
+
             await transcriptStreamer.streamTopicAudio(
                 curriculumId: curriculumSourceId,
                 topicId: topicSourceId,
@@ -1557,6 +1613,7 @@ class SessionViewModel: ObservableObject {
         // Stop direct streaming if active
         if isDirectStreamingMode {
             await transcriptStreamer.stopStreaming()
+            await stopBargeInMonitoring()
             audioPlayer?.stop()
             audioPlayer = nil
             isDirectStreamingMode = false
@@ -1628,6 +1685,11 @@ class SessionViewModel: ObservableObject {
         isPlayingAudio = false
         isPaused = false
 
+        // Stop barge-in monitoring
+        Task {
+            await stopBargeInMonitoring()
+        }
+
         // Save progress to topic if available
         if let topic = topic {
             saveProgress(to: topic)
@@ -1671,14 +1733,494 @@ class SessionViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Barge-In Monitoring
+
+    /// Start microphone monitoring for barge-in detection during direct streaming
+    /// This runs the AudioEngine in parallel with AVAudioPlayer playback
+    private func startBargeInMonitoring(appState: AppState) async {
+        logger.info("Starting barge-in monitoring for direct streaming mode")
+
+        // Create VAD service
+        let vadService = SileroVADService()
+        self.bargeInVADService = vadService
+
+        // Create audio engine with VAD
+        let telemetry = TelemetryEngine()
+        var audioConfig = AudioEngineConfig.default
+        audioConfig.enableBargeIn = true
+        audioConfig.bargeInThreshold = bargeInThreshold
+
+        let audioEngine = AudioEngine(
+            config: audioConfig,
+            vadService: vadService,
+            telemetry: telemetry
+        )
+        self.bargeInAudioEngine = audioEngine
+
+        // Configure STT service for transcribing barge-in speech
+        let sttProviderSetting = UserDefaults.standard.string(forKey: "sttProvider")
+            .flatMap { STTProvider(rawValue: $0) } ?? .appleSpeech
+
+        switch sttProviderSetting {
+        case .glmASROnDevice:
+            if GLMASROnDeviceSTTService.isDeviceSupported {
+                bargeInSTTService = GLMASROnDeviceSTTService()
+            } else {
+                bargeInSTTService = AppleSpeechSTTService()
+            }
+        case .appleSpeech:
+            bargeInSTTService = AppleSpeechSTTService()
+        default:
+            bargeInSTTService = AppleSpeechSTTService()
+        }
+
+        // Configure LLM service for responding to barge-in questions
+        let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
+        let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
+        let llmModelSetting = UserDefaults.standard.string(forKey: "llmModel") ?? "llama3.2:3b"
+
+        if selfHostedEnabled && !serverIP.isEmpty {
+            bargeInLLMService = SelfHostedLLMService.ollama(host: serverIP, model: llmModelSetting)
+        } else {
+            bargeInLLMService = SelfHostedLLMService.ollama(model: llmModelSetting)
+        }
+
+        // Configure TTS service for speaking barge-in responses
+        let ttsProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
+            .flatMap { TTSProvider(rawValue: $0) } ?? .appleTTS
+        let ttsVoiceSetting = UserDefaults.standard.string(forKey: "ttsVoice") ?? "nova"
+
+        switch ttsProviderSetting {
+        case .vibeVoice:
+            if selfHostedEnabled && !serverIP.isEmpty {
+                bargeInTTSService = SelfHostedTTSService.vibeVoice(host: serverIP, voice: ttsVoiceSetting)
+            } else {
+                bargeInTTSService = AppleTTSService()
+            }
+        case .selfHosted:
+            if selfHostedEnabled && !serverIP.isEmpty {
+                bargeInTTSService = SelfHostedTTSService.piper(host: serverIP, voice: ttsVoiceSetting)
+            } else {
+                bargeInTTSService = AppleTTSService()
+            }
+        default:
+            bargeInTTSService = AppleTTSService()
+        }
+
+        do {
+            // Configure and start audio engine
+            try await audioEngine.configure(config: audioConfig)
+            try await audioEngine.start()
+
+            // Subscribe to audio stream for VAD events
+            await audioEngine.audioStream
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] (buffer, vadResult) in
+                    Task { @MainActor in
+                        await self?.handleVADResult(buffer: buffer, vadResult: vadResult)
+                    }
+                }
+                .store(in: &subscribers)
+
+            logger.info("Barge-in monitoring started successfully")
+        } catch {
+            logger.error("Failed to start barge-in monitoring: \(error)")
+        }
+    }
+
+    /// Calculate audio level (dB) from an audio buffer
+    private func calculateAudioLevel(from buffer: AVAudioPCMBuffer) -> Float {
+        guard let channelData = buffer.floatChannelData?[0] else { return -60 }
+        let frameLength = Int(buffer.frameLength)
+        guard frameLength > 0 else { return -60 }
+
+        // Calculate RMS
+        var sum: Float = 0
+        for i in 0..<frameLength {
+            let sample = channelData[i]
+            sum += sample * sample
+        }
+        let rms = sqrt(sum / Float(frameLength))
+
+        // Convert to dB (with floor at -60dB)
+        let db = 20 * log10(max(rms, 0.000001))
+        return max(-60, min(0, db))
+    }
+
+    /// Stop barge-in monitoring and clean up resources
+    private func stopBargeInMonitoring() async {
+        logger.info("Stopping barge-in monitoring")
+
+        bargeInConfirmationTask?.cancel()
+        bargeInConfirmationTask = nil
+
+        if let audioEngine = bargeInAudioEngine {
+            await audioEngine.stop()
+        }
+        bargeInAudioEngine = nil
+        bargeInVADService = nil
+        bargeInSTTService = nil
+        bargeInLLMService = nil
+        bargeInTTSService = nil
+        bargeInAudioBuffers.removeAll()
+        isTentativeBargeIn = false
+    }
+
+    /// Handle VAD result during direct streaming playback
+    private func handleVADResult(buffer: AVAudioPCMBuffer, vadResult: VADResult) async {
+        // Update audio level for UI (calculate from buffer)
+        audioLevel = calculateAudioLevel(from: buffer)
+
+        // Handle different states
+        switch state {
+        case .aiSpeaking where isDirectStreamingMode:
+            // Check if this looks like user speech (above barge-in threshold)
+            if vadResult.isSpeech && vadResult.confidence > bargeInThreshold {
+                if !isTentativeBargeIn {
+                    // Stage 1: Tentative barge-in - pause playback and wait for confirmation
+                    await handleTentativeBargeIn()
+                } else {
+                    // Stage 2: Continued speech during confirmation window - confirm barge-in
+                    bargeInAudioBuffers.append(buffer)
+                    await confirmBargeIn()
+                }
+            }
+
+            // Collect audio during tentative barge-in for STT
+            if isTentativeBargeIn {
+                bargeInAudioBuffers.append(buffer)
+            }
+
+        case .interrupted:
+            // During tentative barge-in, check for continued speech or silence
+            bargeInAudioBuffers.append(buffer)
+            if vadResult.isSpeech && vadResult.confidence > bargeInThreshold {
+                await confirmBargeIn()
+            }
+
+        case .userSpeaking:
+            // User is speaking after confirmed barge-in - collect audio and detect end
+            bargeInAudioBuffers.append(buffer)
+
+            if vadResult.isSpeech && vadResult.confidence > 0.3 {
+                // Active speech - reset silence timer
+                hasDetectedSpeechInBargeIn = true
+                silenceStartTime = nil
+            } else {
+                // Silence detected
+                if hasDetectedSpeechInBargeIn {
+                    // We had speech before, now silence - check duration
+                    if silenceStartTime == nil {
+                        silenceStartTime = Date()
+                    } else if let startTime = silenceStartTime {
+                        let silenceDuration = Date().timeIntervalSince(startTime)
+                        if silenceDuration >= endOfUtteranceSilenceDuration {
+                            // End of utterance detected
+                            logger.info("End of utterance detected after \(silenceDuration)s silence")
+                            silenceStartTime = nil
+                            hasDetectedSpeechInBargeIn = false
+                            await handleBargeInUtteranceComplete()
+                        }
+                    }
+                }
+            }
+
+        default:
+            break
+        }
+    }
+
+    /// Stage 1: Tentative barge-in - pause playback, start confirmation timer
+    private func handleTentativeBargeIn() async {
+        guard !isTentativeBargeIn else { return }
+
+        logger.info("Tentative barge-in detected - pausing playback for confirmation")
+
+        isTentativeBargeIn = true
+        state = .interrupted
+
+        // Record where we paused so we can resume
+        bargeInPauseSegmentIndex = currentSegmentIndex
+        bargeInPauseTime = audioPlayer?.currentTime ?? 0
+
+        // Pause playback (don't stop - we might resume)
+        audioPlayer?.pause()
+
+        // Clear audio buffer for fresh STT input
+        bargeInAudioBuffers.removeAll()
+
+        // Start confirmation timer - if no continued speech, resume playback
+        bargeInConfirmationTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(bargeInConfirmationWindow * 1_000_000_000))
+
+            // If we get here without being cancelled, no continued speech - resume
+            if !Task.isCancelled && isTentativeBargeIn {
+                await resumeFromTentativeBargeIn()
+            }
+        }
+    }
+
+    /// Stage 2: Confirmed barge-in - user is actually speaking
+    private func confirmBargeIn() async {
+        guard isTentativeBargeIn else { return }
+
+        logger.info("Barge-in confirmed - stopping playback, listening to user")
+
+        // Cancel confirmation timer
+        bargeInConfirmationTask?.cancel()
+        bargeInConfirmationTask = nil
+
+        // Stop playback completely (not just pause)
+        audioPlayer?.stop()
+        audioPlayer = nil
+
+        // Transition to user speaking
+        state = .userSpeaking
+        isTentativeBargeIn = false
+
+        // Start collecting user's full utterance
+        // The VAD will continue detecting speech; when silence is detected, we'll process
+        startListeningForBargeInUtterance()
+    }
+
+    /// Resume playback after false positive barge-in (no continued speech)
+    private func resumeFromTentativeBargeIn() async {
+        guard isTentativeBargeIn else { return }
+
+        logger.info("False positive barge-in - resuming playback from \(bargeInPauseTime)s")
+
+        isTentativeBargeIn = false
+        bargeInAudioBuffers.removeAll()
+
+        // Resume playback
+        state = .aiSpeaking
+        audioPlayer?.play()
+    }
+
+    /// Start listening for the user's complete utterance after confirmed barge-in
+    private func startListeningForBargeInUtterance() {
+        logger.info("Listening for user's barge-in utterance...")
+
+        // We'll detect end of speech via VAD silence detection
+        // When speech ends, handleBargeInUtteranceComplete will be called
+    }
+
+    /// Handle completion of user's barge-in utterance
+    /// Called when VAD detects sufficient silence after confirmed barge-in
+    private func handleBargeInUtteranceComplete() async {
+        guard state == .userSpeaking else { return }
+
+        logger.info("User finished speaking - processing barge-in utterance")
+        state = .processingUserUtterance
+
+        // Transcribe the collected audio
+        guard let sttService = bargeInSTTService else {
+            logger.error("No STT service available for barge-in")
+            await resumeAfterBargeIn(userQuestion: nil)
+            return
+        }
+
+        do {
+            // Combine audio buffers and transcribe
+            let transcript = try await transcribeBargeInAudio(sttService: sttService)
+
+            if transcript.isEmpty {
+                // No intelligible speech - treat as false positive, resume
+                logger.info("Empty transcript from barge-in - resuming playback")
+                await resumeAfterBargeIn(userQuestion: nil)
+            } else {
+                // Got a real question/comment - process with LLM
+                logger.info("User said: \(transcript)")
+                userTranscript = transcript
+                conversationHistory.append(ConversationMessage(
+                    text: transcript,
+                    isUser: true,
+                    timestamp: Date()
+                ))
+                await handleBargeInQuestion(question: transcript)
+            }
+        } catch {
+            logger.error("Failed to transcribe barge-in audio: \(error)")
+            await resumeAfterBargeIn(userQuestion: nil)
+        }
+    }
+
+    /// Transcribe the collected barge-in audio buffers
+    private func transcribeBargeInAudio(sttService: any STTService) async throws -> String {
+        guard !bargeInAudioBuffers.isEmpty else {
+            logger.warning("No audio buffers to transcribe")
+            return ""
+        }
+
+        logger.info("Transcribing \(bargeInAudioBuffers.count) audio buffers for barge-in")
+
+        // Get format from first buffer
+        guard let format = bargeInAudioBuffers.first?.format else {
+            logger.error("No audio format available from buffers")
+            return ""
+        }
+
+        // Start STT streaming
+        let resultsStream = try await sttService.startStreaming(audioFormat: format)
+
+        // Send all collected audio buffers using nonisolated wrapper to avoid Sendable issues
+        // AVAudioPCMBuffer isn't Sendable, but we're on MainActor and the STT service handles isolation
+        for buffer in bargeInAudioBuffers {
+            let wrapper = SendableAudioBufferWrapper(buffer: buffer)
+            try await sttService.sendAudio(wrapper.buffer)
+        }
+
+        // Signal end of audio
+        try await sttService.stopStreaming()
+
+        // Collect final transcript from results
+        var finalTranscript = ""
+        for await result in resultsStream {
+            if result.isFinal {
+                finalTranscript = result.transcript
+                break
+            }
+        }
+
+        logger.info("Barge-in transcription complete: '\(finalTranscript)'")
+        return finalTranscript
+    }
+
+    /// Handle user's barge-in question with LLM
+    private func handleBargeInQuestion(question: String) async {
+        guard let llmService = bargeInLLMService else {
+            logger.error("No LLM service available for barge-in response")
+            await resumeAfterBargeIn(userQuestion: question)
+            return
+        }
+
+        state = .aiThinking
+
+        // Build context including current topic and where we paused
+        let topicContext = topic?.title ?? "the current topic"
+        let systemPrompt = """
+        You are a helpful tutor. The student was listening to a lecture about \(topicContext) and interrupted with a question.
+        Answer their question concisely and helpfully. After answering, ask if they'd like to continue with the lecture or explore this topic further.
+        Keep your response brief - this is a voice conversation.
+        """
+
+        let messages = [
+            LLMMessage(role: .system, content: systemPrompt),
+            LLMMessage(role: .user, content: question)
+        ]
+
+        do {
+            var response = ""
+            let stream = try await llmService.streamCompletion(messages: messages, config: .default)
+
+            state = .aiSpeaking
+            for await token in stream {
+                response += token.content
+                aiResponse = response
+
+                if token.isDone {
+                    break
+                }
+            }
+
+            // Add to conversation history
+            conversationHistory.append(ConversationMessage(
+                text: response,
+                isUser: false,
+                timestamp: Date()
+            ))
+
+            // Speak the response using TTS
+            await speakBargeInResponse(response)
+
+            // After responding, wait for user to either ask more or signal to continue
+            await waitForUserDecision()
+
+        } catch {
+            logger.error("LLM failed to respond to barge-in: \(error)")
+            await resumeAfterBargeIn(userQuestion: question)
+        }
+    }
+
+    /// Speak the barge-in AI response using TTS
+    private func speakBargeInResponse(_ text: String) async {
+        guard let ttsService = bargeInTTSService else {
+            logger.warning("No TTS service available for barge-in response - text only")
+            return
+        }
+
+        logger.info("Speaking barge-in response: '\(text.prefix(50))...'")
+
+        do {
+            let audioStream = try await ttsService.synthesize(text: text)
+
+            for await chunk in audioStream {
+                // Convert chunk to AVAudioPlayer and play
+                do {
+                    let player = try AVAudioPlayer(data: chunk.audioData)
+                    player.volume = 1.0
+
+                    // Play synchronously using a continuation
+                    await withCheckedContinuation { continuation in
+                        let delegate = AudioPlayerDelegate {
+                            continuation.resume()
+                        }
+                        // Store delegate to prevent deallocation
+                        self.audioDelegate = delegate
+                        player.delegate = delegate
+                        player.play()
+                    }
+                } catch {
+                    logger.error("Failed to play TTS audio chunk: \(error)")
+                }
+            }
+
+            logger.info("Finished speaking barge-in response")
+        } catch {
+            logger.error("TTS synthesis failed for barge-in response: \(error)")
+        }
+    }
+
+    /// Wait for user to decide: continue lecture or ask more questions
+    private func waitForUserDecision() async {
+        logger.info("Waiting for user decision - continue or ask more?")
+        state = .userSpeaking
+        // User can either:
+        // 1. Say nothing (silence) -> resume lecture
+        // 2. Say "continue" or similar -> resume lecture
+        // 3. Ask another question -> handle with LLM
+        // This will be detected by the VAD and handled accordingly
+    }
+
+    /// Resume lecture playback after handling barge-in
+    private func resumeAfterBargeIn(userQuestion: String?) async {
+        logger.info("Resuming lecture after barge-in")
+
+        // Clear barge-in state
+        bargeInAudioBuffers.removeAll()
+
+        // Resume from where we paused
+        state = .aiSpeaking
+        isDirectStreamingMode = true
+
+        // If we have remaining audio in the current segment, resume it
+        // Otherwise, continue with next segment
+        if audioPlayer != nil {
+            audioPlayer?.play()
+        } else {
+            playNextAudioSegment()
+        }
+    }
+
     /// Configure AVAudioSession for audio playback (needed in direct streaming mode)
     private func configureAudioSessionForPlayback() {
         #if os(iOS)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            // Use playAndRecord to enable microphone for barge-in detection
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothA2DP])
             try session.setActive(true)
-            logger.info("Audio session configured for playback")
+            logger.info("Audio session configured for playback with barge-in support")
         } catch {
             logger.error("Failed to configure audio session: \(error)")
         }
