@@ -9,6 +9,32 @@ import CoreData
 @objc(VisualAsset)
 public class VisualAsset: NSManagedObject {
 
+    // MARK: - Managed Properties
+
+    @NSManaged public var id: UUID?
+    @NSManaged public var assetId: String?
+    @NSManaged public var type: String?
+    @NSManaged public var title: String?
+    @NSManaged public var altText: String?
+    @NSManaged public var caption: String?
+    @NSManaged public var mimeType: String?
+    @NSManaged public var latex: String?
+    @NSManaged public var audioDescription: String?
+    @NSManaged public var isReference: Bool
+    @NSManaged public var remoteURL: URL?
+    @NSManaged public var localPath: String?
+    @NSManaged public var width: Int32
+    @NSManaged public var height: Int32
+    @NSManaged public var startSegment: Int32
+    @NSManaged public var endSegment: Int32
+    @NSManaged public var displayMode: String?
+    @NSManaged public var keywords: NSObject?
+    @NSManaged public var cachedData: Data?
+    @NSManaged public var topic: Topic?
+
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<VisualAsset> {
+        return NSFetchRequest<VisualAsset>(entityName: "VisualAsset")
+    }
 }
 
 // MARK: - Convenience Properties
@@ -93,10 +119,6 @@ extension VisualAsset {
 // MARK: - Fetch Requests
 
 extension VisualAsset {
-
-    @nonobjc public class func fetchRequest() -> NSFetchRequest<VisualAsset> {
-        return NSFetchRequest<VisualAsset>(entityName: "VisualAsset")
-    }
 
     /// Fetch all embedded (non-reference) assets for a topic
     @nonobjc public class func fetchEmbeddedAssets(for topic: Topic) -> NSFetchRequest<VisualAsset> {

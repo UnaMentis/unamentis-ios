@@ -8,6 +8,7 @@ import Logging
 
 struct CurriculumView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var curricula: [Curriculum] = []
     @State private var isLoading = false
     @State private var selectedCurriculum: Curriculum?
@@ -24,8 +25,58 @@ struct CurriculumView: View {
 
     var body: some View {
         let _ = Self.logger.debug("CurriculumView body START")
-        NavigationStack {
-            List {
+        adaptiveNavigation
+    }
+
+    // MARK: - Adaptive Navigation (iPad vs iPhone)
+
+    @ViewBuilder
+    private var adaptiveNavigation: some View {
+        if horizontalSizeClass == .regular {
+            // iPad: Use NavigationSplitView for multi-column layout
+            NavigationSplitView {
+                curriculumListContent
+                    .navigationTitle("Curriculum")
+            } detail: {
+                if let curriculum = selectedCurriculum {
+                    CurriculumDetailView(curriculum: curriculum)
+                        .environmentObject(appState)
+                } else {
+                    ContentUnavailableView(
+                        "Select a Curriculum",
+                        systemImage: "book.closed",
+                        description: Text("Choose a curriculum from the list to view its topics.")
+                    )
+                }
+            }
+            .navigationSplitViewStyle(.balanced)
+        } else {
+            // iPhone: Use NavigationStack with sheet for detail
+            NavigationStack {
+                curriculumListContent
+                    .navigationTitle("Curriculum")
+                    .sheet(item: $selectedCurriculum) { curriculum in
+                        NavigationStack {
+                            CurriculumDetailView(curriculum: curriculum)
+                                .environmentObject(appState)
+                                .toolbar {
+                                    ToolbarItem(placement: .cancellationAction) {
+                                        Button("Close") {
+                                            selectedCurriculum = nil
+                                        }
+                                    }
+                                }
+                        }
+                    }
+            }
+        }
+    }
+
+    // MARK: - Curriculum List Content
+
+    @ViewBuilder
+    private var curriculumListContent: some View {
+        List {
                 if curricula.isEmpty && !isLoading {
                     VStack(spacing: 20) {
                         ContentUnavailableView(
@@ -54,76 +105,63 @@ struct CurriculumView: View {
                     .onDelete(perform: deleteCurricula)
                 }
             }
-            .navigationTitle("Curriculum")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button {
-                            showingImportOptions = true
-                        } label: {
-                            Label("Import Curriculum", systemImage: "square.and.arrow.down")
-                        }
-
-                        if !curricula.isEmpty {
-                            Divider()
-                            Button(role: .destructive) {
-                                Task { await deleteAllCurricula() }
-                            } label: {
-                                Label("Delete All Curricula", systemImage: "trash")
-                            }
-                        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        showingImportOptions = true
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Label("Import Curriculum", systemImage: "square.and.arrow.down")
                     }
-                }
-            }
-            .onAppear {
-                Self.logger.info("CurriculumView onAppear")
-            }
-            .task {
-                Self.logger.info("CurriculumView .task STARTED")
-                await loadCurricula()
-                Self.logger.info("CurriculumView .task COMPLETED")
-            }
-            .refreshable {
-                await loadCurricula()
-            }
-            .sheet(item: $selectedCurriculum) { curriculum in
-                NavigationStack {
-                    CurriculumDetailView(curriculum: curriculum)
-                        .environmentObject(appState)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Close") {
-                                    selectedCurriculum = nil
-                                }
-                            }
+                    .keyboardShortcut("i", modifiers: .command)
+
+                    if !curricula.isEmpty {
+                        Divider()
+                        Button(role: .destructive) {
+                            Task { await deleteAllCurricula() }
+                        } label: {
+                            Label("Delete All Curricula", systemImage: "trash")
                         }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .accessibilityLabel("Curriculum options")
                 }
             }
-            .confirmationDialog("Import Curriculum", isPresented: $showingImportOptions) {
-                Button("Browse Server Curricula") {
-                    showingServerBrowser = true
-                }
-                Button("Load Sample (PyTorch Fundamentals)") {
-                    Task { await loadSampleCurriculum() }
-                }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("Choose how to import a curriculum")
+        }
+        .onAppear {
+            Self.logger.info("CurriculumView onAppear")
+        }
+        .task {
+            Self.logger.info("CurriculumView .task STARTED")
+            await loadCurricula()
+            Self.logger.info("CurriculumView .task COMPLETED")
+        }
+        .refreshable {
+            await loadCurricula()
+        }
+        .confirmationDialog("Import Curriculum", isPresented: $showingImportOptions) {
+            Button("Browse Server Curricula") {
+                showingServerBrowser = true
             }
-            .sheet(isPresented: $showingServerBrowser) {
-                ServerCurriculumBrowser { downloadedCurriculum in
-                    // Curriculum was downloaded, refresh the view
-                    showingServerBrowser = false
-                    Task { await loadCurricula() }
-                }
+            Button("Load Sample (PyTorch Fundamentals)") {
+                Task { await loadSampleCurriculum() }
             }
-            .alert("Import Error", isPresented: $showingError) {
-                Button("OK") { }
-            } message: {
-                Text(importError ?? "Unknown error")
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Choose how to import a curriculum")
+        }
+        .sheet(isPresented: $showingServerBrowser) {
+            ServerCurriculumBrowser { downloadedCurriculum in
+                // Curriculum was downloaded, refresh the view
+                showingServerBrowser = false
+                Task { await loadCurricula() }
             }
+        }
+        .alert("Import Error", isPresented: $showingError) {
+            Button("OK") { }
+        } message: {
+            Text(importError ?? "Unknown error")
         }
     }
 
@@ -204,6 +242,10 @@ struct CurriculumView: View {
 struct CurriculumRow: View {
     @ObservedObject var curriculum: Curriculum
 
+    private var topicCount: Int {
+        curriculum.topics?.count ?? 0
+    }
+
     var body: some View {
         HStack {
             // Curriculum icon
@@ -215,6 +257,7 @@ struct CurriculumRow: View {
                 Image(systemName: "book.fill")
                     .foregroundStyle(.blue)
             }
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(curriculum.name ?? "Untitled Curriculum")
@@ -227,8 +270,6 @@ struct CurriculumRow: View {
                         .lineLimit(2)
                 }
 
-                // Show topic count
-                let topicCount = curriculum.topics?.count ?? 0
                 Text("\(topicCount) topics")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -239,8 +280,13 @@ struct CurriculumRow: View {
             Image(systemName: "chevron.right")
                 .foregroundStyle(.secondary)
                 .font(.caption)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(curriculum.name ?? "Untitled Curriculum")")
+        .accessibilityValue("\(topicCount) topics")
+        .accessibilityHint("Double-tap to view curriculum details")
     }
 }
 
@@ -316,6 +362,7 @@ struct TopicRow: View {
     var body: some View {
         HStack {
             StatusIcon(status: topic.status)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading) {
                 Text(topic.title ?? "Untitled Topic")
@@ -340,8 +387,13 @@ struct TopicRow: View {
             Image(systemName: "chevron.right")
                 .foregroundStyle(.secondary)
                 .font(.caption)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(topic.title ?? "Untitled Topic")")
+        .accessibilityValue("Status: \(topic.status.accessibilityDescription), \(Int(topic.mastery * 100)) percent mastery")
+        .accessibilityHint("Double-tap to view topic details and start lesson")
     }
 
     private func formatTime(_ seconds: Double) -> String {

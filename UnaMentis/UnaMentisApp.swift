@@ -97,6 +97,8 @@ struct UnaMentisApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                // Enable Dynamic Type scaling for accessibility
+                .dynamicTypeSize(.medium ... .accessibility3)
         }
     }
 }

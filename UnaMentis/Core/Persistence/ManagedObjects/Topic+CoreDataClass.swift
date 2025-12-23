@@ -25,6 +25,7 @@ public class Topic: NSManagedObject {
     @NSManaged public var documents: NSSet?
     @NSManaged public var progress: TopicProgress?
     @NSManaged public var sessions: NSSet?
+    @NSManaged public var visualAssets: NSSet?
 
     /// Content depth level (defaults to intermediate if not set)
     public var depthLevel: ContentDepth {
@@ -68,6 +69,22 @@ extension Topic {
 
     @objc(removeSessions:)
     @NSManaged public func removeFromSessions(_ values: NSSet)
+}
+
+// MARK: - Generated Accessors for VisualAssets
+
+extension Topic {
+    @objc(addVisualAssetsObject:)
+    @NSManaged public func addToVisualAssets(_ value: VisualAsset)
+
+    @objc(removeVisualAssetsObject:)
+    @NSManaged public func removeFromVisualAssets(_ value: VisualAsset)
+
+    @objc(addVisualAssets:)
+    @NSManaged public func addToVisualAssets(_ values: NSSet)
+
+    @objc(removeVisualAssets:)
+    @NSManaged public func removeFromVisualAssets(_ values: NSSet)
 }
 
 // MARK: - Identifiable Conformance

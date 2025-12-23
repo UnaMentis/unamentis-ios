@@ -117,6 +117,8 @@ public actor VisualAssetCache {
 
     /// Preload all visual assets for a topic
     /// - Parameter topic: Topic to preload assets for
+    /// NOTE: Must be called from MainActor context since Topic is an NSManagedObject
+    @MainActor
     public func preloadAssets(for topic: Topic) async {
         let assets = topic.visualAssetSet
 
@@ -136,10 +138,8 @@ public actor VisualAssetCache {
             do {
                 let data = try await downloadAndCache(assetId: assetId, from: remoteURL)
 
-                // Also update the Core Data entity's cached data
-                await MainActor.run {
-                    asset.cachedData = data
-                }
+                // Update the Core Data entity's cached data
+                asset.cachedData = data
 
                 logger.debug("Preloaded asset: \(assetId)")
             } catch {
@@ -150,6 +150,8 @@ public actor VisualAssetCache {
 
     /// Preload all visual assets for a curriculum
     /// - Parameter curriculum: Curriculum to preload assets for
+    /// NOTE: Must be called from MainActor context since Curriculum is an NSManagedObject
+    @MainActor
     public func preloadAssets(for curriculum: Curriculum) async {
         guard let topics = curriculum.topics as? Set<Topic> else { return }
 
@@ -242,6 +244,7 @@ public enum VisualAssetCacheError: Error, LocalizedError {
 
 extension Topic {
     /// Preload all visual assets for offline access
+    @MainActor
     public func preloadVisualAssets() async {
         await VisualAssetCache.shared.preloadAssets(for: self)
     }
@@ -251,6 +254,7 @@ extension Topic {
 
 extension Curriculum {
     /// Preload all visual assets for offline access
+    @MainActor
     public func preloadVisualAssets() async {
         await VisualAssetCache.shared.preloadAssets(for: self)
     }

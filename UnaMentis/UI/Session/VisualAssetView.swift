@@ -455,11 +455,33 @@ struct VisualAssetOverlay: View {
         return topic.visualAssetsForSegment(currentSegment)
     }
 
+    /// Filter assets by display mode
+    private var persistentAssets: [VisualAsset] {
+        activeAssets.filter { $0.visualDisplayMode == .persistent }
+    }
+
+    private var highlightAssets: [VisualAsset] {
+        activeAssets.filter { $0.visualDisplayMode == .highlight }
+    }
+
+    private var inlineAssets: [VisualAsset] {
+        activeAssets.filter { $0.visualDisplayMode == .inline }
+    }
+
+    private var popupAssets: [VisualAsset] {
+        activeAssets.filter { $0.visualDisplayMode == .popup }
+    }
+
+    /// Non-inline assets for the carousel/panel
+    private var overlayAssets: [VisualAsset] {
+        activeAssets.filter { $0.visualDisplayMode != .inline }
+    }
+
     var body: some View {
         VStack {
             Spacer()
 
-            if !activeAssets.isEmpty {
+            if !overlayAssets.isEmpty {
                 VStack(spacing: 8) {
                     // Collapse/expand button
                     Button {
@@ -469,7 +491,7 @@ struct VisualAssetOverlay: View {
                     } label: {
                         HStack {
                             Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
-                            Text("\(activeAssets.count) visual\(activeAssets.count == 1 ? "" : "s")")
+                            Text("\(overlayAssets.count) visual\(overlayAssets.count == 1 ? "" : "s")")
                                 .font(.caption)
                         }
                         .foregroundStyle(.secondary)
@@ -483,7 +505,7 @@ struct VisualAssetOverlay: View {
                     .buttonStyle(.plain)
 
                     if isExpanded {
-                        VisualAssetCarousel(assets: activeAssets)
+                        VisualAssetCarousel(assets: overlayAssets)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
@@ -491,6 +513,166 @@ struct VisualAssetOverlay: View {
             }
         }
         .animation(.spring(response: 0.3), value: activeAssets.count)
+    }
+}
+
+// MARK: - iPad Split View for Visual Assets
+
+/// Side panel for displaying visual assets on iPad
+struct VisualAssetSidePanel: View {
+    let currentSegment: Int
+    let topic: Topic?
+
+    private var activeAssets: [VisualAsset] {
+        guard let topic = topic else { return [] }
+        return topic.visualAssetsForSegment(currentSegment)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Image(systemName: "photo.stack")
+                    .foregroundStyle(.secondary)
+                Text("Visual Content")
+                    .font(.headline)
+                Spacer()
+            }
+            .padding()
+            .background(.ultraThinMaterial)
+
+            if activeAssets.isEmpty {
+                Spacer()
+                VStack(spacing: 12) {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.tertiary)
+                    Text("No visuals for this segment")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        ForEach(activeAssets, id: \.id) { asset in
+                            VisualAssetView(asset: asset)
+                                .padding(.horizontal)
+                        }
+                    }
+                    .padding(.vertical)
+                }
+            }
+        }
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+// MARK: - Inline Visual Asset View (for embedding in transcript)
+
+/// Compact visual asset view for inline display within transcript
+struct InlineVisualAssetView: View {
+    let asset: VisualAsset
+    @State private var isFullscreen = false
+    @State private var imageData: Data?
+    @State private var isLoading = true
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 8) {
+            if isLoading {
+                ProgressView()
+                    .frame(height: 120)
+            } else if let data = imageData {
+                #if os(iOS)
+                if let image = UIImage(data: data) {
+                    Button {
+                        isFullscreen = true
+                    } label: {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
+                #else
+                if let image = NSImage(data: data) {
+                    Button {
+                        isFullscreen = true
+                    } label: {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
+                #endif
+            } else {
+                // Placeholder
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(height: 120)
+                    .overlay {
+                        Image(systemName: "photo")
+                            .font(.title)
+                            .foregroundStyle(.secondary)
+                    }
+            }
+
+            // Caption
+            if let caption = asset.caption {
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+            }
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+        }
+        .frame(maxWidth: 300)
+        .task {
+            await loadImageData()
+        }
+        .fullScreenCover(isPresented: $isFullscreen) {
+            FullscreenVisualView(asset: asset, imageData: imageData)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(asset.altText ?? asset.title ?? "Image")
+    }
+
+    private func loadImageData() async {
+        // First try cached data
+        if let cached = asset.cachedData {
+            imageData = cached
+            isLoading = false
+            return
+        }
+
+        // Try remote URL
+        if let remoteURL = asset.remoteURL {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: remoteURL)
+                imageData = data
+                isLoading = false
+
+                // Cache for future use
+                await MainActor.run {
+                    asset.cachedData = data
+                }
+            } catch {
+                isLoading = false
+            }
+        } else {
+            isLoading = false
+        }
     }
 }
 

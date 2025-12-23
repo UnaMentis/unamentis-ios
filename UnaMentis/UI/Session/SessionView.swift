@@ -16,6 +16,7 @@ import AppKit
 public struct SessionView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: SessionViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// The topic being studied (optional - for curriculum-based sessions)
     let topic: Topic?
@@ -26,12 +27,17 @@ public struct SessionView: View {
     private static let backgroundGradientColors: [Color] = [Color(NSColor.windowBackgroundColor), Color(NSColor.controlBackgroundColor)]
     #endif
 
+    /// Whether to show side panel for visuals (iPad with curriculum)
+    private var showSidePanel: Bool {
+        horizontalSizeClass == .regular && topic != nil && viewModel.isDirectStreamingMode
+    }
+
     public init(topic: Topic? = nil) {
         self.topic = topic
         // Initialize viewModel with topic context
         _viewModel = StateObject(wrappedValue: SessionViewModel(topic: topic))
     }
-    
+
     public var body: some View {
         NavigationStack {
             ZStack {
@@ -58,23 +64,47 @@ public struct SessionView: View {
                         .padding(.top, topic != nil ? 4 : 12)
 
                     // Transcript display with visual overlay - takes most of the space
-                    ZStack(alignment: .bottom) {
-                        TranscriptView(
-                            conversationHistory: viewModel.conversationHistory,
-                            userTranscript: viewModel.userTranscript,
-                            aiResponse: viewModel.aiResponse
-                        )
-
-                        // Visual asset overlay - shows synchronized visuals during curriculum playback
-                        if topic != nil && viewModel.isDirectStreamingMode {
-                            VisualAssetOverlay(
-                                currentSegment: viewModel.currentSegmentIndex,
-                                topic: topic,
-                                isExpanded: $viewModel.visualsExpanded
+                    // On iPad: side-by-side layout (transcript left, visuals right)
+                    // On iPhone: overlay at bottom
+                    if showSidePanel {
+                        // iPad layout: transcript and visual panel side by side
+                        HStack(spacing: 16) {
+                            // Transcript on the left
+                            TranscriptView(
+                                conversationHistory: viewModel.conversationHistory,
+                                userTranscript: viewModel.userTranscript,
+                                aiResponse: viewModel.aiResponse
                             )
+                            .frame(maxWidth: .infinity)
+
+                            // Visual panel on the right
+                            VisualAssetSidePanel(
+                                currentSegment: viewModel.currentSegmentIndex,
+                                topic: topic
+                            )
+                            .frame(width: 340)
                         }
+                        .frame(maxHeight: .infinity)
+                    } else {
+                        // iPhone layout: overlay at bottom
+                        ZStack(alignment: .bottom) {
+                            TranscriptView(
+                                conversationHistory: viewModel.conversationHistory,
+                                userTranscript: viewModel.userTranscript,
+                                aiResponse: viewModel.aiResponse
+                            )
+
+                            // Visual asset overlay - shows synchronized visuals during curriculum playback
+                            if topic != nil && viewModel.isDirectStreamingMode {
+                                VisualAssetOverlay(
+                                    currentSegment: viewModel.currentSegmentIndex,
+                                    topic: topic,
+                                    isExpanded: $viewModel.visualsExpanded
+                                )
+                            }
+                        }
+                        .frame(maxHeight: .infinity)
                     }
-                    .frame(maxHeight: .infinity)
 
                     // Bottom control area - different controls for curriculum vs regular mode
                     HStack(alignment: .bottom, spacing: 16) {

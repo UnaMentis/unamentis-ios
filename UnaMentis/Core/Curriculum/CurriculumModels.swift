@@ -173,6 +173,16 @@ public enum TopicStatus: String, Codable, Sendable, CaseIterable {
         case .reviewing: return "Reviewing"
         }
     }
+
+    /// Accessibility-friendly description for VoiceOver
+    public var accessibilityDescription: String {
+        switch self {
+        case .notStarted: return "not started"
+        case .inProgress: return "in progress"
+        case .completed: return "completed"
+        case .reviewing: return "needs review"
+        }
+    }
 }
 
 // MARK: - Document Type
