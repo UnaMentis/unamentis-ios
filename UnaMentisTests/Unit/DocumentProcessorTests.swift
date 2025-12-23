@@ -19,9 +19,8 @@ final class DocumentProcessorTests: XCTestCase {
 
     // MARK: - Setup / Teardown
 
-    @MainActor
-    override func setUp() async throws {
-        try await super.setUp()
+    override func setUp() {
+        super.setUp()
         persistenceController = PersistenceController(inMemory: true)
         context = persistenceController.container.viewContext
         mockLLMService = MockLLMService()
@@ -32,13 +31,13 @@ final class DocumentProcessorTests: XCTestCase {
         )
     }
 
-    override func tearDown() async throws {
+    override func tearDown() {
         documentProcessor = nil
         mockLLMService = nil
         mockEmbeddingService = nil
         context = nil
         persistenceController = nil
-        try await super.tearDown()
+        super.tearDown()
     }
 
     // MARK: - Text Extraction Tests

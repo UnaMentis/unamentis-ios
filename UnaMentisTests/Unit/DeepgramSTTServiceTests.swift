@@ -16,14 +16,14 @@ final class DeepgramSTTServiceTests: XCTestCase {
     var service: DeepgramSTTService!
     let apiKey = "test_deepgram_key"
     
-    override func setUp() async throws {
-        try await super.setUp()
+    override func setUp() {
+        super.setUp()
         service = DeepgramSTTService(apiKey: apiKey)
     }
-    
-    override func tearDown() async throws {
+
+    override func tearDown() {
         service = nil
-        try await super.tearDown()
+        super.tearDown()
     }
     
     func testDeepgramServiceInitialization() async {
