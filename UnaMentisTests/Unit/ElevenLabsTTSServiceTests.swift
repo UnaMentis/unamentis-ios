@@ -16,14 +16,12 @@ final class ElevenLabsTTSServiceTests: XCTestCase {
     var service: ElevenLabsTTSService!
     let apiKey = "test_elevenlabs_key"
     
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
         service = ElevenLabsTTSService(apiKey: apiKey)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         service = nil
-        super.tearDown()
     }
     
     func testElevenLabsServiceInitialization() async {
