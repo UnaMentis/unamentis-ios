@@ -19,17 +19,16 @@ final class ProgressTrackerTests: XCTestCase {
 
     @MainActor
     override func setUp() async throws {
-        try await super.setUp()
         persistenceController = PersistenceController(inMemory: true)
         context = persistenceController.container.viewContext
         progressTracker = ProgressTracker(persistenceController: persistenceController)
     }
 
+    @MainActor
     override func tearDown() async throws {
         progressTracker = nil
         context = nil
         persistenceController = nil
-        try await super.tearDown()
     }
 
     // MARK: - Progress Creation Tests
