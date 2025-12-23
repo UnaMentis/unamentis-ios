@@ -114,14 +114,28 @@ public actor MockLLMService: LLMService {
         }
 
         if lowercasedInput.contains("test") || lowercasedInput.contains("quiz") {
-            return "Great idea! Testing yourself is an excellent way to learn. Let me think of a question for you... Actually, why don't you tell me what topic you'd like to be quizzed on?"
+            return """
+                Great idea! Testing yourself is an excellent way to learn. \
+                Let me think of a question for you... Actually, why don't you tell me what topic you'd like to be quizzed on?
+                """
         }
 
         if lowercasedInput.contains("explain") {
-            return "Sure, I'll explain that! \(acknowledgments.randomElement()!) The key thing to understand here is that learning happens best through practice and repetition. \(followUps.randomElement()!)"
+            let ack = acknowledgments.randomElement()!
+            let follow = followUps.randomElement()!
+            return """
+                Sure, I'll explain that! \(ack) The key thing to understand here is that \
+                learning happens best through practice and repetition. \(follow)
+                """
         }
 
         // Default response for any other input
-        return "\(acknowledgments.randomElement()!) Based on what you said about '\(input.prefix(30))...', I think this is an interesting topic to explore. In a real session, I would provide detailed information from my training. \(followUps.randomElement()!)"
+        let ack = acknowledgments.randomElement()!
+        let follow = followUps.randomElement()!
+        let prefix = input.prefix(30)
+        return """
+            \(ack) Based on what you said about '\(prefix)...', I think this is an interesting topic to explore. \
+            In a real session, I would provide detailed information from my training. \(follow)
+            """
     }
 }

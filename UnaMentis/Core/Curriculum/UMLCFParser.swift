@@ -745,4 +745,3 @@ extension Document {
         return try? JSONDecoder().decode(TranscriptData.self, from: data)
     }
 }
-
