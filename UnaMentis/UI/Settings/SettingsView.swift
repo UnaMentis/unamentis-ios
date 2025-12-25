@@ -368,6 +368,25 @@ public struct SettingsView: View {
                     Text("Tools for testing subsystems and troubleshooting.")
                 }
 
+                // Help Section
+                Section {
+                    NavigationLink {
+                        HelpView()
+                    } label: {
+                        Label("Help & Voice Commands", systemImage: "questionmark.circle")
+                    }
+
+                    NavigationLink {
+                        VoiceCommandsHelpView()
+                    } label: {
+                        Label("Siri Voice Commands", systemImage: "waveform.circle")
+                    }
+                } header: {
+                    Text("Help")
+                } footer: {
+                    Text("Learn how to use Siri voice commands for hands-free learning.")
+                }
+
                 // About Section
                 Section("About") {
                     HStack {
