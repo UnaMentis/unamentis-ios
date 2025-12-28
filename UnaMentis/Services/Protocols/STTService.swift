@@ -125,6 +125,7 @@ public enum STTProvider: String, Codable, Sendable, CaseIterable {
     case assemblyAI = "AssemblyAI Universal-Streaming"
     case deepgramNova3 = "Deepgram Nova-3"
     case openAIWhisper = "OpenAI Whisper"
+    case groqWhisper = "Groq Whisper (Cloud)"
     case appleSpeech = "Apple Speech (On-Device)"
     case glmASRNano = "GLM-ASR-Nano (Self-Hosted)"
     case glmASROnDevice = "GLM-ASR-Nano (On-Device)"
@@ -140,6 +141,7 @@ public enum STTProvider: String, Codable, Sendable, CaseIterable {
         case .assemblyAI: return "assemblyai"
         case .deepgramNova3: return "deepgram"
         case .openAIWhisper: return "whisper"
+        case .groqWhisper: return "groq"
         case .appleSpeech: return "apple"
         case .glmASRNano: return "glm-asr"
         case .glmASROnDevice: return "glm-asr-ondevice"
@@ -162,6 +164,7 @@ public enum STTProvider: String, Codable, Sendable, CaseIterable {
         case .assemblyAI: return Decimal(string: "0.37")!    // $0.37/hour
         case .deepgramNova3: return Decimal(string: "0.258")! // $0.258/hour
         case .openAIWhisper: return Decimal(string: "0.36")!  // $0.006/min
+        case .groqWhisper: return 0                           // Free tier (14,400 req/day)
         case .appleSpeech: return 0                           // Free (on-device)
         case .glmASRNano: return 0                            // Self-hosted
         case .glmASROnDevice: return 0                        // On-device

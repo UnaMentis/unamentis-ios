@@ -36,9 +36,10 @@ public actor APIKeyManager {
         case openAI = "OPENAI_API_KEY"
         case anthropic = "ANTHROPIC_API_KEY"
         case elevenLabs = "ELEVENLABS_API_KEY"
+        case groq = "GROQ_API_KEY"
         case liveKit = "LIVEKIT_API_KEY"
         case liveKitSecret = "LIVEKIT_API_SECRET"
-        
+
         public var displayName: String {
             switch self {
             case .assemblyAI: return "AssemblyAI"
@@ -46,6 +47,7 @@ public actor APIKeyManager {
             case .openAI: return "OpenAI"
             case .anthropic: return "Anthropic"
             case .elevenLabs: return "ElevenLabs"
+            case .groq: return "Groq"
             case .liveKit: return "LiveKit API Key"
             case .liveKitSecret: return "LiveKit Secret"
             }
@@ -244,6 +246,8 @@ public actor APIKeyManager {
             required.append(.deepgram)
         case "OpenAI Whisper":
             required.append(.openAI)
+        case "Groq Whisper (Cloud)":
+            required.append(.groq)
         case "Apple Speech (On-Device)", "GLM-ASR-Nano (On-Device)", "GLM-ASR-Nano (Self-Hosted)":
             // On-device or self-hosted, no API key needed
             break

@@ -215,6 +215,8 @@ public enum LMAPIProviderRegistry {
             return anthropicInfo
         case .elevenLabs:
             return elevenLabsInfo
+        case .groq:
+            return groqInfo
         case .liveKit:
             return liveKitInfo
         case .liveKitSecret:
@@ -554,6 +556,67 @@ public enum LMAPIProviderRegistry {
                 "ElevenLabs offers a free tier with 10K characters/month",
                 "Deepgram Aura is a more cost-effective alternative",
                 "Premium voices can reduce listening fatigue in long sessions"
+            ]
+        )
+    }
+
+    // MARK: - Groq
+
+    private static var groqInfo: LMAPIProviderInfo {
+        LMAPIProviderInfo(
+            id: .groq,
+            name: "Groq",
+            categories: [.speechToText],
+            shortDescription: "Ultra-fast Whisper speech recognition",
+            fullDescription: """
+                Groq provides ultra-fast Whisper speech-to-text using their custom LPU (Language \
+                Processing Unit) hardware. With speeds up to 300x real-time, transcription latency \
+                is typically under 100ms. The free tier includes 14,400 requests per day.
+                """,
+            usageInApp: """
+                UnaMentis uses Groq's Whisper API for fast, accurate speech transcription:
+
+                **Free Tier Benefits:**
+                - 14,400 requests per day (sufficient for 20-40 hours of usage)
+                - No credit card required
+                - Ultra-fast processing (typically <100ms latency)
+
+                **Word-Level Timestamps:**
+                Groq returns word-level timing information, enabling features like \
+                transcript highlighting and precise conversation tracking.
+
+                Groq is an excellent choice for development, testing, and personal use.
+                """,
+            pricing: LMAPIPricing(
+                inputCost: nil,
+                inputUnit: .free,
+                notes: "Free tier: 14,400 requests/day. Paid plans available for higher volume."
+            ),
+            conversationEstimate: ConversationCostEstimate(
+                tenMinuteCost: 0.00,
+                sixtyMinuteCost: 0.00,
+                assumptions: "Free tier covers all personal learning use cases. ~6-12 requests per minute."
+            ),
+            models: [
+                LMAPIProviderInfo.ModelInfo(
+                    id: "whisper-large-v3-turbo",
+                    name: "Whisper Large v3 Turbo",
+                    description: "Fastest model, excellent for real-time use",
+                    isRecommended: true
+                ),
+                LMAPIProviderInfo.ModelInfo(
+                    id: "whisper-large-v3",
+                    name: "Whisper Large v3",
+                    description: "Highest accuracy, slightly more latency"
+                )
+            ],
+            websiteURL: URL(string: "https://groq.com"),
+            apiDocsURL: URL(string: "https://console.groq.com/docs/speech-text"),
+            tips: [
+                "Sign up at console.groq.com for a free API key",
+                "Free tier provides 14,400 requests per day",
+                "Whisper Large v3 Turbo offers the best speed/accuracy balance",
+                "No credit card required for free tier"
             ]
         )
     }

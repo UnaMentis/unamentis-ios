@@ -178,6 +178,7 @@ public struct SettingsView: View {
                 Section("Speech Recognition") {
                     Picker("Provider", selection: $viewModel.sttProvider) {
                         Text("GLM-ASR (On-Device)").tag(STTProvider.glmASROnDevice)
+                        Text("Groq Whisper (Free)").tag(STTProvider.groqWhisper)
                         Text("Deepgram Nova-3").tag(STTProvider.deepgramNova3)
                         Text("AssemblyAI").tag(STTProvider.assemblyAI)
                         Text("Apple Speech").tag(STTProvider.appleSpeech)
