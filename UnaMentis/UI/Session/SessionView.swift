@@ -15,6 +15,7 @@ import AppKit
 /// Main session view for voice conversations
 public struct SessionView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var sessionActivityState: SessionActivityState
     @StateObject private var viewModel: SessionViewModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingSessionHelp = false
@@ -112,11 +113,20 @@ public struct SessionView: View {
                     }
 
                     // Bottom control area - different controls for curriculum vs regular mode
-                    HStack(alignment: .bottom, spacing: 16) {
+                    VStack(spacing: 12) {
+                        // VU meter - visible when session active
+                        // Color scheme: Blue for AI speaking, Green for user speaking
+                        if viewModel.isSessionActive {
+                            AudioLevelView(level: viewModel.audioLevel, state: viewModel.state)
+                                .frame(height: 40)
+                                .transition(.opacity.combined(with: .scale))
+                        }
+
                         if viewModel.showCurriculumControls {
-                            // Curriculum playback controls: Stop | Pause/Play
+                            // Curriculum playback controls: Mute | Pause/Play | Slide-to-Stop
                             CurriculumPlaybackControls(
-                                isPaused: viewModel.isPaused,
+                                isPaused: $viewModel.isPaused,
+                                isMuted: $viewModel.isMuted,
                                 onPauseResume: {
                                     if viewModel.isPaused {
                                         viewModel.resumePlayback()
@@ -126,6 +136,9 @@ public struct SessionView: View {
                                 },
                                 onStop: {
                                     viewModel.stopPlayback()
+                                },
+                                onMuteChanged: { muted in
+                                    viewModel.setMicrophoneMuted(muted)
                                 }
                             )
                         } else {
@@ -138,17 +151,6 @@ public struct SessionView: View {
                                 }
                             )
                         }
-
-                        // VU meter - visible when session active
-                        // Color scheme: Blue for AI speaking, Green for user speaking
-                        if viewModel.isSessionActive {
-                            AudioLevelView(level: viewModel.audioLevel, state: viewModel.state)
-                                .frame(height: 50)
-                                .frame(maxWidth: .infinity)
-                                .transition(.opacity.combined(with: .scale))
-                        }
-
-                        Spacer(minLength: 0)
                     }
                     .padding(.bottom, 20)
                     .animation(.spring(response: 0.3), value: viewModel.isSessionActive)
@@ -212,6 +214,18 @@ public struct SessionView: View {
                 if shouldAutoStart && !viewModel.isSessionActive && !viewModel.isLoading {
                     await viewModel.toggleSession(appState: appState)
                 }
+            }
+            // Update session activity state for tab bar visibility
+            .onChange(of: viewModel.isSessionActive) { _, newValue in
+                sessionActivityState.isSessionActive = newValue
+            }
+            .onChange(of: viewModel.isPaused) { _, newValue in
+                sessionActivityState.isPaused = newValue
+            }
+            .onDisappear {
+                // Reset session activity state when view disappears
+                sessionActivityState.isSessionActive = false
+                sessionActivityState.isPaused = false
             }
         }
     }
@@ -310,6 +324,7 @@ struct SessionStatusView: View {
         case .aiThinking: return .orange
         case .aiSpeaking: return .blue
         case .interrupted: return .yellow
+        case .paused: return .cyan
         case .processingUserUtterance: return .purple
         case .error: return .red
         }
@@ -327,6 +342,8 @@ struct SessionStatusView: View {
             return "Speaking. The AI tutor is responding."
         case .interrupted:
             return "Interrupted. The AI paused to listen to you."
+        case .paused:
+            return "Paused. Session is paused, tap play to resume."
         case .processingUserUtterance:
             return "Processing your speech."
         case .error:
@@ -566,48 +583,50 @@ struct SessionControlButton: View {
 
 // MARK: - Curriculum Playback Controls
 
-/// Controls for curriculum playback mode: Pause/Play and Stop buttons
+/// Controls for curriculum playback mode: Mute, Pause/Play, and Slide-to-Stop
+/// Uses the new SessionControlBar component for a unified low-profile control experience.
 struct CurriculumPlaybackControls: View {
-    let isPaused: Bool
+    /// Whether the session is paused
+    @Binding var isPaused: Bool
+
+    /// Whether the microphone is muted
+    @Binding var isMuted: Bool
+
+    /// Callback when pause/resume is toggled
     let onPauseResume: () -> Void
+
+    /// Callback when stop action completes
     let onStop: () -> Void
 
+    /// Optional callback when mute changes
+    var onMuteChanged: ((Bool) -> Void)?
+
     var body: some View {
-        HStack(spacing: 12) {
-            // Stop button - exits curriculum playback
-            Button {
-                onStop()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.red.opacity(0.15))
-                        .frame(width: 50, height: 50)
-
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.red)
-                }
-            }
-            .accessibilityLabel("Stop")
-
-            // Pause/Play button
-            Button {
+        SessionControlBar(
+            isPaused: $isPaused,
+            isMuted: $isMuted,
+            onStop: onStop,
+            onPauseChanged: { _ in
                 onPauseResume()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 60, height: 60)
-                        .shadow(color: Color.blue.opacity(0.4), radius: 8)
+            },
+            onMuteChanged: onMuteChanged
+        )
+    }
+}
 
-                    Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(.white)
-                }
-            }
-            .accessibilityLabel(isPaused ? "Resume" : "Pause")
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPaused)
+/// Legacy interface for backward compatibility
+extension CurriculumPlaybackControls {
+    /// Initializer for backward compatibility with existing code that uses closures
+    init(
+        isPaused: Bool,
+        onPauseResume: @escaping () -> Void,
+        onStop: @escaping () -> Void
+    ) {
+        self._isPaused = .constant(isPaused)
+        self._isMuted = .constant(false)
+        self.onPauseResume = onPauseResume
+        self.onStop = onStop
+        self.onMuteChanged = nil
     }
 }
 
@@ -1089,6 +1108,9 @@ class SessionViewModel: ObservableObject {
     /// Whether the visual asset overlay is expanded
     @Published var visualsExpanded: Bool = true
 
+    /// Whether the microphone is muted (prevents barge-in and speech detection)
+    @Published var isMuted: Bool = false
+
     /// Whether curriculum controls should be shown
     /// This is true when we have a topic AND the AI is speaking (curriculum playback mode)
     var showCurriculumControls: Bool {
@@ -1419,11 +1441,20 @@ class SessionViewModel: ObservableObject {
     
     private func startSession(appState: AppState) async {
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            logger.info("🔴 startSession defer executing - setting isLoading = false")
+            isLoading = false
+        }
+
+        logger.info("🟢 startSession called")
 
         // Get self-hosted server settings
         let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
         let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
+
+        logger.info("🟡 Settings: selfHostedEnabled=\(selfHostedEnabled), serverIP='\(serverIP)'")
+        logger.info("🟡 Topic: \(topic?.title ?? "nil"), sourceId=\(topic?.sourceId ?? "nil")")
+        logger.info("🟡 Curriculum sourceId: \(topic?.curriculum?.sourceId ?? "nil")")
 
         // Check if we should use direct transcript streaming (bypasses LLM for pre-written content)
         // Use sourceId (UMCF ID) for server communication, not the Core Data UUID
@@ -1433,6 +1464,7 @@ class SessionViewModel: ObservableObject {
            let curriculumSourceId = curriculum.sourceId,
            selfHostedEnabled,
            !serverIP.isEmpty {
+            logger.info("🟢 Direct streaming conditions MET - entering direct streaming mode")
 
             // Check if server has transcript for this topic
             logger.info("Checking for direct transcript streaming for topic: \(topic.title ?? "unknown")")
@@ -1515,11 +1547,13 @@ class SessionViewModel: ObservableObject {
         }
 
         // Fall back to LLM-based session
+        logger.info("🟠 Direct streaming conditions NOT met - falling back to LLM session")
         await startLLMSession(appState: appState)
     }
 
     /// Start a traditional LLM-based session (used when no transcript available or direct streaming fails)
     private func startLLMSession(appState: AppState) async {
+        logger.info("🟢 startLLMSession called")
         // Read user settings from UserDefaults
         let sttProviderSetting = UserDefaults.standard.string(forKey: "sttProvider")
             .flatMap { STTProvider(rawValue: $0) } ?? .glmASROnDevice
@@ -1829,6 +1863,36 @@ class SessionViewModel: ObservableObject {
         isPaused = true
         audioPlayer?.pause()
         logger.info("Playback paused at segment \(currentSegmentIndex)")
+    }
+
+    /// Set the microphone muted state
+    /// When muted, the microphone is disabled and barge-in detection is suspended
+    func setMicrophoneMuted(_ muted: Bool) {
+        isMuted = muted
+        logger.info("Microphone muted: \(muted)")
+
+        // Pause or resume barge-in audio monitoring based on mute state
+        if muted {
+            // Stop the barge-in audio engine when muted
+            Task {
+                if let audioEngine = bargeInAudioEngine {
+                    await audioEngine.stop()
+                    logger.info("Barge-in monitoring paused (muted)")
+                }
+            }
+        } else {
+            // Restart the barge-in audio engine when unmuted
+            Task {
+                if let audioEngine = bargeInAudioEngine {
+                    do {
+                        try await audioEngine.start()
+                        logger.info("Barge-in monitoring resumed (unmuted)")
+                    } catch {
+                        logger.error("Failed to resume barge-in monitoring: \(error)")
+                    }
+                }
+            }
+        }
     }
 
     /// Resume curriculum playback from where it was paused
@@ -2841,6 +2905,7 @@ private struct HelpItemRow: View {
 #Preview {
     SessionView()
         .environmentObject(AppState())
+        .environmentObject(SessionActivityState())
 }
 
 #Preview("Session Help") {

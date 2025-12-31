@@ -228,9 +228,28 @@ enum AppTab: Int {
     case settings = 4
 }
 
+// MARK: - Session Activity State
+
+/// Observable state for tracking whether a tutoring session is active
+/// Used to show/hide the tab bar during active sessions
+@MainActor
+final class SessionActivityState: ObservableObject {
+    /// Whether a tutoring session is currently active (not paused)
+    @Published var isSessionActive: Bool = false
+
+    /// Whether the session is paused (tab bar should be visible when paused)
+    @Published var isPaused: Bool = false
+
+    /// Whether the tab bar should be hidden
+    var shouldHideTabBar: Bool {
+        isSessionActive && !isPaused
+    }
+}
+
 /// Root content view with tab navigation
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
+    @StateObject private var sessionActivityState = SessionActivityState()
     @State private var isLoading: Bool = true
 
     /// Selected tab for programmatic navigation from deep links
@@ -253,6 +272,7 @@ struct ContentView: View {
                 mainContent
             }
         }
+        .environmentObject(sessionActivityState)
         .task {
             // Give UI a moment to initialize and show splash
             try? await Task.sleep(for: .milliseconds(500))
@@ -320,6 +340,9 @@ struct ContentView: View {
                 Label("Session", systemImage: "waveform")
             }
             .tag(AppTab.session.rawValue)
+            #if os(iOS)
+            .toolbar(sessionActivityState.shouldHideTabBar ? .hidden : .visible, for: .tabBar)
+            #endif
 
             CurriculumView()
                 .tabItem {
@@ -345,6 +368,9 @@ struct ContentView: View {
                 }
                 .tag(AppTab.settings.rawValue)
         }
+        #if os(iOS)
+        .animation(.easeInOut(duration: 0.25), value: sessionActivityState.shouldHideTabBar)
+        #endif
     }
 }
 

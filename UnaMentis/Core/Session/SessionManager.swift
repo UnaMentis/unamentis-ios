@@ -18,10 +18,11 @@ public enum SessionState: String, Sendable {
     case aiThinking = "AI Thinking"
     case aiSpeaking = "AI Speaking"
     case interrupted = "Interrupted"
+    case paused = "Paused"
     case processingUserUtterance = "Processing Utterance"
     case error = "Error"
-    
-    /// Whether the session is actively running
+
+    /// Whether the session is actively running (not idle or error)
     public var isActive: Bool {
         switch self {
         case .idle, .error:
@@ -29,6 +30,11 @@ public enum SessionState: String, Sendable {
         default:
             return true
         }
+    }
+
+    /// Whether the session is paused (frozen state, can resume)
+    public var isPaused: Bool {
+        self == .paused
     }
 }
 
@@ -406,36 +412,78 @@ public final class SessionManager: ObservableObject {
         logger.info("Session started successfully")
     }
     
-    /// Stop the current session
+    /// Stop the current session with complete cleanup of all async tasks and state
+    ///
+    /// This method ensures a hard stop of all session components:
+    /// - All streaming tasks (STT, LLM, TTS) are cancelled and awaited
+    /// - All prefetch tasks are cancelled
+    /// - Audio playback is stopped immediately
+    /// - All queues are cleared
+    /// - State is reset to idle
     public func stopSession() async {
-        logger.info("Stopping session")
+        logger.info("Stopping session - beginning hard stop sequence")
 
-        // Cancel all streaming tasks first
-        sttStreamTask?.cancel()
-        sttStreamTask = nil
+        // CRITICAL: Set a flag to prevent any new work from starting
+        let previousState = state
+        await setState(.idle)  // Immediately mark as stopping
+
+        // Cancel barge-in confirmation if in progress
+        bargeInConfirmationTask?.cancel()
+        bargeInConfirmationTask = nil
+        isTentativePause = false
+
+        // STEP 1: Cancel all streaming tasks first (order matters for race conditions)
+        // Cancel LLM first to stop new tokens from being generated
         llmStreamTask?.cancel()
-        llmStreamTask = nil
-        ttsStreamTask?.cancel()
-        ttsStreamTask = nil
+
+        // Cancel TTS queue processor to stop it from picking up new sentences
         ttsQueueTask?.cancel()
-        ttsQueueTask = nil
+
+        // Cancel prefetch tasks BEFORE they can add more audio to cache
+        clearPrefetchState()
+
+        // Cancel STT stream
+        sttStreamTask?.cancel()
+
+        // Cancel legacy TTS stream
+        ttsStreamTask?.cancel()
+
+        // Cancel pending utterance detection
         pendingUtteranceTask?.cancel()
-        pendingUtteranceTask = nil
+
+        // Cancel audio subscription to stop VAD processing
         audioSubscription?.cancel()
+
+        // STEP 2: Nil out task references after cancellation
+        llmStreamTask = nil
+        ttsQueueTask = nil
+        sttStreamTask = nil
+        ttsStreamTask = nil
+        pendingUtteranceTask = nil
         audioSubscription = nil
 
-        // Stop services
+        // STEP 3: Stop audio immediately (this stops any in-flight playback)
+        await audioEngine?.stopPlayback()
         await audioEngine?.stop()
-        try? await sttService?.stopStreaming()
 
-        // End telemetry and stop device metrics sampling
+        // STEP 4: Stop STT service
+        do {
+            try await sttService?.stopStreaming()
+        } catch {
+            logger.warning("Error stopping STT service: \(error.localizedDescription)")
+        }
+
+        // STEP 5: End telemetry and stop device metrics sampling
         await telemetry.stopDeviceMetricsSampling()
         await telemetry.endSession()
 
-        // Persist session to Core Data before clearing state
-        await persistSessionToStorage()
+        // STEP 6: Persist session to Core Data before clearing state
+        // Only if we were actually in an active state
+        if previousState.isActive {
+            await persistSessionToStorage()
+        }
 
-        // Clear all state
+        // STEP 7: Clear all state completely
         conversationHistory.removeAll()
         silenceStartTime = nil
         hasDetectedSpeech = false
@@ -456,9 +504,67 @@ public final class SessionManager: ObservableObject {
             audioLevel = -60.0
         }
 
-        await setState(.idle)
+        logger.info("Session stopped - all services, tasks, and state cleared")
+    }
 
-        logger.info("Session stopped - all services and state cleared")
+    /// State preserved during pause for resumption
+    private var pausedFromState: SessionState?
+
+    /// Pause the current session, freezing all state for later resumption
+    ///
+    /// When paused:
+    /// - Audio playback is paused (not stopped)
+    /// - STT continues but results are buffered
+    /// - LLM streaming is suspended
+    /// - TTS queue processing is suspended
+    /// - All state is preserved for seamless resume
+    ///
+    /// - Returns: True if session was paused, false if not in a pauseable state
+    @discardableResult
+    public func pauseSession() async -> Bool {
+        guard state.isActive && !state.isPaused else {
+            logger.warning("Cannot pause: session not active or already paused (state: \(state.rawValue))")
+            return false
+        }
+
+        logger.info("Pausing session from state: \(state.rawValue)")
+
+        // Remember what state we were in for resumption
+        pausedFromState = state
+
+        // Pause audio playback (preserves position)
+        _ = await audioEngine?.pausePlayback()
+
+        // Transition to paused state
+        await setState(.paused)
+
+        logger.info("Session paused - state preserved for resumption")
+        return true
+    }
+
+    /// Resume a paused session, continuing exactly where it left off
+    ///
+    /// - Returns: True if session was resumed, false if not paused
+    @discardableResult
+    public func resumeSession() async -> Bool {
+        guard state == .paused else {
+            logger.warning("Cannot resume: session not paused (state: \(state.rawValue))")
+            return false
+        }
+
+        logger.info("Resuming session")
+
+        // Resume audio playback
+        _ = await audioEngine?.resumePlayback()
+
+        // Restore previous state (default to userSpeaking if unknown)
+        let targetState = pausedFromState ?? .userSpeaking
+        pausedFromState = nil
+
+        await setState(targetState)
+
+        logger.info("Session resumed to state: \(targetState.rawValue)")
+        return true
     }
 
     // MARK: - Session Persistence
@@ -952,6 +1058,23 @@ public final class SessionManager: ObservableObject {
             var isFirstSentence = true
 
             while !Task.isCancelled {
+                // Check cancellation at the top of each iteration
+                if Task.isCancelled {
+                    logger.info("🔊 TTS queue processor cancelled")
+                    break
+                }
+
+                // If paused, wait until resumed or cancelled
+                while state.isPaused && !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                }
+
+                // Check again after potentially waiting for pause
+                if Task.isCancelled {
+                    logger.info("🔊 TTS queue processor cancelled during pause")
+                    break
+                }
+
                 // Wait for items in the queue
                 if ttsSentenceQueue.isEmpty {
                     // Check if LLM is done AND we've finished all sentences
@@ -971,6 +1094,12 @@ public final class SessionManager: ObservableObject {
                 let sentence = ttsSentenceQueue.removeFirst()
                 logger.info("🔊 Processing TTS for: \"\(sentence.prefix(50))...\" (\(ttsSentenceQueue.count) remaining in queue)")
 
+                // Check cancellation before starting TTS
+                if Task.isCancelled {
+                    logger.info("🔊 TTS queue processor cancelled before synthesizing")
+                    break
+                }
+
                 // Start prefetching upcoming sentences while we play the current one
                 startPrefetchingIfNeeded()
 
@@ -988,7 +1117,20 @@ public final class SessionManager: ObservableObject {
                 isTTSPlaying = true
                 await synthesizeAndPlaySentence(sentence)
                 isTTSPlaying = false
+
+                // Check cancellation after playback
+                if Task.isCancelled {
+                    logger.info("🔊 TTS queue processor cancelled after playing sentence")
+                    break
+                }
+
                 logger.info("🔊 Finished playing sentence")
+            }
+
+            // Only do cleanup if we completed normally (not cancelled)
+            guard !Task.isCancelled else {
+                logger.info("🔊 TTS queue processor exiting due to cancellation")
+                return
             }
 
             logger.info("🔊 TTS queue processor finished - all sentences played")

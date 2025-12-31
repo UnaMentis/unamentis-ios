@@ -158,6 +158,8 @@ struct DebugConversationTestView: View {
             return .red
         case .interrupted:
             return .yellow
+        case .paused:
+            return .cyan
         case .processingUserUtterance:
             return .purple
         }
