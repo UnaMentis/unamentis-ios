@@ -199,13 +199,10 @@ struct LaunchScreenView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 20) {
-                Image(systemName: "waveform.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundStyle(.blue)
-
-                Text("UnaMentis")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
+                Image("LogoExpanded")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 300)
 
                 ProgressView()
                     .scaleEffect(1.2)

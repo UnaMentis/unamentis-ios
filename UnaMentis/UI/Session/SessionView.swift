@@ -1554,6 +1554,11 @@ class SessionViewModel: ObservableObject {
     /// Start a traditional LLM-based session (used when no transcript available or direct streaming fails)
     private func startLLMSession(appState: AppState) async {
         logger.info("🟢 startLLMSession called")
+
+        // Set state to aiThinking immediately so UI shows we're starting
+        // This prevents the "stuck at Idle with spinner" bug
+        state = .aiThinking
+
         // Read user settings from UserDefaults
         let sttProviderSetting = UserDefaults.standard.string(forKey: "sttProvider")
             .flatMap { STTProvider(rawValue: $0) } ?? .glmASROnDevice
@@ -1693,6 +1698,7 @@ class SessionViewModel: ObservableObject {
                 logger.warning("No LLM available - on-device not supported and no server configured")
                 errorMessage = "On-device LLM requires model files. Please download models or configure a server."
                 showError = true
+                state = .idle
                 return
             }
             #else
@@ -1704,6 +1710,7 @@ class SessionViewModel: ObservableObject {
                 logger.warning("No LLM available - LLAMA not in build and no server configured")
                 errorMessage = "On-device LLM not available in this build. Please configure a server."
                 showError = true
+                state = .idle
                 return
             }
             #endif
@@ -1720,6 +1727,7 @@ class SessionViewModel: ObservableObject {
             } else {
                 errorMessage = "Anthropic API key not configured and no fallback available. Please add it in Settings or configure a server."
                 showError = true
+                state = .idle
                 return
             }
 
@@ -1735,6 +1743,7 @@ class SessionViewModel: ObservableObject {
             } else {
                 errorMessage = "OpenAI API key not configured and no fallback available. Please add it in Settings or configure a server."
                 showError = true
+                state = .idle
                 return
             }
 
@@ -1774,6 +1783,7 @@ class SessionViewModel: ObservableObject {
                 // Physical device: localhost won't work, show error
                 errorMessage = "Self-hosted LLM requires a server IP. Please configure in Settings."
                 showError = true
+                state = .idle
                 return
                 #endif
             }

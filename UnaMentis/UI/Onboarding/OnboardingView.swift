@@ -13,7 +13,7 @@ struct OnboardingView: View {
 
     private let pages: [OnboardingPage] = [
         OnboardingPage(
-            icon: "waveform.circle.fill",
+            customImage: "Logo",
             iconColor: .blue,
             title: "Welcome to UnaMentis",
             subtitle: "Learn Through Voice",
@@ -143,12 +143,33 @@ struct OnboardingView: View {
 // MARK: - Onboarding Page Data
 
 struct OnboardingPage {
-    let icon: String
+    let icon: String?
+    let customImage: String?
     let iconColor: Color
     let title: String
     let subtitle: String
     let description: String
     let tips: [String]
+
+    init(icon: String, iconColor: Color, title: String, subtitle: String, description: String, tips: [String]) {
+        self.icon = icon
+        self.customImage = nil
+        self.iconColor = iconColor
+        self.title = title
+        self.subtitle = subtitle
+        self.description = description
+        self.tips = tips
+    }
+
+    init(customImage: String, iconColor: Color, title: String, subtitle: String, description: String, tips: [String]) {
+        self.icon = nil
+        self.customImage = customImage
+        self.iconColor = iconColor
+        self.title = title
+        self.subtitle = subtitle
+        self.description = description
+        self.tips = tips
+    }
 }
 
 // MARK: - Onboarding Page View
@@ -160,11 +181,19 @@ struct OnboardingPageView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            // Icon
-            Image(systemName: page.icon)
-                .font(.system(size: 80))
-                .foregroundStyle(page.iconColor)
-                .accessibilityHidden(true)
+            // Icon or custom image
+            if let customImage = page.customImage {
+                Image(customImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 80)
+                    .accessibilityHidden(true)
+            } else if let icon = page.icon {
+                Image(systemName: icon)
+                    .font(.system(size: 80))
+                    .foregroundStyle(page.iconColor)
+                    .accessibilityHidden(true)
+            }
 
             // Title and subtitle
             VStack(spacing: 8) {
