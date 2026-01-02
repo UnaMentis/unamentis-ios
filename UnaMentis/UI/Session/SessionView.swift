@@ -186,17 +186,34 @@ public struct SessionView: View {
                     }
                 }
 
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if viewModel.isSessionActive {
-                        MetricsBadge(
-                            latency: viewModel.lastLatency,
-                            cost: viewModel.sessionCost
-                        )
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Session metrics")
-                        .accessibilityValue("Latency \(Int(viewModel.lastLatency * 1000)) milliseconds, Cost \(String(format: "$%.3f", NSDecimalNumber(decimal: viewModel.sessionCost).doubleValue))")
-                    } else {
-                        BrandLogo(size: .compact)
+                if #available(iOS 26.0, *) {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        if viewModel.isSessionActive {
+                            MetricsBadge(
+                                latency: viewModel.lastLatency,
+                                cost: viewModel.sessionCost
+                            )
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Session metrics")
+                            .accessibilityValue("Latency \(Int(viewModel.lastLatency * 1000)) milliseconds, Cost \(String(format: "$%.3f", NSDecimalNumber(decimal: viewModel.sessionCost).doubleValue))")
+                        } else {
+                            BrandLogo(size: .compact)
+                        }
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        if viewModel.isSessionActive {
+                            MetricsBadge(
+                                latency: viewModel.lastLatency,
+                                cost: viewModel.sessionCost
+                            )
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Session metrics")
+                            .accessibilityValue("Latency \(Int(viewModel.lastLatency * 1000)) milliseconds, Cost \(String(format: "$%.3f", NSDecimalNumber(decimal: viewModel.sessionCost).doubleValue))")
+                        } else {
+                            BrandLogo(size: .compact)
+                        }
                     }
                 }
             }

@@ -474,8 +474,15 @@ public struct SettingsView: View {
             .navigationTitle("Settings")
             #if os(iOS)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    BrandLogo(size: .compact)
+                if #available(iOS 26.0, *) {
+                    ToolbarItem(placement: .topBarLeading) {
+                        BrandLogo(size: .compact)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .topBarLeading) {
+                        BrandLogo(size: .compact)
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
