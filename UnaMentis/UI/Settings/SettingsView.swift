@@ -385,6 +385,9 @@ public struct SettingsView: View {
 
                     // Remote logging configuration
                     Toggle("Remote Logging", isOn: $viewModel.remoteLoggingEnabled)
+                        .onChange(of: viewModel.remoteLoggingEnabled) { _, newValue in
+                            viewModel.handleRemoteLoggingChange(newValue)
+                        }
 
                     if viewModel.remoteLoggingEnabled {
                         Toggle("Use Same IP as Server", isOn: $viewModel.logServerUsesSameIP)
@@ -471,6 +474,9 @@ public struct SettingsView: View {
             .navigationTitle("Settings")
             #if os(iOS)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    BrandLogo(size: .compact)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingSettingsHelp = true
@@ -714,17 +720,10 @@ class SettingsViewModel: ObservableObject {
     // Remote Logging
     @AppStorage("logServerIP") var logServerIP: String = ""
     @AppStorage("logServerUsesSameIP") var logServerUsesSameIP: Bool = true
-    @Published var remoteLoggingEnabled: Bool = true {
-        didSet {
-            UserDefaults.standard.set(remoteLoggingEnabled, forKey: "remoteLoggingEnabled")
-            if remoteLoggingEnabled {
-                RemoteLogging.enable()
-            } else {
-                RemoteLogging.disable()
-            }
-            updateLogServerConfiguration()
-        }
-    }
+    @Published var remoteLoggingEnabled: Bool = true
+
+    /// Flag to skip side effects during initialization
+    private var hasFinishedInit = false
 
     /// The effective log server IP (uses primary server IP if sharing is enabled)
     var effectiveLogServerIP: String {
@@ -765,8 +764,23 @@ class SettingsViewModel: ObservableObject {
         // Load remote logging setting (defaults to true)
         self.remoteLoggingEnabled = UserDefaults.standard.object(forKey: "remoteLoggingEnabled") as? Bool ?? true
 
+        // Mark init as complete so didSet-style side effects can run
+        self.hasFinishedInit = true
+
         // NOTE: No Task spawning here! Async loading is deferred to loadAsync()
         // called from the view's .task modifier
+    }
+
+    /// Handle changes to remoteLoggingEnabled (called from View's onChange)
+    func handleRemoteLoggingChange(_ newValue: Bool) {
+        guard hasFinishedInit else { return }
+        UserDefaults.standard.set(newValue, forKey: "remoteLoggingEnabled")
+        if newValue {
+            RemoteLogging.enable()
+        } else {
+            RemoteLogging.disable()
+        }
+        updateLogServerConfiguration()
     }
 
     /// Load async data (call from view's .task modifier)

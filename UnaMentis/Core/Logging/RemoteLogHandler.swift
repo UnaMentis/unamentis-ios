@@ -47,7 +47,7 @@ public struct LogEntry: Codable, Sendable {
 private final class RemoteLogConfiguration: @unchecked Sendable {
     private let lock = NSLock()
 
-    private var _serverURL: URL = URL(string: "http://localhost:8766/api/logs")!
+    private var _serverURL: URL = URL(string: "http://localhost:8765/log")!
     private var _isEnabled: Bool
     private var _clientID: String
     private var _clientName: String
@@ -110,7 +110,7 @@ private final class RemoteLogConfiguration: @unchecked Sendable {
 /// LoggingSystem.bootstrap { label in
 ///     MultiplexLogHandler([
 ///         StreamLogHandler.standardOutput(label: label),
-///         RemoteLogHandler(label: label, serverURL: URL(string: "http://192.168.1.x:8766/api/logs")!)
+///         RemoteLogHandler(label: label, serverURL: URL(string: "http://192.168.1.x:8765/log")!)
 ///     ])
 /// }
 /// ```
@@ -231,16 +231,17 @@ public enum RemoteLogging {
 
     /// Configure remote logging with auto-discovery
     /// Attempts to find the logging server on the local network
-    public static func configure(serverIP: String? = nil, port: Int = 8766) {
+    /// Default port is 8765 (log_server.py), endpoint is /log
+    public static func configure(serverIP: String? = nil, port: Int = 8765) {
         if let ip = serverIP, !ip.isEmpty {
             // Valid server IP provided - configure and enable
-            RemoteLogHandler.defaultServerURL = URL(string: "http://\(ip):\(port)/api/logs")!
+            RemoteLogHandler.defaultServerURL = URL(string: "http://\(ip):\(port)/log")!
             RemoteLogHandler.isEnabled = true
         } else {
             // No server IP provided
             #if targetEnvironment(simulator)
             // Simulator can use localhost to reach the Mac
-            RemoteLogHandler.defaultServerURL = URL(string: "http://localhost:\(port)/api/logs")!
+            RemoteLogHandler.defaultServerURL = URL(string: "http://localhost:\(port)/log")!
             RemoteLogHandler.isEnabled = true
             #else
             // Physical device: localhost won't work, so don't attempt remote logging

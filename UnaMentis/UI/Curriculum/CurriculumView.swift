@@ -4,6 +4,7 @@
 // Part of Curriculum UI (Phase 4 Integration)
 
 import SwiftUI
+import CoreData
 import Logging
 
 struct CurriculumView: View {
@@ -108,6 +109,9 @@ struct CurriculumView: View {
                 }
             }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                BrandLogo(size: .compact)
+            }
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 12) {
                     Button {
@@ -229,26 +233,51 @@ struct CurriculumView: View {
         }
     }
 
-    @MainActor
     private func loadCurricula() async {
-        isLoading = true
-        Self.logger.info("loadCurricula START")
+        await MainActor.run { isLoading = true }
+        Self.logger.info("loadCurricula START - creating background context")
 
-        // Load all curricula from Core Data
-        let context = PersistenceController.shared.viewContext
-        let request = Curriculum.fetchRequest()
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \Curriculum.createdAt, ascending: false)]
+        // Fetch on background context to avoid blocking MainActor
+        let backgroundContext = PersistenceController.shared.newBackgroundContext()
+        Self.logger.info("loadCurricula background context created, launching Task.detached")
 
-        do {
-            let results = try context.fetch(request)
-            self.curricula = results
-            Self.logger.info("Loaded \(results.count) curricula")
-        } catch {
-            Self.logger.error("Failed to load curricula: \(error)")
-            self.curricula = []
+        // Capture logger for use in detached task (avoid MainActor isolation issue)
+        let detachedLogger = Logger(label: "com.unamentis.curriculum.view.detached")
+
+        // Use Task.detached to ensure we're truly off the MainActor
+        let objectIDs: [NSManagedObjectID] = await Task.detached(priority: .userInitiated) {
+            detachedLogger.info("loadCurricula Task.detached ENTERED")
+            let result = await backgroundContext.perform {
+                detachedLogger.info("loadCurricula backgroundContext.perform ENTERED")
+                let request = Curriculum.fetchRequest()
+                request.sortDescriptors = [NSSortDescriptor(keyPath: \Curriculum.createdAt, ascending: false)]
+                // Prefetch topics relationship
+                request.relationshipKeyPathsForPrefetching = ["topics"]
+
+                do {
+                    detachedLogger.info("loadCurricula executing fetch...")
+                    let results = try backgroundContext.fetch(request)
+                    detachedLogger.info("loadCurricula fetched \(results.count) curricula")
+                    return results.map { $0.objectID }
+                } catch {
+                    detachedLogger.error("loadCurricula fetch ERROR: \(error)")
+                    return []
+                }
+            }
+            detachedLogger.info("loadCurricula backgroundContext.perform COMPLETE")
+            return result
+        }.value
+
+        Self.logger.info("loadCurricula Task.detached COMPLETE, updating UI with \(objectIDs.count) curricula")
+
+        // Transfer to main context on MainActor
+        await MainActor.run {
+            let mainContext = PersistenceController.shared.container.viewContext
+            self.curricula = objectIDs.compactMap { mainContext.object(with: $0) as? Curriculum }
+            Self.logger.info("Loaded \(self.curricula.count) curricula to UI")
+            self.isLoading = false
         }
 
-        self.isLoading = false
         Self.logger.info("loadCurricula COMPLETE")
     }
 }

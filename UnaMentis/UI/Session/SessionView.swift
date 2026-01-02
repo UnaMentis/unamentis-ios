@@ -20,6 +20,8 @@ public struct SessionView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingSessionHelp = false
 
+    private static let logger = Logger(label: "com.unamentis.session.view")
+
     /// The topic being studied (optional - for curriculum-based sessions)
     let topic: Topic?
 
@@ -38,6 +40,7 @@ public struct SessionView: View {
     }
 
     public init(topic: Topic? = nil, autoStart: Bool = false) {
+        Self.logger.info("SessionView init() called - topic=\(topic?.title ?? "nil"), autoStart=\(autoStart)")
         self.topic = topic
         self.autoStart = autoStart
         // Initialize viewModel with topic context
@@ -45,6 +48,7 @@ public struct SessionView: View {
     }
 
     public var body: some View {
+        let _ = Self.logger.debug("SessionView body START")
         NavigationStack {
             ZStack {
                 // Background gradient
@@ -191,6 +195,8 @@ public struct SessionView: View {
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel("Session metrics")
                         .accessibilityValue("Latency \(Int(viewModel.lastLatency * 1000)) milliseconds, Cost \(String(format: "$%.3f", NSDecimalNumber(decimal: viewModel.sessionCost).doubleValue))")
+                    } else {
+                        BrandLogo(size: .compact)
                     }
                 }
             }
@@ -210,10 +216,14 @@ public struct SessionView: View {
                 // Auto-start session when:
                 // 1. Initiated from a topic (lecture mode)
                 // 2. Triggered via Siri for freeform chat (autoStart = true)
+                Self.logger.info("SessionView .task STARTED")
                 let shouldAutoStart = (topic != nil || autoStart)
+                Self.logger.info("SessionView .task shouldAutoStart=\(shouldAutoStart), isSessionActive=\(viewModel.isSessionActive), isLoading=\(viewModel.isLoading)")
                 if shouldAutoStart && !viewModel.isSessionActive && !viewModel.isLoading {
+                    Self.logger.info("SessionView .task calling toggleSession")
                     await viewModel.toggleSession(appState: appState)
                 }
+                Self.logger.info("SessionView .task COMPLETED")
             }
             // Update session activity state for tab bar visibility
             .onChange(of: viewModel.isSessionActive) { _, newValue in
@@ -1145,17 +1155,26 @@ class SessionViewModel: ObservableObject {
 
     init(topic: Topic? = nil) {
         self.topic = topic
+        logger.info("SessionViewModel init() START - topic=\(topic?.title ?? "nil")")
 
         // If we have a topic, try to load transcript data
+        // NOTE: This Task spawns async work from init() - potential MainActor contention
         if topic != nil {
+            logger.info("SessionViewModel init() spawning Task for loadTranscriptData")
             Task { await loadTranscriptData() }
         }
+        logger.info("SessionViewModel init() COMPLETE")
     }
 
     /// Load transcript data from local Core Data or fetch from server
     private func loadTranscriptData() async {
+        logger.info("loadTranscriptData() START")
         guard let topic = topic,
-              let topicId = topic.id else { return }
+              let topicId = topic.id else {
+            logger.info("loadTranscriptData() SKIPPED - no topic or topicId")
+            return
+        }
+        logger.info("loadTranscriptData() checking for local transcript")
 
         // First, try to get transcript from local Core Data (document with transcript type)
         if let document = topic.documentSet.first(where: { $0.documentType == .transcript }),

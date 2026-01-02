@@ -48,6 +48,9 @@ public struct AnalyticsView: View {
             }
             #if os(iOS)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    BrandLogo(size: .compact)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
                         Button {

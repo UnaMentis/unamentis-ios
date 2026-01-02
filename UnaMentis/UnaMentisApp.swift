@@ -249,6 +249,9 @@ struct ContentView: View {
     @StateObject private var sessionActivityState = SessionActivityState()
     @State private var isLoading: Bool = true
 
+    /// Logger for tab navigation debugging
+    private static let logger = Logger(label: "com.unamentis.contentview")
+
     /// Selected tab for programmatic navigation from deep links
     @State private var selectedTab: Int = AppTab.session.rawValue
 
@@ -331,6 +334,7 @@ struct ContentView: View {
     @ViewBuilder
     private var mainContent: some View {
         TabView(selection: $selectedTab) {
+            let _ = Self.logger.info("TabView body evaluated, selectedTab=\(selectedTab)")
             SessionTabContent(
                 deepLinkTopicId: $deepLinkTopicId,
                 autoStartChat: $autoStartChat,
@@ -371,6 +375,11 @@ struct ContentView: View {
         #if os(iOS)
         .animation(.easeInOut(duration: 0.25), value: sessionActivityState.shouldHideTabBar)
         #endif
+        .onChange(of: selectedTab) { oldTab, newTab in
+            let oldName = AppTab(rawValue: oldTab).map { "\($0)" } ?? "unknown"
+            let newName = AppTab(rawValue: newTab).map { "\($0)" } ?? "unknown"
+            Self.logger.info("TAB SWITCH: \(oldName) -> \(newName)")
+        }
     }
 }
 
@@ -385,6 +394,8 @@ struct ContentView: View {
 struct SessionTabContent: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.managedObjectContext) private var viewContext
+
+    private static let logger = Logger(label: "com.unamentis.sessiontab")
 
     /// Topic ID from deep link (binding to parent so we can clear it)
     @Binding var deepLinkTopicId: UUID?
@@ -402,6 +413,7 @@ struct SessionTabContent: View {
     @State private var showingDeepLinkSession: Bool = false
 
     var body: some View {
+        let _ = Self.logger.info("SessionTabContent body evaluated - showingDeepLinkSession=\(showingDeepLinkSession)")
         NavigationStack {
             Group {
                 if showingDeepLinkSession {

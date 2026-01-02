@@ -15,9 +15,14 @@ public struct HistoryView: View {
     @StateObject private var viewModel = HistoryViewModel()
     @State private var showingHistoryHelp = false
 
-    public init() { }
+    private static let logger = Logger(label: "com.unamentis.ui.history.view")
+
+    public init() {
+        Self.logger.info("HistoryView init() called")
+    }
 
     public var body: some View {
+        let _ = Self.logger.debug("HistoryView body START")
         NavigationStack {
             Group {
                 if viewModel.sessions.isEmpty {
@@ -29,6 +34,9 @@ public struct HistoryView: View {
             .navigationTitle("History")
             #if os(iOS)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    BrandLogo(size: .compact)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 12) {
                         Button {
@@ -80,7 +88,9 @@ public struct HistoryView: View {
             #endif
             .task {
                 // Load data after view appears (non-blocking)
-                viewModel.loadAsync()
+                Self.logger.info("HistoryView .task STARTED")
+                await viewModel.loadAsync()
+                Self.logger.info("HistoryView .task COMPLETED")
             }
         }
     }
@@ -371,54 +381,101 @@ class HistoryViewModel: ObservableObject {
     }
 
     /// Load data asynchronously (call from view's .task modifier)
-    func loadAsync() {
-        guard !hasLoaded else { return }
+    func loadAsync() async {
+        logger.info("HistoryViewModel.loadAsync() START - hasLoaded=\(hasLoaded)")
+        guard !hasLoaded else {
+            logger.info("HistoryViewModel.loadAsync() SKIPPED - already loaded")
+            return
+        }
         hasLoaded = true
-        loadFromCoreData()
+        logger.info("HistoryViewModel.loadAsync() calling loadFromCoreDataAsync()")
+        await loadFromCoreDataAsync()
+        logger.info("HistoryViewModel.loadAsync() COMPLETE")
     }
 
-    func loadFromCoreData() {
-        do {
-            let coreDataSessions = try persistence.fetchRecentSessions(limit: 100)
-            sessions = coreDataSessions.compactMap { session -> SessionSummary? in
-                guard let id = session.id,
-                      let startTime = session.startTime else {
-                    return nil
-                }
+    /// Load sessions from Core Data using background context to avoid blocking MainActor
+    private func loadFromCoreDataAsync() async {
+        logger.info("loadFromCoreDataAsync() START - creating background context")
+        let backgroundContext = persistence.newBackgroundContext()
+        logger.info("loadFromCoreDataAsync() background context created, launching Task.detached")
 
-                // Get transcript entries for preview
-                let transcriptEntries = (session.transcript?.array as? [TranscriptEntry]) ?? []
-                let preview = transcriptEntries.prefix(3).compactMap { entry -> TranscriptPreview? in
-                    guard let content = entry.content, let role = entry.role else { return nil }
-                    return TranscriptPreview(isUser: role == "user", content: String(content.prefix(100)))
-                }
+        // Use Task.detached to ensure we're truly off the MainActor
+        let summaries: [SessionSummary] = await Task.detached(priority: .userInitiated) { [logger] in
+            logger.info("loadFromCoreDataAsync() Task.detached ENTERED")
+            let result = await backgroundContext.perform {
+                logger.info("loadFromCoreDataAsync() backgroundContext.perform ENTERED")
+                let request = Session.fetchRequest()
+                request.sortDescriptors = [NSSortDescriptor(keyPath: \Session.startTime, ascending: false)]
+                request.fetchLimit = 100
+                // Prefetch relationships to avoid faulting issues
+                request.relationshipKeyPathsForPrefetching = ["topic", "transcript"]
 
-                // Calculate average latency from metrics snapshot if available
-                var avgLatency: TimeInterval = 0.3 // default
-                if let metricsData = session.metricsSnapshot {
-                    // Try decoding the full MetricsSnapshot format first
-                    if let metrics = try? JSONDecoder().decode(MetricsSnapshot.self, from: metricsData) {
-                        avgLatency = TimeInterval(metrics.latencies.e2eMedianMs) / 1000.0
-                    } else if let legacyMetrics = try? JSONDecoder().decode(SessionMetricsData.self, from: metricsData),
-                              let lat = legacyMetrics.avgLatency {
-                        avgLatency = lat
+                do {
+                    logger.info("loadFromCoreDataAsync() executing fetch...")
+                    let coreDataSessions = try backgroundContext.fetch(request)
+                    logger.info("loadFromCoreDataAsync() fetched \(coreDataSessions.count) sessions")
+
+                    let mapped = coreDataSessions.compactMap { session -> SessionSummary? in
+                        guard let id = session.id,
+                              let startTime = session.startTime else {
+                            return nil
+                        }
+
+                        // Get topic name (prefetched, so no additional fetch)
+                        let topicName = session.topic?.title
+
+                        // Get transcript entries for preview
+                        let transcriptEntries = (session.transcript?.array as? [TranscriptEntry]) ?? []
+                        let preview = transcriptEntries.prefix(3).compactMap { entry -> TranscriptPreview? in
+                            guard let content = entry.content, let role = entry.role else { return nil }
+                            return TranscriptPreview(isUser: role == "user", content: String(content.prefix(100)))
+                        }
+
+                        // Calculate average latency from metrics snapshot if available
+                        var avgLatency: TimeInterval = 0.3 // default
+                        if let metricsData = session.metricsSnapshot {
+                            // Try decoding the full MetricsSnapshot format first
+                            if let metrics = try? JSONDecoder().decode(MetricsSnapshot.self, from: metricsData) {
+                                avgLatency = TimeInterval(metrics.latencies.e2eMedianMs) / 1000.0
+                            } else if let legacyMetrics = try? JSONDecoder().decode(SessionMetricsData.self, from: metricsData),
+                                      let lat = legacyMetrics.avgLatency {
+                                avgLatency = lat
+                            }
+                        }
+
+                        return SessionSummary(
+                            id: id,
+                            startTime: startTime,
+                            duration: session.duration,
+                            topicName: topicName,
+                            turnCount: transcriptEntries.count,
+                            totalCost: session.totalCost as Decimal? ?? 0,
+                            avgLatency: avgLatency,
+                            transcriptPreview: preview
+                        )
                     }
+                    logger.info("loadFromCoreDataAsync() mapped \(mapped.count) session summaries")
+                    return mapped
+                } catch {
+                    logger.error("loadFromCoreDataAsync() fetch ERROR: \(error)")
+                    return []
                 }
-
-                return SessionSummary(
-                    id: id,
-                    startTime: startTime,
-                    duration: session.duration,
-                    topicName: session.topic?.title,
-                    turnCount: transcriptEntries.count,
-                    totalCost: session.totalCost as Decimal? ?? 0,
-                    avgLatency: avgLatency,
-                    transcriptPreview: preview
-                )
             }
-        } catch {
-            logger.error("Failed to fetch sessions: \(error.localizedDescription)")
-            sessions = []
+            logger.info("loadFromCoreDataAsync() backgroundContext.perform COMPLETE")
+            return result
+        }.value
+
+        logger.info("loadFromCoreDataAsync() Task.detached COMPLETE, updating UI with \(summaries.count) sessions")
+
+        // Update UI on MainActor (we're already on MainActor due to class isolation)
+        self.sessions = summaries
+        logger.info("loadFromCoreDataAsync() UI updated, COMPLETE")
+    }
+
+    /// Synchronous load for refresh operations (called from MainActor context)
+    func loadFromCoreData() {
+        Task {
+            await loadFromCoreDataAsync()
         }
     }
 

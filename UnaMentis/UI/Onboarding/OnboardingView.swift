@@ -64,8 +64,10 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Skip button
+            // Header with logo and skip button
             HStack {
+                BrandLogo(size: .large)
+                    .padding(.leading)
                 Spacer()
                 Button("Skip") {
                     completeOnboarding()
