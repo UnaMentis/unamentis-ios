@@ -448,7 +448,7 @@ struct SessionTabContent: View {
     @State private var showingDeepLinkSession: Bool = false
 
     var body: some View {
-        let _ = Self.logger.info("SessionTabContent body evaluated - showingDeepLinkSession=\(showingDeepLinkSession)")
+        // NOTE: Removed debug logging from view body
         NavigationStack {
             Group {
                 if showingDeepLinkSession {

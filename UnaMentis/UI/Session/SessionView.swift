@@ -233,14 +233,11 @@ public struct SessionView: View {
                 // Auto-start session when:
                 // 1. Initiated from a topic (lecture mode)
                 // 2. Triggered via Siri for freeform chat (autoStart = true)
-                Self.logger.info("SessionView .task STARTED")
                 let shouldAutoStart = (topic != nil || autoStart)
-                Self.logger.info("SessionView .task shouldAutoStart=\(shouldAutoStart), isSessionActive=\(viewModel.isSessionActive), isLoading=\(viewModel.isLoading)")
                 if shouldAutoStart && !viewModel.isSessionActive && !viewModel.isLoading {
-                    Self.logger.info("SessionView .task calling toggleSession")
+                    Self.logger.info("SessionView .task auto-starting session")
                     await viewModel.toggleSession(appState: appState)
                 }
-                Self.logger.info("SessionView .task COMPLETED")
             }
             // Update session activity state for tab bar visibility
             // Using setter methods with built-in change guards to prevent re-render loops
