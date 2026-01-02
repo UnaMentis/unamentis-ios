@@ -261,11 +261,14 @@ final class SessionActivityState: ObservableObject {
 
     /// Reset all state (used when leaving session view)
     func reset() {
-        let wasHiding = shouldHideTabBar
-        isSessionActive = false
-        isPaused = false
-        // Only publish shouldHideTabBar change if it actually changed
-        if wasHiding {
+        // Use change guards on ALL properties to prevent unnecessary @Published triggers
+        if isSessionActive {
+            isSessionActive = false
+        }
+        if isPaused {
+            isPaused = false
+        }
+        if shouldHideTabBar {
             shouldHideTabBar = false
         }
     }

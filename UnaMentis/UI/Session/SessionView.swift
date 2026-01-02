@@ -50,7 +50,7 @@ public struct SessionView: View {
     public var body: some View {
         // NOTE: Removed debug logging from view body to prevent side effects
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .bottom) {
                 // Background gradient
                 LinearGradient(
                     colors: Self.backgroundGradientColors,
@@ -116,51 +116,70 @@ public struct SessionView: View {
                         .frame(maxHeight: .infinity)
                     }
 
-                    // Bottom control area - different controls for curriculum vs regular mode
-                    VStack(spacing: 12) {
-                        // VU meter - visible when session active
-                        // Color scheme: Blue for AI speaking, Green for user speaking
-                        if viewModel.isSessionActive {
+                    // Spacer for bottom controls when not in session (controls are inside content flow)
+                    // When session active, controls float at bottom via ZStack overlay
+                    if !viewModel.isSessionActive {
+                        SessionControlButton(
+                            isActive: viewModel.isSessionActive,
+                            isLoading: viewModel.isLoading,
+                            action: {
+                                await viewModel.toggleSession(appState: appState)
+                            }
+                        )
+                        .padding(.bottom, 20)
+                    }
+                }
+                .padding(.horizontal, 20)
+
+                // Bottom control area - positioned at tab bar location when session is active
+                if viewModel.isSessionActive {
+                    VStack {
+                        Spacer()
+                        VStack(spacing: 12) {
+                            // VU meter - visible when session active
+                            // Color scheme: Blue for AI speaking, Green for user speaking
                             AudioLevelView(level: viewModel.audioLevel, state: viewModel.state)
                                 .frame(height: 40)
                                 .transition(.opacity.combined(with: .scale))
-                        }
 
-                        if viewModel.showCurriculumControls {
-                            // Curriculum playback controls: Mute | Pause/Play | Slide-to-Stop
-                            CurriculumPlaybackControls(
-                                isPaused: $viewModel.isPaused,
-                                isMuted: $viewModel.isMuted,
-                                onPauseResume: {
-                                    if viewModel.isPaused {
-                                        viewModel.resumePlayback()
-                                    } else {
-                                        viewModel.pausePlayback()
+                            if viewModel.showCurriculumControls {
+                                // Curriculum playback controls: Mute | Pause/Play | Slide-to-Stop
+                                CurriculumPlaybackControls(
+                                    isPaused: $viewModel.isPaused,
+                                    isMuted: $viewModel.isMuted,
+                                    onPauseResume: {
+                                        if viewModel.isPaused {
+                                            viewModel.resumePlayback()
+                                        } else {
+                                            viewModel.pausePlayback()
+                                        }
+                                    },
+                                    onStop: {
+                                        viewModel.stopPlayback()
+                                    },
+                                    onMuteChanged: { muted in
+                                        viewModel.setMicrophoneMuted(muted)
                                     }
-                                },
-                                onStop: {
-                                    viewModel.stopPlayback()
-                                },
-                                onMuteChanged: { muted in
-                                    viewModel.setMicrophoneMuted(muted)
-                                }
-                            )
-                        } else {
-                            // Main control button - for regular conversation mode
-                            SessionControlButton(
-                                isActive: viewModel.isSessionActive,
-                                isLoading: viewModel.isLoading,
-                                action: {
-                                    await viewModel.toggleSession(appState: appState)
-                                }
-                            )
+                                )
+                            } else {
+                                // Stop button for regular conversation mode
+                                SessionControlButton(
+                                    isActive: viewModel.isSessionActive,
+                                    isLoading: viewModel.isLoading,
+                                    action: {
+                                        await viewModel.toggleSession(appState: appState)
+                                    }
+                                )
+                            }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 34) // Match tab bar's bottom padding for home indicator
                     }
-                    .padding(.bottom, 20)
+                    .ignoresSafeArea(edges: .bottom)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                     .animation(.spring(response: 0.3), value: viewModel.isSessionActive)
                     .animation(.spring(response: 0.3), value: viewModel.isDirectStreamingMode)
                 }
-                .padding(.horizontal, 20)
             }
             .navigationTitle(topic?.title ?? "Voice Session")
             #if os(iOS)
@@ -1119,6 +1138,9 @@ class SessionViewModel: ObservableObject {
     /// Audio player delegate for handling playback completion
     private var audioDelegate: AudioPlayerDelegate?
 
+    /// Timer for updating audio level from playback metering
+    private var audioMeteringTimer: Timer?
+
     /// Whether we're using direct transcript streaming (bypasses LLM)
     @Published var isDirectStreamingMode: Bool = false {
         didSet {
@@ -1867,6 +1889,7 @@ class SessionViewModel: ObservableObject {
         if isDirectStreamingMode {
             await transcriptStreamer.stopStreaming()
             await stopBargeInMonitoring()
+            stopAudioMeteringTimer()
             audioPlayer?.stop()
             audioPlayer = nil
             isDirectStreamingMode = false
@@ -1960,7 +1983,8 @@ class SessionViewModel: ObservableObject {
 
         logger.info("Stopping playback at segment \(currentSegmentIndex)/\(totalSegments)")
 
-        // Stop audio
+        // Stop audio and metering
+        stopAudioMeteringTimer()
         audioPlayer?.stop()
         audioPlayer = nil
         audioQueue.removeAll()
@@ -2130,6 +2154,42 @@ class SessionViewModel: ObservableObject {
         return max(-60, min(0, db))
     }
 
+    /// Start timer to update audio level from AVAudioPlayer metering (for AI speaking visualization)
+    private func startAudioMeteringTimer() {
+        // Stop any existing timer
+        stopAudioMeteringTimer()
+
+        // Create timer that fires 30 times per second for smooth VU meter updates
+        audioMeteringTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateAudioLevelFromPlayback()
+            }
+        }
+    }
+
+    /// Stop the audio metering timer
+    private func stopAudioMeteringTimer() {
+        audioMeteringTimer?.invalidate()
+        audioMeteringTimer = nil
+    }
+
+    /// Update audio level from AVAudioPlayer metering (used during AI playback)
+    private func updateAudioLevelFromPlayback() {
+        guard let player = audioPlayer, player.isPlaying else {
+            // If not playing, stop the timer and reset level
+            stopAudioMeteringTimer()
+            if state != .userSpeaking {
+                audioLevel = -60
+            }
+            return
+        }
+
+        // Update meters and get average power
+        player.updateMeters()
+        let power = player.averagePower(forChannel: 0)
+        audioLevel = power
+    }
+
     /// Stop barge-in monitoring and clean up resources
     private func stopBargeInMonitoring() async {
         logger.info("Stopping barge-in monitoring")
@@ -2151,8 +2211,11 @@ class SessionViewModel: ObservableObject {
 
     /// Handle VAD result during direct streaming playback
     private func handleVADResult(buffer: AVAudioPCMBuffer, vadResult: VADResult) async {
-        // Update audio level for UI (calculate from buffer)
-        audioLevel = calculateAudioLevel(from: buffer)
+        // Update audio level for UI only when user is speaking
+        // When AI is speaking, the metering timer handles the audio level from playback
+        if state == .userSpeaking {
+            audioLevel = calculateAudioLevel(from: buffer)
+        }
 
         // Handle different states
         switch state {
@@ -2254,6 +2317,7 @@ class SessionViewModel: ObservableObject {
         bargeInConfirmationTask = nil
 
         // Stop playback completely (not just pause)
+        stopAudioMeteringTimer()
         audioPlayer?.stop()
         audioPlayer = nil
 
@@ -2660,6 +2724,9 @@ class SessionViewModel: ObservableObject {
             // The audio data is in WAV format from the TTS server
             audioPlayer = try AVAudioPlayer(data: audioData)
 
+            // Enable metering for VU meter visualization
+            audioPlayer?.isMeteringEnabled = true
+
             // Set up delegate to play next segment when this one finishes
             audioDelegate = AudioPlayerDelegate { [weak self] in
                 Task { @MainActor in
@@ -2673,6 +2740,9 @@ class SessionViewModel: ObservableObject {
 
             // Set volume to maximum
             audioPlayer?.volume = 1.0
+
+            // Start metering timer for VU meter updates during playback
+            startAudioMeteringTimer()
 
             let prepared = audioPlayer?.prepareToPlay() ?? false
             logger.info("Audio player prepared: \(prepared), duration: \(audioPlayer?.duration ?? 0)s, format: \(audioPlayer?.format.description ?? "unknown")")

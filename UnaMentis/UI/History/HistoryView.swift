@@ -18,7 +18,7 @@ public struct HistoryView: View {
     private static let logger = Logger(label: "com.unamentis.ui.history.view")
 
     public init() {
-        // NOTE: Removed debug logging from init to prevent side effects
+        // NOTE: No logging in init - can be called frequently by SwiftUI
     }
 
     public var body: some View {
@@ -383,8 +383,8 @@ class HistoryViewModel: ObservableObject {
     private var hasLoaded = false
 
     init() {
-        // NOTE: No Task spawning here! Data loading is deferred to loadAsync()
-        // called from the view's .task modifier
+        // NOTE: No logging in init - can be called frequently by SwiftUI
+        // Data loading is deferred to loadAsync() called from the view's .task modifier
     }
 
     /// Load data asynchronously (call from view's .task modifier)
