@@ -104,6 +104,24 @@ struct VisualAssetView: View {
 
         // 4. Finally try remote URL (fallback, also caches result)
         if let remoteURL = asset.remoteURL {
+            // Check if it's a data URL (embedded base64 image)
+            if remoteURL.scheme == "data" {
+                if let data = extractDataFromDataURL(remoteURL.absoluteString) {
+                    imageData = data
+                    isLoading = false
+
+                    // Cache for future use
+                    if let assetId = asset.assetId {
+                        try? await VisualAssetCache.shared.cache(assetId: assetId, data: data)
+                    }
+                    await MainActor.run {
+                        asset.cachedData = data
+                    }
+                    return
+                }
+            }
+
+            // Regular HTTP(S) URL, download it
             do {
                 let (data, _) = try await URLSession.shared.data(from: remoteURL)
                 imageData = data
@@ -122,6 +140,26 @@ struct VisualAssetView: View {
             }
         } else {
             isLoading = false
+        }
+    }
+
+    /// Extract binary data from a data URL (e.g., data:image/svg+xml;base64,...)
+    private func extractDataFromDataURL(_ dataURL: String) -> Data? {
+        // Format: data:[<mediatype>][;base64],<data>
+        guard dataURL.hasPrefix("data:") else { return nil }
+
+        // Find the comma that separates metadata from data
+        guard let commaIndex = dataURL.firstIndex(of: ",") else { return nil }
+
+        let metadataPart = dataURL[dataURL.index(dataURL.startIndex, offsetBy: 5)..<commaIndex]
+        let dataPart = String(dataURL[dataURL.index(after: commaIndex)...])
+
+        // Check if it's base64 encoded
+        if metadataPart.contains("base64") {
+            return Data(base64Encoded: dataPart)
+        } else {
+            // URL-encoded data
+            return dataPart.removingPercentEncoding?.data(using: .utf8)
         }
     }
 }
@@ -740,6 +778,24 @@ struct InlineVisualAssetView: View {
 
         // 4. Finally try remote URL (fallback)
         if let remoteURL = asset.remoteURL {
+            // Check if it's a data URL (embedded base64 image)
+            if remoteURL.scheme == "data" {
+                if let data = extractDataFromDataURL(remoteURL.absoluteString) {
+                    imageData = data
+                    isLoading = false
+
+                    // Cache for future use
+                    if let assetId = asset.assetId {
+                        try? await VisualAssetCache.shared.cache(assetId: assetId, data: data)
+                    }
+                    await MainActor.run {
+                        asset.cachedData = data
+                    }
+                    return
+                }
+            }
+
+            // Regular HTTP(S) URL, download it
             do {
                 let (data, _) = try await URLSession.shared.data(from: remoteURL)
                 imageData = data
@@ -757,6 +813,26 @@ struct InlineVisualAssetView: View {
             }
         } else {
             isLoading = false
+        }
+    }
+
+    /// Extract binary data from a data URL (e.g., data:image/svg+xml;base64,...)
+    private func extractDataFromDataURL(_ dataURL: String) -> Data? {
+        // Format: data:[<mediatype>][;base64],<data>
+        guard dataURL.hasPrefix("data:") else { return nil }
+
+        // Find the comma that separates metadata from data
+        guard let commaIndex = dataURL.firstIndex(of: ",") else { return nil }
+
+        let metadataPart = dataURL[dataURL.index(dataURL.startIndex, offsetBy: 5)..<commaIndex]
+        let dataPart = String(dataURL[dataURL.index(after: commaIndex)...])
+
+        // Check if it's base64 encoded
+        if metadataPart.contains("base64") {
+            return Data(base64Encoded: dataPart)
+        } else {
+            // URL-encoded data
+            return dataPart.removingPercentEncoding?.data(using: .utf8)
         }
     }
 }
