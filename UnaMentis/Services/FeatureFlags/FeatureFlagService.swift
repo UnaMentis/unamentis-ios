@@ -32,6 +32,10 @@ public actor FeatureFlagService: FeatureFlagEvaluating {
     // MARK: - Initialization
 
     /// Initialize with custom configuration
+    ///
+    /// - Note: When using a custom config with this initializer, be aware that
+    ///   `.shared` always uses `.development` config. If you need a custom config
+    ///   throughout your app, use dependency injection instead of the singleton.
     public init(config: FeatureFlagConfig = .development) {
         self.config = config
         self.cache = FeatureFlagCache()
@@ -232,7 +236,11 @@ public actor FeatureFlagService: FeatureFlagEvaluating {
 
             // Persist to cache
             if config.enableOfflineMode {
-                try? await cache.save(flags: flags)
+                do {
+                    try await cache.save(flags: flags)
+                } catch {
+                    logger.warning("Failed to save flags to cache: \(error.localizedDescription)")
+                }
             }
 
             logger.info("Fetched \(proxyResponse.toggles.count) flags")
@@ -269,18 +277,18 @@ public actor FeatureFlagService: FeatureFlagEvaluating {
     private func startRefreshLoop() {
         refreshTask?.cancel()
 
-        refreshTask = Task { [weak self] in
-            guard let self else { return }
-
+        // Note: Actors cannot be weakly referenced in Swift 6, so we don't use [weak self]
+        // The task is cancelled in stop() which handles cleanup appropriately
+        refreshTask = Task {
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(nanoseconds: UInt64(config.refreshInterval * 1_000_000_000))
 
                     if !Task.isCancelled {
                         do {
-                            try await self.fetchFlags()
+                            try await fetchFlags()
                         } catch {
-                            await self.logRefreshError(error)
+                            await logRefreshError(error)
                         }
                     }
                 } catch {
@@ -316,6 +324,7 @@ public actor FeatureFlagService: FeatureFlagEvaluating {
     /// View modifier for conditional rendering based on feature flag
     public struct FeatureFlagViewModifier: ViewModifier {
         let flagName: String
+        @Environment(\.featureFlags) private var featureFlags
         @State private var isEnabled = false
 
         public func body(content: Content) -> some View {
@@ -325,7 +334,7 @@ public actor FeatureFlagService: FeatureFlagEvaluating {
                 }
             }
             .task {
-                isEnabled = await FeatureFlagService.shared.isEnabled(flagName)
+                isEnabled = await featureFlags.isEnabled(flagName)
             }
         }
     }

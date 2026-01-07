@@ -80,11 +80,16 @@ import Darwin
 
 // MARK: - Mach Time Utilities
 
-/// Convert mach absolute time to milliseconds
-private func machTimeToMs(_ machTime: UInt64) -> Double {
+/// Cached mach timebase info (invariant during process lifetime)
+private let cachedTimebase: mach_timebase_info_data_t = {
     var timebase = mach_timebase_info_data_t()
     mach_timebase_info(&timebase)
-    let nanoseconds = Double(machTime) * Double(timebase.numer) / Double(timebase.denom)
+    return timebase
+}()
+
+/// Convert mach absolute time to milliseconds
+private func machTimeToMs(_ machTime: UInt64) -> Double {
+    let nanoseconds = Double(machTime) * Double(cachedTimebase.numer) / Double(cachedTimebase.denom)
     return nanoseconds / 1_000_000.0
 }
 

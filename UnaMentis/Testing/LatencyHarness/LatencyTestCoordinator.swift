@@ -17,6 +17,9 @@
 
 import Foundation
 import Logging
+#if os(iOS)
+import UIKit
+#endif
 
 // MARK: - Test Coordinator Error
 
@@ -456,7 +459,6 @@ public actor LatencyTestCoordinator {
 
     private func getDeviceInfo() -> String {
         #if os(iOS)
-        import UIKit
         return UIDevice.current.model
         #else
         return "Simulator"
