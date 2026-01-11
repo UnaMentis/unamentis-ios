@@ -269,12 +269,12 @@ public struct GoBackSegmentButton: View {
     let isEnabled: Bool
 
     /// Callback when button is tapped
-    let action: @Sendable () -> Void
+    let action: @MainActor () -> Void
 
     /// Button size
     private let buttonSize: CGFloat = 44
 
-    public init(isEnabled: Bool, action: @escaping @Sendable () -> Void) {
+    public init(isEnabled: Bool, action: @escaping @MainActor () -> Void) {
         self.isEnabled = isEnabled
         self.action = action
     }
@@ -315,12 +315,12 @@ public struct GoBackSegmentButton: View {
 @MainActor
 public struct ReplayTopicButton: View {
     /// Callback when button is tapped
-    let action: @Sendable () -> Void
+    let action: @MainActor () -> Void
 
     /// Button size
     private let buttonSize: CGFloat = 44
 
-    public init(action: @escaping @Sendable () -> Void) {
+    public init(action: @escaping @MainActor () -> Void) {
         self.action = action
     }
 
@@ -365,12 +365,12 @@ public struct NextTopicButton: View {
     let nextTopicTitle: String?
 
     /// Callback when button is tapped
-    let action: @Sendable () -> Void
+    let action: @MainActor () -> Void
 
     /// Button size
     private let buttonSize: CGFloat = 44
 
-    public init(isEnabled: Bool, nextTopicTitle: String? = nil, action: @escaping @Sendable () -> Void) {
+    public init(isEnabled: Bool, nextTopicTitle: String? = nil, action: @escaping @MainActor () -> Void) {
         self.isEnabled = isEnabled
         self.nextTopicTitle = nextTopicTitle
         self.action = action

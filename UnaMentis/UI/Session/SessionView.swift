@@ -707,8 +707,8 @@ extension CurriculumPlaybackControls {
     /// Initializer for backward compatibility with existing code that uses closures
     init(
         isPaused: Bool,
-        onPauseResume: @escaping @Sendable () -> Void,
-        onStop: @escaping @Sendable () -> Void
+        onPauseResume: @escaping @MainActor () -> Void,
+        onStop: @escaping @MainActor () -> Void
     ) {
         self._isPaused = .constant(isPaused)
         self._isMuted = .constant(false)
