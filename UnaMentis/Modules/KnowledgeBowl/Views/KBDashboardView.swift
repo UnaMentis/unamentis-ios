@@ -16,6 +16,7 @@ struct KBDashboardView: View {
     @State private var practiceQuestions: [KBQuestion] = []
     @State private var pendingPracticeStart = false  // Track pending practice session launch
     @StateObject private var questionService = KBQuestionService.shared
+    @StateObject private var statsManager = KBStatsManager.shared
 
     private static let logger = Logger(label: "com.unamentis.kb.dashboard")
 
@@ -74,6 +75,7 @@ struct KBDashboardView: View {
                     questions: practiceQuestions,
                     onComplete: { summary in
                         Self.logger.info("Practice completed: \(summary.correctAnswers)/\(summary.totalQuestions)")
+                        statsManager.recordSession(summary, mode: activePracticeMode)
                         showingPracticeSession = false
                     }
                 )
@@ -100,6 +102,7 @@ struct KBDashboardView: View {
 
     @ViewBuilder
     private var heroSection: some View {
+        let readiness = statsManager.competitionReadiness
         VStack(spacing: 12) {
             // Readiness score
             ZStack {
@@ -108,13 +111,14 @@ struct KBDashboardView: View {
                     .frame(width: 100, height: 100)
 
                 Circle()
-                    .trim(from: 0, to: 0.0)  // Will be dynamic
+                    .trim(from: 0, to: readiness)
                     .stroke(Color.purple, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                     .frame(width: 100, height: 100)
                     .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut, value: readiness)
 
                 VStack(spacing: 2) {
-                    Text("0%")
+                    Text("\(Int(readiness * 100))%")
                         .font(.title.bold())
                     Text("Ready")
                         .font(.caption)
@@ -125,7 +129,9 @@ struct KBDashboardView: View {
             Text("Competition Readiness")
                 .font(.headline)
 
-            Text("Complete a diagnostic session to see your readiness score")
+            Text(statsManager.totalQuestionsAnswered == 0
+                 ? "Complete a diagnostic session to see your readiness score"
+                 : "Based on \(statsManager.totalQuestionsAnswered) questions across \(statsManager.domainStats.count) domains")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -143,24 +149,17 @@ struct KBDashboardView: View {
     @ViewBuilder
     private var domainRadarSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Domain Mastery")
-                    .font(.headline)
-                Spacer()
-                Button("View All") {
-                    // Show domain list
-                }
-                .font(.subheadline)
-            }
+            Text("Domain Mastery")
+                .font(.headline)
 
-            // Simplified radar visualization (placeholder for now)
+            // Domain mastery grid
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: 12) {
                 ForEach(KBDomain.allCases.prefix(6)) { domain in
-                    DomainMasteryCard(domain: domain, mastery: 0.0)
+                    DomainMasteryCard(domain: domain, mastery: statsManager.mastery(for: domain))
                         .onTapGesture {
                             showingDomainDetail = domain
                         }
@@ -171,7 +170,7 @@ struct KBDashboardView: View {
             if KBDomain.allCases.count > 6 {
                 HStack(spacing: 8) {
                     ForEach(Array(KBDomain.allCases.dropFirst(6))) { domain in
-                        DomainMasteryBadge(domain: domain, mastery: 0.0)
+                        DomainMasteryBadge(domain: domain, mastery: statsManager.mastery(for: domain))
                             .onTapGesture {
                                 showingDomainDetail = domain
                             }
@@ -223,9 +222,25 @@ struct KBDashboardView: View {
                 .font(.headline)
 
             HStack(spacing: 16) {
-                KBStatCard(title: "Questions", value: "0", icon: "questionmark.circle")
-                KBStatCard(title: "Avg Speed", value: "--", icon: "bolt")
-                KBStatCard(title: "Accuracy", value: "--%", icon: "checkmark.circle")
+                KBStatCard(
+                    title: "Questions",
+                    value: "\(statsManager.totalQuestionsAnswered)",
+                    icon: "questionmark.circle"
+                )
+                KBStatCard(
+                    title: "Avg Speed",
+                    value: statsManager.averageResponseTime > 0
+                        ? String(format: "%.1fs", statsManager.averageResponseTime)
+                        : "--",
+                    icon: "bolt"
+                )
+                KBStatCard(
+                    title: "Accuracy",
+                    value: statsManager.totalQuestionsAnswered > 0
+                        ? String(format: "%.0f%%", statsManager.overallAccuracy * 100)
+                        : "--%",
+                    icon: "checkmark.circle"
+                )
             }
         }
         .padding()
@@ -380,12 +395,14 @@ struct KBStatCard: View {
 
 /// Compact summary view shown in the modules list
 struct KBDashboardSummary: View {
+    @StateObject private var statsManager = KBStatsManager.shared
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("0% Ready")
+                Text("\(Int(statsManager.competitionReadiness * 100))% Ready")
                     .font(.headline)
-                Text("0 questions practiced")
+                Text("\(statsManager.totalQuestionsAnswered) questions practiced")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -396,35 +413,14 @@ struct KBDashboardSummary: View {
     }
 }
 
-// MARK: - Placeholder Views
-
-struct KBStudyModeView: View {
-    let mode: KBStudyMode
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: mode.iconName)
-                .font(.system(size: 60))
-                .foregroundStyle(mode.color)
-
-            Text(mode.rawValue)
-                .font(.title)
-
-            Text(mode.description)
-                .foregroundStyle(.secondary)
-
-            Text("Coming Soon")
-                .font(.headline)
-                .padding()
-                .background(Color.gray.opacity(0.2))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .navigationTitle(mode.rawValue)
-    }
-}
-
 struct KBDomainDetailView: View {
     let domain: KBDomain
+    @StateObject private var statsManager = KBStatsManager.shared
+
+    private var domainStats: DomainStats? {
+        let domainId = domain.rawValue.lowercased().replacingOccurrences(of: " & ", with: "-").replacingOccurrences(of: " ", with: "-")
+        return statsManager.domainStats[domainId]
+    }
 
     var body: some View {
         List {
@@ -450,16 +446,22 @@ struct KBDomainDetailView: View {
                     HStack {
                         Text(subcategory)
                         Spacer()
-                        Text("0%")
+                        Text("--")
                             .foregroundStyle(.secondary)
                     }
                 }
             }
 
             Section("Stats") {
-                LabeledContent("Questions Answered", value: "0")
-                LabeledContent("Accuracy", value: "0%")
-                LabeledContent("Average Speed", value: "--")
+                if let stats = domainStats {
+                    LabeledContent("Questions Answered", value: "\(stats.totalAnswered)")
+                    LabeledContent("Accuracy", value: String(format: "%.0f%%", stats.accuracy * 100))
+                    LabeledContent("Average Speed", value: "--")
+                } else {
+                    LabeledContent("Questions Answered", value: "0")
+                    LabeledContent("Accuracy", value: "--%")
+                    LabeledContent("Average Speed", value: "--")
+                }
             }
         }
         .navigationTitle(domain.rawValue)
@@ -471,12 +473,6 @@ struct KBDomainDetailView: View {
 #Preview("Dashboard") {
     NavigationStack {
         KBDashboardView()
-    }
-}
-
-#Preview("Study Mode") {
-    NavigationStack {
-        KBStudyModeView(mode: .diagnostic)
     }
 }
 
