@@ -7,7 +7,7 @@
 import Foundation
 
 /// A Knowledge Bowl practice question
-struct KBQuestion: Codable, Identifiable, Hashable {
+struct KBQuestion: Codable, Identifiable, Hashable, Sendable {
     let id: String
     let domainId: String
     let subcategory: String
@@ -44,7 +44,7 @@ struct KBQuestion: Codable, Identifiable, Hashable {
 }
 
 /// Result of answering a question
-struct KBQuestionResult: Identifiable {
+struct KBQuestionResult: Identifiable, Sendable {
     let id = UUID()
     let question: KBQuestion
     let userAnswer: String
@@ -62,7 +62,7 @@ struct KBQuestionResult: Identifiable {
 }
 
 /// Summary of a practice session
-struct KBSessionSummary {
+struct KBSessionSummary: Sendable {
     let totalQuestions: Int
     let correctAnswers: Int
     let averageResponseTime: Double
@@ -80,7 +80,7 @@ struct KBSessionSummary {
         return Double(questionsWithinSpeedTarget) / Double(totalQuestions)
     }
 
-    struct DomainScore {
+    struct DomainScore: Sendable {
         let total: Int
         let correct: Int
         var accuracy: Double {

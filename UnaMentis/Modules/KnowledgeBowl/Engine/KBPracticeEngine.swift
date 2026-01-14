@@ -42,10 +42,19 @@ final class KBPracticeEngine: ObservableObject {
 
     init() {}
 
+    deinit {
+        timer?.invalidate()
+        timer = nil
+    }
+
     // MARK: - Session Control
 
     /// Start a new practice session with the given questions and mode
     func startSession(questions: [KBQuestion], mode: KBStudyMode) {
+        // Stop any existing timer from previous session
+        stopTimer()
+        timeRemaining = 0
+
         self.questions = mode == .diagnostic ? questions : questions.shuffled()
         self.mode = mode
         self.totalQuestions = min(questions.count, questionCountForMode(mode))
@@ -106,6 +115,11 @@ final class KBPracticeEngine: ObservableObject {
 
     /// Move to the next question after viewing the answer
     func nextQuestion() {
+        // Only advance when showing an answer, not during question presentation
+        guard case .showingAnswer = sessionState else {
+            return
+        }
+
         questionIndex += 1
 
         if questionIndex >= totalQuestions || (mode == .speed && timeRemaining <= 0) {

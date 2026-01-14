@@ -16,11 +16,19 @@ enum KBSegmentType: String, Sendable {
     case explanation
 }
 
-/// Cached audio entry
+/// Cached audio entry with access tracking for LRU eviction
 struct KBCachedAudio: Sendable {
     let data: Data
     let durationSeconds: Double
     let sampleRate: Int
+    let cachedAt: Date
+
+    init(data: Data, durationSeconds: Double, sampleRate: Int) {
+        self.data = data
+        self.durationSeconds = durationSeconds
+        self.sampleRate = sampleRate
+        self.cachedAt = Date()
+    }
 }
 
 /// Batch query result for prefetching
@@ -187,13 +195,27 @@ actor KBAudioCache {
         segment: KBSegmentType,
         hintIndex: Int = 0
     ) async throws -> KBCachedAudio? {
-        var urlString = "http://\(serverHost):\(serverPort)/api/kb/audio/\(questionId)/\(segment.rawValue)"
-        urlString += "?module_id=\(moduleId)"
-        if segment == .hint {
-            urlString += "&hint_index=\(hintIndex)"
+        // Build URL safely with proper encoding
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = serverHost
+        components.port = serverPort
+
+        // Percent-encode path components
+        guard let encodedQuestionId = questionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let encodedSegment = segment.rawValue.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
+            throw KBAudioCacheError.invalidURL
         }
 
-        guard let url = URL(string: urlString) else {
+        components.path = "/api/kb/audio/\(encodedQuestionId)/\(encodedSegment)"
+
+        var queryItems = [URLQueryItem(name: "module_id", value: moduleId)]
+        if segment == .hint {
+            queryItems.append(URLQueryItem(name: "hint_index", value: String(hintIndex)))
+        }
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
             throw KBAudioCacheError.invalidURL
         }
 
@@ -300,8 +322,17 @@ actor KBAudioCache {
         return results
     }
 
+    /// Valid feedback types for audio
+    private static let validFeedbackTypes: Set<String> = ["correct", "incorrect"]
+
     /// Fetch feedback audio (correct/incorrect)
     func getFeedbackAudio(_ feedbackType: String) async throws -> KBCachedAudio? {
+        // Validate feedback type against allowlist to prevent path traversal
+        guard Self.validFeedbackTypes.contains(feedbackType) else {
+            Self.logger.warning("Invalid feedback type requested: \(feedbackType)")
+            return nil
+        }
+
         let key = "feedback:\(feedbackType)"
 
         // Check cache
@@ -309,9 +340,14 @@ actor KBAudioCache {
             return cached
         }
 
-        let urlString = "http://\(serverHost):\(serverPort)/api/kb/feedback/\(feedbackType)"
+        // Build URL safely
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = serverHost
+        components.port = serverPort
+        components.path = "/api/kb/feedback/\(feedbackType)"
 
-        guard let url = URL(string: urlString) else {
+        guard let url = components.url else {
             throw KBAudioCacheError.invalidURL
         }
 
@@ -332,42 +368,53 @@ actor KBAudioCache {
             throw KBAudioCacheError.serverError(httpResponse.statusCode)
         }
 
+        // Parse duration from header if available, fallback to 0.5s for short feedback
+        let durationString = httpResponse.value(forHTTPHeaderField: "X-KB-Duration-Seconds") ?? "0.5"
+        let duration = Double(durationString) ?? 0.5
+
+        // Parse sample rate from header if available
+        let sampleRateString = httpResponse.value(forHTTPHeaderField: "X-KB-Sample-Rate") ?? "24000"
+        let sampleRate = Int(sampleRateString) ?? 24000
+
         let cached = KBCachedAudio(
             data: data,
-            durationSeconds: 0.5,  // Short feedback
-            sampleRate: 24000
+            durationSeconds: duration,
+            sampleRate: sampleRate
         )
 
         cache[key] = cached
+
+        // Evict if over size limit
+        await evictIfNeeded()
+
         return cached
     }
 
     // MARK: - Cache Management
 
-    /// Evict oldest entries if cache is over size limit
+    /// Evict oldest entries (LRU) if cache is over size limit
     private func evictIfNeeded() async {
-        let currentSize = cacheSize()
+        var currentSize = cacheSize()
 
         if currentSize <= maxCacheSize {
             return
         }
 
-        // Simple eviction: remove random entries until under limit
-        // In practice, could use LRU based on access time
-        var keysToRemove: [String] = []
-        var sizeToRemove = currentSize - maxCacheSize
+        // Sort entries by cachedAt (oldest first) for LRU eviction
+        let sortedEntries = cache.sorted { $0.value.cachedAt < $1.value.cachedAt }
 
-        for (key, entry) in cache {
-            if sizeToRemove <= 0 { break }
+        var keysToRemove: [String] = []
+        for (key, entry) in sortedEntries {
+            if currentSize <= maxCacheSize { break }
             keysToRemove.append(key)
-            sizeToRemove -= entry.data.count
+            currentSize -= entry.data.count
         }
 
         for key in keysToRemove {
             cache.removeValue(forKey: key)
         }
 
-        Self.logger.info("Evicted \(keysToRemove.count) entries to stay under size limit")
+        Self.logger.info("Evicted \(keysToRemove.count) oldest entries to stay under size limit")
     }
 }
 
@@ -377,7 +424,6 @@ enum KBAudioCacheError: Error, LocalizedError {
     case invalidURL
     case invalidResponse
     case serverError(Int)
-    case notAvailable
 
     var errorDescription: String? {
         switch self {
@@ -387,8 +433,6 @@ enum KBAudioCacheError: Error, LocalizedError {
             return "Invalid response from server"
         case .serverError(let code):
             return "Server error: \(code)"
-        case .notAvailable:
-            return "Audio not available"
         }
     }
 }

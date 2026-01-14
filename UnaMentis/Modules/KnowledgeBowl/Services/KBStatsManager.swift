@@ -173,7 +173,7 @@ final class KBStatsManager: ObservableObject {
 
 // MARK: - Supporting Types
 
-struct DomainStats: Codable {
+struct DomainStats: Codable, Sendable {
     var totalAnswered: Int = 0
     var totalCorrect: Int = 0
 
@@ -183,7 +183,7 @@ struct DomainStats: Codable {
     }
 }
 
-struct SessionRecord: Codable, Identifiable {
+struct SessionRecord: Codable, Identifiable, Sendable {
     let id: UUID
     let date: Date
     let mode: String

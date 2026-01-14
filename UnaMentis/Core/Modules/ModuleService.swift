@@ -71,7 +71,7 @@ public final class ModuleService: ObservableObject {
 
         defer { isLoading = false }
 
-        let url = baseURL.appendingPathComponent("/api/modules")
+        let url = baseURL.appendingPathComponent("api/modules")
 
         do {
             var request = URLRequest(url: url)
@@ -115,7 +115,7 @@ public final class ModuleService: ObservableObject {
             throw ModuleServiceError.notConfigured
         }
 
-        let url = baseURL.appendingPathComponent("/api/modules/\(moduleId)")
+        let url = baseURL.appendingPathComponent("api/modules/\(moduleId)")
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -148,7 +148,7 @@ public final class ModuleService: ObservableObject {
             throw ModuleServiceError.notConfigured
         }
 
-        let url = baseURL.appendingPathComponent("/api/modules/\(moduleId)/download")
+        let url = baseURL.appendingPathComponent("api/modules/\(moduleId)/download")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -302,7 +302,7 @@ public struct ModuleDomain: Codable, Identifiable {
 /// Can operate in two modes:
 /// - **Online**: Enhanced experience with server TTS/AI
 /// - **Offline**: Full functionality with on-device AI/TTS
-public struct DownloadedModule: Codable, Identifiable {
+public struct DownloadedModule: Codable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public let description: String
@@ -337,7 +337,7 @@ public struct DownloadedModule: Codable, Identifiable {
 }
 
 /// Domain with full content for offline use
-public struct ModuleContentDomain: Codable, Identifiable {
+public struct ModuleContentDomain: Codable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public let iconName: String
@@ -347,7 +347,7 @@ public struct ModuleContentDomain: Codable, Identifiable {
 }
 
 /// Question content for offline practice
-public struct ModuleQuestion: Codable, Identifiable {
+public struct ModuleQuestion: Codable, Identifiable, Sendable {
     public let id: String
     public let domainId: String
     public let subcategory: String?
@@ -362,7 +362,7 @@ public struct ModuleQuestion: Codable, Identifiable {
 }
 
 /// Study mode configuration
-public struct ModuleStudyMode: Codable, Identifiable {
+public struct ModuleStudyMode: Codable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public let description: String
@@ -374,7 +374,7 @@ public struct ModuleStudyMode: Codable, Identifiable {
 }
 
 /// Module-specific settings
-public struct ModuleSettings: Codable {
+public struct ModuleSettings: Codable, Sendable {
     public let defaultTimePerQuestion: Double
     public let conferTimeSeconds: Double?  // For team mode
     public let enableSpokenQuestions: Bool
