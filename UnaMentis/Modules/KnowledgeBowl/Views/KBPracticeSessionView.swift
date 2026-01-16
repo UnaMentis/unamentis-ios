@@ -554,7 +554,7 @@ struct DifficultyIndicator: View {
     }
 }
 
-struct StatCard: View {
+private struct StatCard: View {
     let title: String
     let value: String
     let icon: String
