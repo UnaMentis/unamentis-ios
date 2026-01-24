@@ -183,8 +183,10 @@ public actor KyutaiPocketTTSService: TTSService {
                     self.logger.info("[KyutaiPocket] Synthesis complete: \(text.count) chars in \(String(format: "%.3f", totalTime))s, duration: \(String(format: "%.2f", result.durationSeconds))s")
 
                 } catch let error as PocketTtsError {
+                    print("🔴🔴🔴 [KyutaiPocket] PocketTtsError: \(error)")
                     self.logger.error("[KyutaiPocket] Synthesis failed: \(error.localizedDescription)")
                 } catch {
+                    print("🔴🔴🔴 [KyutaiPocket] Error: \(error)")
                     self.logger.error("[KyutaiPocket] Synthesis failed: \(error.localizedDescription)")
                 }
 

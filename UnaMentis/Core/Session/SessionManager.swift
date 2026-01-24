@@ -169,7 +169,7 @@ public struct SessionConfig: Codable, Sendable {
         llm: .default,
         voice: .default,
         systemPrompt: """
-            You are a helpful AI tutor engaged in a voice conversation.
+            You are a helpful AI learning assistant engaged in a voice conversation.
             Keep responses concise and conversational.
             Ask follow-up questions to check understanding.
             """,

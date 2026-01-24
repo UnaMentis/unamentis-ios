@@ -663,6 +663,10 @@ final class KBOralSessionViewModel: ObservableObject {
         self.regionalConfig = config.region.config
         self.session = KBSession(config: config)
         self.conferenceTimeRemaining = config.region.config.conferenceTime
+
+        // Initialize debug logger immediately
+        Task {
+        }
     }
 
     // MARK: - Service Setup
@@ -759,6 +763,7 @@ final class KBOralSessionViewModel: ObservableObject {
     // MARK: - Question Flow
 
     private func readCurrentQuestion() async {
+
         guard let question = currentQuestion else {
             await endSession()
             return
@@ -767,7 +772,10 @@ final class KBOralSessionViewModel: ObservableObject {
         state = .readingQuestion
 
         // Speak the question
+        NSLog("🔵🔵🔵 KBOralSessionViewModel: About to call tts.speakQuestion()")
+        NSLog("🔵 Question text: '\(question.text.prefix(50))...'")
         await tts.speakQuestion(question)
+        NSLog("🔵 KBOralSessionViewModel: tts.speakQuestion() returned")
 
         // Start conference time
         await startConferenceTime()

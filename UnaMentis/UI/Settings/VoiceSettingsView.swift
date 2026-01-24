@@ -300,7 +300,7 @@ public struct VoiceSettingsView: View {
                         Text(viewModel.voiceDisplayName(voice)).tag(voice)
                     }
                 }
-                .accessibilityHint("Select the AI tutor's voice")
+                .accessibilityHint("Select the AI's voice")
             }
 
             // Kyutai Pocket TTS settings
@@ -612,6 +612,9 @@ class VoiceSettingsViewModel: ObservableObject {
 
     /// Load async data (capabilities discovery)
     func loadAsync() async {
+        // Check Kyutai Pocket model availability
+        await checkKyutaiPocketModelStatus()
+
         if selfHostedEnabled {
             let primaryServerIP = defaults.string(forKey: "primaryServerIP") ?? ""
             if !primaryServerIP.isEmpty {
@@ -636,6 +639,17 @@ class VoiceSettingsViewModel: ObservableObject {
                     discoveredVibeVoiceVoices = capabilities.vibeVoiceVoices
                 }
             }
+        }
+    }
+
+    /// Check Kyutai Pocket TTS model availability
+    private func checkKyutaiPocketModelStatus() async {
+        let modelManager = KyutaiPocketModelManager()
+        // Wait a moment for the model manager to initialize and copy models if needed
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        let isAvailable = await modelManager.isModelAvailable()
+        await MainActor.run {
+            kyutaiPocketModelLoaded = isAvailable
         }
     }
 
