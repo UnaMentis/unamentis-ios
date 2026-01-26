@@ -63,20 +63,19 @@ final class KBLocalTeamSyncTests: XCTestCase {
     }
 
     func testSaveTeam_updatesLastUpdatedAt() async throws {
-        let team = createTestTeam()
-        let originalDate = team.lastUpdatedAt
-
-        // Delay to ensure time difference
-        try await Task.sleep(for: .milliseconds(100))
+        // Create a team with a known past date
+        var team = createTestTeam()
+        let pastDate = Date(timeIntervalSince1970: 1000) // Jan 1, 1970 + 1000 seconds
+        team.lastUpdatedAt = pastDate
 
         try await sync.saveTeam(team)
 
         let fetched = try await sync.fetchTeam()
         XCTAssertNotNil(fetched)
-        // saveTeam sets lastUpdatedAt to Date() which should be after original
-        XCTAssertGreaterThanOrEqual(
+        // saveTeam sets lastUpdatedAt to Date() which should be way after our past date
+        XCTAssertGreaterThan(
             fetched?.lastUpdatedAt ?? Date.distantPast,
-            originalDate
+            pastDate
         )
     }
 
