@@ -106,16 +106,7 @@ actor KBOnDeviceTTS {
         // Configure the service (creates it if needed)
         await ensureServiceConfigured()
 
-        // For Kyutai, also ensure the model is loaded
-        if let kyutaiService = ttsService as? KyutaiPocketTTSService {
-            NSLog("⏱️ [KBOnDeviceTTS] prewarm() - loading Kyutai engine...")
-            do {
-                try await kyutaiService.ensureLoaded()
-            } catch {
-                logger.error("Failed to prewarm Kyutai engine: \(error.localizedDescription)")
-                NSLog("⏱️ [KBOnDeviceTTS] prewarm() - Kyutai load FAILED: \(error.localizedDescription)")
-            }
-        }
+        // Kyutai prewarm skipped: xcframework not linked, using Apple TTS fallback
 
         let prewarmTime = (CFAbsoluteTimeGetCurrent() - prewarmStart) * 1000
         NSLog("⏱️ [KBOnDeviceTTS] prewarm() COMPLETE - took %.1fms", prewarmTime)
@@ -443,11 +434,10 @@ actor KBOnDeviceTTS {
             ttsService = AppleTTSService()
 
         case .kyutaiPocket:
-            // Use Kyutai Pocket TTS (on-device Rust/Candle inference)
-            // Use lowLatency preset for KB sessions to minimize delay before audio
-            logger.info("Using Kyutai Pocket TTS (on-device) with lowLatency preset")
-            NSLog("🔵 Creating KyutaiPocketTTSService with lowLatency config")
-            ttsService = KyutaiPocketTTSService(config: .lowLatency)
+            // Kyutai xcframework not linked; fall back to Apple TTS for now
+            logger.warning("Kyutai Pocket TTS not available, falling back to Apple TTS")
+            NSLog("🔵 Kyutai unavailable, falling back to AppleTTSService")
+            ttsService = AppleTTSService()
 
         case .selfHosted, .vibeVoice, .chatterbox, .elevenLabsFlash, .elevenLabsTurbo, .deepgramAura2:
             // For server-based TTS, fall back to Apple TTS for Knowledge Bowl

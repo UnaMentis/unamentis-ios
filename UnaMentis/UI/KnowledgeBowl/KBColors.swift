@@ -110,16 +110,16 @@ extension Color {
     // MARK: - Achievement Colors
 
     /// Bronze tier
-    static let kbBronze = Color(hex: "#CD7F32")
+    static let kbBronze = Color(hex: "#CD7F32") ?? .brown
 
     /// Silver tier
-    static let kbSilver = Color(hex: "#C0C0C0")
+    static let kbSilver = Color(hex: "#C0C0C0") ?? .gray
 
     /// Gold tier (with glow effect)
-    static let kbGold = Color(hex: "#FFD700")
+    static let kbGold = Color(hex: "#FFD700") ?? .yellow
 
     /// Diamond tier (with glow effect)
-    static let kbDiamond = Color(hex: "#B9F2FF")
+    static let kbDiamond = Color(hex: "#B9F2FF") ?? .cyan
 
     // MARK: - Background Colors
 
@@ -145,39 +145,12 @@ extension Color {
     /// Border color
     static let kbBorder = Color(light: "#E5E7EB", dark: "#374151")
 
-    // MARK: - Convenience Initializers
-
-    /// Initialize from hex string
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 0, 0, 0)
-        }
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue: Double(b) / 255,
-            opacity: Double(a) / 255
-        )
-    }
-
     /// Initialize with separate light and dark mode hex values
     init(light: String, dark: String) {
         self.init(uiColor: UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark
-                ? UIColor(Color(hex: dark))
-                : UIColor(Color(hex: light))
+                ? UIColor(Color(hex: dark) ?? .clear)
+                : UIColor(Color(hex: light) ?? .clear)
         })
     }
 }

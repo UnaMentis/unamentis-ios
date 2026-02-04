@@ -687,16 +687,9 @@ final class KBOralSessionViewModel: ObservableObject {
     private let commandRecognizer = VoiceCommandRecognizer()
     private let voiceFeedback = VoiceActivityFeedback()
 
-    /// Create answer validator with on-device LLM if available
+    /// Create answer validator
+    /// Note: On-device LLM validation disabled (OnDeviceLLMService excluded from build)
     private static func createValidator() -> KBAnswerValidator {
-        // Check if on-device LLM model is available
-        if OnDeviceLLMService.areModelsAvailable {
-            // Create on-device LLM service and validator
-            let llmService = OnDeviceLLMService()
-            let llmValidator = KBLLMValidator(service: llmService)
-            return KBAnswerValidator(llmValidator: llmValidator)
-        }
-        // Fall back to validation without LLM tier
         return KBAnswerValidator()
     }
 

@@ -108,12 +108,7 @@ struct ModulesView: View {
     private func moduleViewForId(_ moduleId: String) -> some View {
         switch moduleId {
         case "knowledge-bowl":
-            // Knowledge Bowl module is currently disabled pending service integration
-            ContentUnavailableView(
-                "Knowledge Bowl",
-                systemImage: "brain.head.profile",
-                description: Text("This module is temporarily unavailable while we complete backend integration.")
-            )
+            KBDashboardView()
         default:
             ContentUnavailableView(
                 "Module Not Found",
