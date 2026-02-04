@@ -336,7 +336,7 @@ final class OnDeviceLLMSettingsViewModel: ObservableObject {
     }
 
     private func setupModelManager() async {
-        modelManager = OnDeviceLLMModelManager()
+        modelManager = OnDeviceLLMModelManager.shared
         await refreshState()
     }
 

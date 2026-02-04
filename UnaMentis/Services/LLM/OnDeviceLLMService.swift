@@ -216,9 +216,12 @@ public actor OnDeviceLLMService: LLMService, LLMLoadableService {
 
         isLoaded = true
         logger.info("On-device LLM loaded successfully with \(nThreads) threads")
+
+        // Update shared manager state so UI reflects loaded status
+        await OnDeviceLLMModelManager.shared.markLoaded()
     }
 
-    public func unloadModel() {
+    public func unloadModel() async {
         if let ctx = context {
             llama_free(ctx)
             context = nil
@@ -229,6 +232,9 @@ public actor OnDeviceLLMService: LLMService, LLMLoadableService {
         }
         llama_backend_free()
         isLoaded = false
+
+        // Update shared manager state so UI reflects unloaded status
+        await OnDeviceLLMModelManager.shared.markUnloaded()
     }
 
     // MARK: - LLMService Protocol

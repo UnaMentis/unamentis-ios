@@ -261,12 +261,11 @@ struct LaunchScreenView: View {
 
 /// Tab indices for programmatic navigation
 enum AppTab: Int {
-    case session = 0
-    case learning = 1
+    case learning = 0
+    case chat = 1
     case todo = 2
     case history = 3
-    case analytics = 4
-    case settings = 5
+    case more = 4
 }
 
 // MARK: - Session Activity State
@@ -335,7 +334,7 @@ struct ContentView: View {
     private static let logger = Logger(label: "com.unamentis.contentview")
 
     /// Selected tab for programmatic navigation from deep links
-    @State private var selectedTab: Int = AppTab.session.rawValue
+    @State private var selectedTab: Int = AppTab.learning.rawValue
 
     /// Topic to open in session (from deep link)
     @State private var deepLinkTopicId: UUID?
@@ -400,7 +399,7 @@ struct ContentView: View {
 
         deepLinkTopicId = topicId
         autoStartChat = false
-        selectedTab = AppTab.session.rawValue
+        selectedTab = AppTab.chat.rawValue
     }
 
     private func handleResumeLesson(_ notification: Notification) {
@@ -409,26 +408,26 @@ struct ContentView: View {
 
         deepLinkTopicId = topicId
         autoStartChat = false
-        selectedTab = AppTab.session.rawValue
+        selectedTab = AppTab.chat.rawValue
     }
 
     private func handleShowAnalytics() {
         deepLinkTopicId = nil
         autoStartChat = false
-        selectedTab = AppTab.analytics.rawValue
+        selectedTab = AppTab.more.rawValue
     }
 
     private func handleStartChat(_ notification: Notification) {
         deepLinkTopicId = nil
         autoStartChat = true
         chatPrompt = notification.userInfo?["prompt"] as? String
-        selectedTab = AppTab.session.rawValue
+        selectedTab = AppTab.chat.rawValue
     }
 
     private func handleShowSettings() {
         deepLinkTopicId = nil
         autoStartChat = false
-        selectedTab = AppTab.settings.rawValue
+        selectedTab = AppTab.more.rawValue
     }
 
     private func handleShowHistory() {
@@ -445,16 +444,22 @@ struct ContentView: View {
 
     private func handleShowOnboarding() {
         // Note: For demo video purposes, we'd need to show onboarding overlay
-        // This currently just navigates to session tab as a placeholder
+        // This currently just navigates to chat tab as a placeholder
         // A full implementation would set a state to show OnboardingView
         deepLinkTopicId = nil
         autoStartChat = false
-        selectedTab = AppTab.session.rawValue
+        selectedTab = AppTab.chat.rawValue
     }
 
     @ViewBuilder
     private var mainContent: some View {
         TabView(selection: $selectedTab) {
+            LearningView()
+                .tabItem {
+                    Label("Learning", systemImage: "book")
+                }
+                .tag(AppTab.learning.rawValue)
+
             // NOTE: Removed debug logging from view body to prevent potential side effects
             SessionTabContent(
                 deepLinkTopicId: $deepLinkTopicId,
@@ -462,18 +467,12 @@ struct ContentView: View {
                 chatPrompt: $chatPrompt
             )
             .tabItem {
-                Label("Session", systemImage: "waveform")
+                Label("Chat", systemImage: "bubble.left.and.bubble.right")
             }
-            .tag(AppTab.session.rawValue)
+            .tag(AppTab.chat.rawValue)
             #if os(iOS)
             .toolbar(sessionActivityState.shouldHideTabBar ? .hidden : .visible, for: .tabBar)
             #endif
-
-            LearningView()
-                .tabItem {
-                    Label("Learning", systemImage: "book")
-                }
-                .tag(AppTab.learning.rawValue)
 
             TodoListView()
                 .tabItem {
@@ -487,17 +486,11 @@ struct ContentView: View {
                 }
                 .tag(AppTab.history.rawValue)
 
-            AnalyticsView()
+            MoreTabView()
                 .tabItem {
-                    Label("Analytics", systemImage: "chart.bar")
+                    Label("More", systemImage: "ellipsis.circle")
                 }
-                .tag(AppTab.analytics.rawValue)
-
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: "gear")
-                }
-                .tag(AppTab.settings.rawValue)
+                .tag(AppTab.more.rawValue)
         }
         // NOTE: Removed .animation() modifier here - it was causing continuous view re-renders
         // The tab bar visibility change is now handled without animation to prevent lockups
@@ -897,6 +890,30 @@ public class AppState: ObservableObject {
     /// Disable developer mode
     public func disableDeveloperMode() async {
         await patchPanel.disableDeveloperMode()
+    }
+}
+
+// MARK: - More Tab View
+
+/// Combined view for Analytics and Settings in the More tab
+struct MoreTabView: View {
+    var body: some View {
+        NavigationStack {
+            List {
+                NavigationLink {
+                    AnalyticsView()
+                } label: {
+                    Label("Analytics", systemImage: "chart.bar")
+                }
+
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+            .navigationTitle("More")
+        }
     }
 }
 

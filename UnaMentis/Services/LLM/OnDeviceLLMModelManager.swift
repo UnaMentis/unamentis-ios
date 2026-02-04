@@ -76,7 +76,13 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
 /// - Resume interrupted downloads
 /// - Delete models to free storage
 /// - Verify model integrity
+///
+/// This is a shared singleton to ensure consistent state across the app.
+/// The settings UI and service both reference the same instance.
 public actor OnDeviceLLMModelManager {
+    /// Shared singleton instance
+    public static let shared = OnDeviceLLMModelManager()
+
     private let logger = Logger(subsystem: "com.unamentis", category: "OnDeviceLLMModelManager")
 
     // MARK: - Model State
@@ -168,9 +174,32 @@ public actor OnDeviceLLMModelManager {
 
     // MARK: - Public API
 
-    /// Get current model state
+    /// Get current model state (refreshes from filesystem first)
     nonisolated public func currentState() async -> ModelState {
-        await state
+        await refreshStateFromFilesystem()
+        return await state
+    }
+
+    /// Refresh state from filesystem to ensure it's accurate
+    private func refreshStateFromFilesystem() {
+        // Only refresh if we're in a potentially stale state
+        switch state {
+        case .downloading, .verifying, .loading:
+            // These are transient states managed by operations, don't override
+            return
+        case .notDownloaded, .available, .loaded, .error:
+            // Check actual file presence
+            if isModelAvailable() {
+                // File exists - if we thought it wasn't downloaded, update to available
+                if case .notDownloaded = state {
+                    state = .available
+                }
+                // Keep .loaded state if we were loaded
+            } else {
+                // File doesn't exist - reset to notDownloaded unless we're downloading
+                state = .notDownloaded
+            }
+        }
     }
 
     /// Check if model is available locally

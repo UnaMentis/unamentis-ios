@@ -116,8 +116,9 @@ class DebugConversationViewModel: ObservableObject {
 
     /// Load current provider/model settings from UserDefaults
     func loadCurrentSettings() {
+        // Default to .localMLX to match SettingsView default
         let llmProviderSetting = UserDefaults.standard.string(forKey: "llmProvider")
-            .flatMap { LLMProvider(rawValue: $0) } ?? .selfHosted
+            .flatMap { LLMProvider(rawValue: $0) } ?? .localMLX
         let modelSetting = UserDefaults.standard.string(forKey: "llmModel") ?? "llama3.2:3b"
 
         selectedLLMProvider = llmProviderSetting
@@ -167,8 +168,9 @@ class DebugConversationViewModel: ObservableObject {
         let model: String
 
         if useCurrentSettings {
+            // Default to .localMLX to match SettingsView default
             provider = UserDefaults.standard.string(forKey: "llmProvider")
-                .flatMap { LLMProvider(rawValue: $0) } ?? .selfHosted
+                .flatMap { LLMProvider(rawValue: $0) } ?? .localMLX
             model = UserDefaults.standard.string(forKey: "llmModel") ?? "llama3.2:3b"
         } else {
             provider = selectedLLMProvider
@@ -195,7 +197,28 @@ class DebugConversationViewModel: ObservableObject {
                 }
                 llmService = OpenAILLMService(apiKey: apiKey)
 
-            case .selfHosted, .localMLX:
+            case .localMLX:
+                // Use on-device LLM service
+                #if LLAMA_AVAILABLE
+                if OnDeviceLLMService.isDeviceSupported && OnDeviceLLMService.areModelsAvailable {
+                    logger.info("[DEBUG] localMLX selected - using OnDeviceLLMService")
+                    llmService = OnDeviceLLMService()
+                } else {
+                    // Fall back to self-hosted if on-device not available
+                    let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
+                    let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
+                    if selfHostedEnabled && !serverIP.isEmpty {
+                        logger.warning("[DEBUG] On-device LLM not available, falling back to self-hosted at \(serverIP)")
+                        llmService = SelfHostedLLMService.ollama(host: serverIP, model: model)
+                    } else {
+                        throw DebugSessionError.sessionStartFailed("On-device LLM model not downloaded. Please download it in Settings > On-Device LLM.")
+                    }
+                }
+                #else
+                throw DebugSessionError.sessionStartFailed("On-device LLM not available in this build.")
+                #endif
+
+            case .selfHosted:
                 let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
                 let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
 

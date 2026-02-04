@@ -257,26 +257,6 @@ public struct SettingsView: View {
                     Text("Tools for testing subsystems and troubleshooting.")
                 }
 
-                // Practice Modules Section
-                Section {
-                    NavigationLink {
-                        KBDashboardView()
-                    } label: {
-                        HStack {
-                            Label("Knowledge Bowl", systemImage: "brain.head.profile")
-                            Spacer()
-                            Text("Practice")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .accessibilityHint("Academic competition practice for written and oral rounds")
-                } header: {
-                    Text("Practice Modules")
-                } footer: {
-                    Text("Specialized practice modes for academic competitions.")
-                }
-
                 // Help Section
                 Section {
                     NavigationLink {
@@ -682,24 +662,30 @@ class SettingsViewModel: ObservableObject {
     }
 
     private func checkOnDeviceLLMStatus() async {
-        let manager = OnDeviceLLMModelManager()
+        let manager = OnDeviceLLMModelManager.shared
+        // Wait for manager to check filesystem state
         let state = await manager.currentState()
+        let isAvailable = await manager.isModelAvailable()
         await MainActor.run {
-            switch state {
-            case .notDownloaded:
-                onDeviceLLMStatus = "Not Downloaded"
-            case .downloading(let progress):
-                onDeviceLLMStatus = "Downloading \(Int(progress * 100))%"
-            case .verifying:
-                onDeviceLLMStatus = "Verifying..."
-            case .available:
-                onDeviceLLMStatus = "Ready"
-            case .loading:
-                onDeviceLLMStatus = "Loading..."
-            case .loaded:
-                onDeviceLLMStatus = "Active"
-            case .error:
-                onDeviceLLMStatus = "Error"
+            // Use file presence as ground truth for downloaded states
+            if isAvailable {
+                switch state {
+                case .loaded:
+                    onDeviceLLMStatus = "Active"
+                default:
+                    onDeviceLLMStatus = "Ready"
+                }
+            } else {
+                switch state {
+                case .downloading(let progress):
+                    onDeviceLLMStatus = "Downloading \(Int(progress * 100))%"
+                case .verifying:
+                    onDeviceLLMStatus = "Verifying..."
+                case .error:
+                    onDeviceLLMStatus = "Error"
+                default:
+                    onDeviceLLMStatus = "Not Downloaded"
+                }
             }
         }
     }

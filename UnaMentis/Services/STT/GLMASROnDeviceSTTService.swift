@@ -18,6 +18,9 @@ import Foundation
 @preconcurrency import CoreML
 import Accelerate
 import Logging
+#if LLAMA_AVAILABLE
+import llama
+#endif
 
 // GLM-ASR decoder disabled - use Apple Speech fallback for STT
 // The LLM service (OnDeviceLLMService) handles LLM inference using LocalLLMClient
@@ -222,8 +225,8 @@ public actor GLMASROnDeviceSTTService: STTService {
         var ctxParams = llama_context_default_params()
         ctxParams.n_ctx = 2048
         let nThreads = max(1, min(8, ProcessInfo.processInfo.processorCount - 2))
-        ctxParams.n_threads = UInt32(nThreads)
-        ctxParams.n_threads_batch = UInt32(nThreads)
+        ctxParams.n_threads = Int32(nThreads)
+        ctxParams.n_threads_batch = Int32(nThreads)
 
         llamaContext = llama_new_context_with_model(llamaModel, ctxParams)
         guard llamaContext != nil else {
@@ -473,43 +476,21 @@ public actor GLMASROnDeviceSTTService: STTService {
             throw OnDeviceError.inferenceError("llama_decode failed")
         }
 
-        // Generate tokens using greedy sampling
+        // Generate tokens using greedy sampling (new llama.cpp b7263+ API)
         var outputTokens: [llama_token] = []
         var nCur = Int32(tokens.count)
         let maxTokens: Int32 = 256
-        let nVocab = llama_n_vocab(model)
 
         // Get vocab from model for EOG check (new llama.cpp b7263+ API)
         let vocab = llama_model_get_vocab(model)
 
+        // Create a greedy sampler (new API)
+        let sampler = llama_sampler_init_greedy()
+        defer { llama_sampler_free(sampler) }
+
         while nCur < maxTokens {
-            // Get logits for the last token
-            guard let logits = llama_get_logits_ith(context, -1) else {
-                break
-            }
-
-            // Build candidates array for sampling
-            var candidates = [llama_token_data]()
-            candidates.reserveCapacity(Int(nVocab))
-            for tokenId in 0..<nVocab {
-                candidates.append(llama_token_data(
-                    id: tokenId,
-                    logit: logits[Int(tokenId)],
-                    p: 0
-                ))
-            }
-
-            // Sample using greedy (highest probability token)
-            let newToken: llama_token = candidates.withUnsafeMutableBufferPointer { buffer in
-                var candidatesArray = llama_token_data_array(
-                    data: buffer.baseAddress,
-                    size: buffer.count,
-                    sorted: false
-                )
-                // Apply temperature and sample
-                llama_sample_temp(context, &candidatesArray, 0.1)
-                return llama_sample_token_greedy(context, &candidatesArray)
-            }
+            // Sample using greedy sampler - gets logits from context at last token position
+            let newToken = llama_sampler_sample(sampler, context, batch.n_tokens - 1)
 
             // Check for end of generation (use vocab, not model - new API)
             if llama_vocab_is_eog(vocab, newToken) {
@@ -549,7 +530,9 @@ public actor GLMASROnDeviceSTTService: STTService {
         let tokens = UnsafeMutablePointer<llama_token>.allocate(capacity: maxTokens)
         defer { tokens.deallocate() }
 
-        let tokenCount = llama_tokenize(model, text, Int32(utf8Count), tokens, Int32(maxTokens), true, false)
+        // New llama.cpp API (b7263+): get vocab from model
+        let vocab = llama_model_get_vocab(model)
+        let tokenCount = llama_tokenize(vocab, text, Int32(utf8Count), tokens, Int32(maxTokens), true, false)
 
         var result: [llama_token] = []
         for i in 0..<Int(max(0, tokenCount)) {
@@ -563,8 +546,12 @@ public actor GLMASROnDeviceSTTService: STTService {
         let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: 256)
         defer { buffer.deallocate() }
 
+        // New llama.cpp API (b7263+): get vocab from model
+        let vocab = llama_model_get_vocab(model)
+
         for token in tokens {
-            let length = llama_token_to_piece(model, token, buffer, 256, false)
+            // New API: llama_token_to_piece(vocab, token, buf, length, lstrip, special)
+            let length = llama_token_to_piece(vocab, token, buffer, 256, 0, false)
             if length > 0 {
                 buffer[Int(length)] = 0
                 if let str = String(cString: buffer, encoding: .utf8) {
