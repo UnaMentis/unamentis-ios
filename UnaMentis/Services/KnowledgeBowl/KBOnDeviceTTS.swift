@@ -106,7 +106,16 @@ actor KBOnDeviceTTS {
         // Configure the service (creates it if needed)
         await ensureServiceConfigured()
 
-        // Kyutai prewarm skipped: xcframework not linked, using Apple TTS fallback
+        // For Kyutai, also ensure the model is loaded
+        if let kyutaiService = ttsService as? KyutaiPocketTTSService {
+            NSLog("⏱️ [KBOnDeviceTTS] prewarm() - loading Kyutai engine...")
+            do {
+                try await kyutaiService.ensureLoaded()
+            } catch {
+                logger.error("Failed to prewarm Kyutai engine: \(error.localizedDescription)")
+                NSLog("⏱️ [KBOnDeviceTTS] prewarm() - Kyutai load FAILED: \(error.localizedDescription)")
+            }
+        }
 
         let prewarmTime = (CFAbsoluteTimeGetCurrent() - prewarmStart) * 1000
         NSLog("⏱️ [KBOnDeviceTTS] prewarm() COMPLETE - took %.1fms", prewarmTime)
@@ -142,6 +151,11 @@ actor KBOnDeviceTTS {
         progress = 0
 
         do {
+            // Configure audio session for playback before speaking
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true)
+
             let synthesizeStart = CFAbsoluteTimeGetCurrent()
             NSLog("⏱️ [KBOnDeviceTTS] calling service.synthesize()")
             // Use the configured TTS service (respects user's global setting)
@@ -419,7 +433,7 @@ actor KBOnDeviceTTS {
             ttsProvider = provider
             NSLog("🔵 Parsed TTS provider: \(ttsProvider.rawValue)")
         } else {
-            ttsProvider = .appleTTS  // Default fallback
+            ttsProvider = .kyutaiPocket  // Default to on-device Kyutai Pocket
             NSLog("🔵 Using default TTS provider: \(ttsProvider.rawValue)")
         }
 
@@ -434,10 +448,11 @@ actor KBOnDeviceTTS {
             ttsService = AppleTTSService()
 
         case .kyutaiPocket:
-            // Kyutai xcframework not linked; fall back to Apple TTS for now
-            logger.warning("Kyutai Pocket TTS not available, falling back to Apple TTS")
-            NSLog("🔵 Kyutai unavailable, falling back to AppleTTSService")
-            ttsService = AppleTTSService()
+            // Use Kyutai Pocket TTS (on-device Rust/Candle inference)
+            // Use lowLatency preset for KB sessions to minimize delay before audio
+            logger.info("Using Kyutai Pocket TTS (on-device) with lowLatency preset")
+            NSLog("🔵 Creating KyutaiPocketTTSService with lowLatency config")
+            ttsService = KyutaiPocketTTSService(config: .lowLatency)
 
         case .selfHosted, .vibeVoice, .chatterbox, .elevenLabsFlash, .elevenLabsTurbo, .deepgramAura2:
             // For server-based TTS, fall back to Apple TTS for Knowledge Bowl

@@ -69,8 +69,8 @@ final class KBVoiceCoordinator: ObservableObject {
         Self.logger.info("Setting up KB voice coordinator")
 
         // Check user's TTS provider preference
-        let ttsProviderRaw = UserDefaults.standard.string(forKey: "ttsProvider") ?? TTSProvider.appleTTS.rawValue
-        let ttsProvider = TTSProvider(rawValue: ttsProviderRaw) ?? .appleTTS
+        let ttsProviderRaw = UserDefaults.standard.string(forKey: "ttsProvider") ?? TTSProvider.kyutaiPocket.rawValue
+        let ttsProvider = TTSProvider(rawValue: ttsProviderRaw) ?? .kyutaiPocket
 
         // Create TTS service based on user preference
         switch ttsProvider {

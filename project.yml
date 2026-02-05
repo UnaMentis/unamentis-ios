@@ -51,20 +51,12 @@ targets:
           # ManagedObjects included now - using manual classes with no auto-generation
           - "**/SelfHostedSTTService.swift"  # Has duplicate STTMetrics/STTError types
           - "**/OnDeviceLLMService.swift"  # Uses incompatible llama.cpp API, use SelfHostedLLMService instead
-          # Kyutai/PocketTTS subsystem - xcframework not linked, use SelfHostedTTSService
-          - "**/KyutaiPocketTTSService.swift"
-          - "**/KyutaiPocketTTSConfig.swift"
-          - "**/PocketTTSBindings.swift"
-          - "**/KyutaiPocketModelManager.swift"
-          - "**/KyutaiPocketSettingsView.swift"
-          - "**/KyutaiPocketSettingsViewModel.swift"
           # Modules/KnowledgeBowl - exclude entire substructure, keep only KnowledgeBowlModule.swift
           # The module facade references Core/ and UI/ versions for actual implementation
           - "Modules/KnowledgeBowl/Models/**"    # Duplicates of Core/KnowledgeBowl/
           - "Modules/KnowledgeBowl/Views/**"     # Duplicates of UI/KnowledgeBowl/
           - "Modules/KnowledgeBowl/Services/**"  # Duplicates of Services/KnowledgeBowl/
           - "Modules/KnowledgeBowl/Engine/**"    # Duplicates of Services/KnowledgeBowl/
-          - "Testing/KBAudioTestHarness/**"      # References excluded KyutaiPocketTTSService
       - path: Shared
         excludes:
           - "**/.DS_Store"
@@ -81,6 +73,8 @@ targets:
       - package: SwiftLog
         product: Logging
       - package: Collections
+      - framework: UnaMentis/Frameworks/PocketTTS.xcframework
+        embed: false
       # LlamaCpp dependency removed - using server-hosted LLM via SelfHostedLLMService
     settings:
       base:

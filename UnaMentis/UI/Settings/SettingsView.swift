@@ -594,7 +594,7 @@ class SettingsViewModel: ObservableObject {
            let tts = TTSProvider(rawValue: ttsRaw) {
             self.ttsProvider = tts
         } else {
-            self.ttsProvider = .appleTTS  // Default to on-device
+            self.ttsProvider = .kyutaiPocket  // Default to on-device (Kyutai Pocket)
         }
 
         // Load remote logging setting (defaults to true)

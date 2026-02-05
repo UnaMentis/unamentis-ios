@@ -603,7 +603,7 @@ class VoiceSettingsViewModel: ObservableObject {
            let tts = TTSProvider(rawValue: ttsRaw) {
             self.ttsProvider = tts
         } else {
-            self.ttsProvider = .appleTTS
+            self.ttsProvider = .kyutaiPocket
         }
     }
 

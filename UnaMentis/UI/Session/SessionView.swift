@@ -1434,7 +1434,7 @@ class SessionViewModel: ObservableObject {
         let llmProviderSetting = UserDefaults.standard.string(forKey: "llmProvider")
             .flatMap { LLMProvider(rawValue: $0) } ?? .localMLX
         let ttsProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
-            .flatMap { TTSProvider(rawValue: $0) } ?? .appleTTS
+            .flatMap { TTSProvider(rawValue: $0) } ?? .kyutaiPocket
 
         // Get self-hosted server settings (needed for TTS and LLM configuration)
         let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
@@ -1533,12 +1533,11 @@ class SessionViewModel: ObservableObject {
                 ttsService = AppleTTSService()
             }
         case .kyutaiPocket:
-            // KyutaiPocketTTSService not currently linked - fall back to Apple TTS
-            logger.warning("Kyutai Pocket TTS not available, falling back to Apple TTS")
-            ttsService = AppleTTSService()
+            logger.info("Using Kyutai Pocket TTS (on-device)")
+            ttsService = KyutaiPocketTTSService(config: .lowLatency)
         default:
-            logger.info("Using Apple TTS as default TTS provider")
-            ttsService = AppleTTSService()
+            logger.info("Using Kyutai Pocket TTS as default TTS provider")
+            ttsService = KyutaiPocketTTSService(config: .lowLatency)
         }
 
         // Configure LLM based on settings with graceful fallback
@@ -2471,22 +2470,24 @@ class SessionViewModel: ObservableObject {
         }
 
         // Configure TTS service for speaking barge-in responses
-        let ttsProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
-            .flatMap { TTSProvider(rawValue: $0) } ?? .appleTTS
+        let bargeInTTSProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
+            .flatMap { TTSProvider(rawValue: $0) } ?? .kyutaiPocket
         let ttsVoiceSetting = UserDefaults.standard.string(forKey: "ttsVoice") ?? "nova"
 
-        switch ttsProviderSetting {
+        switch bargeInTTSProviderSetting {
+        case .kyutaiPocket:
+            bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
         case .vibeVoice:
             if selfHostedEnabled && !serverIP.isEmpty {
                 bargeInTTSService = SelfHostedTTSService.vibeVoice(host: serverIP, voice: ttsVoiceSetting)
             } else {
-                bargeInTTSService = AppleTTSService()
+                bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
             }
         case .selfHosted:
             if selfHostedEnabled && !serverIP.isEmpty {
                 bargeInTTSService = SelfHostedTTSService.piper(host: serverIP, voice: ttsVoiceSetting)
             } else {
-                bargeInTTSService = AppleTTSService()
+                bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
             }
         case .chatterbox:
             if selfHostedEnabled && !serverIP.isEmpty {
@@ -2495,10 +2496,12 @@ class SessionViewModel: ObservableObject {
                 config.seed = nil  // Barge-in doesn't need reproducibility
                 bargeInTTSService = ChatterboxTTSService.chatterbox(host: serverIP, config: config)
             } else {
-                bargeInTTSService = AppleTTSService()
+                bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
             }
-        default:
+        case .appleTTS:
             bargeInTTSService = AppleTTSService()
+        default:
+            bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
         }
 
         do {
