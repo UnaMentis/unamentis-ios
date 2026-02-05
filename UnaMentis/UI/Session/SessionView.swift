@@ -1434,7 +1434,7 @@ class SessionViewModel: ObservableObject {
         let llmProviderSetting = UserDefaults.standard.string(forKey: "llmProvider")
             .flatMap { LLMProvider(rawValue: $0) } ?? .localMLX
         let ttsProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
-            .flatMap { TTSProvider(rawValue: $0) } ?? .appleTTS
+            .flatMap { TTSProvider(rawValue: $0) } ?? .pocketTTS
 
         // Get self-hosted server settings (needed for TTS and LLM configuration)
         let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
@@ -1532,12 +1532,12 @@ class SessionViewModel: ObservableObject {
                 logger.warning("Deepgram TTS API key not configured, falling back to Apple TTS")
                 ttsService = AppleTTSService()
             }
-        case .kyutaiPocket:
-            logger.info("Initializing Kyutai Pocket TTS (on-device)")
-            ttsService = KyutaiPocketTTSService()
+        case .pocketTTS:
+            logger.info("Using Pocket TTS (on-device)")
+            ttsService = KyutaiPocketTTSService(config: .lowLatency)
         default:
-            logger.info("Using Apple TTS as default TTS provider")
-            ttsService = AppleTTSService()
+            logger.info("Using Pocket TTS as default TTS provider")
+            ttsService = KyutaiPocketTTSService(config: .lowLatency)
         }
 
         // Configure LLM based on settings with graceful fallback
@@ -2126,12 +2126,10 @@ class SessionViewModel: ObservableObject {
         await startDirectStreamingForCurrentTopic()
     }
 
-    /// Speak a transition announcement using TTS
+    /// Speak a transition announcement using the configured TTS provider
     private func speakTransitionAnnouncement(_ text: String) async {
-        // Use Apple TTS for announcement - it's always available and reliable
-        // This is a brief interruption before continuing with the next topic
         do {
-            let ttsService = AppleTTSService()
+            let ttsService = TTSProvider.resolveConfiguredService()
 
             // Synthesize the announcement
             let stream = try await ttsService.synthesize(text: text)
@@ -2470,22 +2468,24 @@ class SessionViewModel: ObservableObject {
         }
 
         // Configure TTS service for speaking barge-in responses
-        let ttsProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
-            .flatMap { TTSProvider(rawValue: $0) } ?? .appleTTS
+        let bargeInTTSProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
+            .flatMap { TTSProvider(rawValue: $0) } ?? .pocketTTS
         let ttsVoiceSetting = UserDefaults.standard.string(forKey: "ttsVoice") ?? "nova"
 
-        switch ttsProviderSetting {
+        switch bargeInTTSProviderSetting {
+        case .pocketTTS:
+            bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
         case .vibeVoice:
             if selfHostedEnabled && !serverIP.isEmpty {
                 bargeInTTSService = SelfHostedTTSService.vibeVoice(host: serverIP, voice: ttsVoiceSetting)
             } else {
-                bargeInTTSService = AppleTTSService()
+                bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
             }
         case .selfHosted:
             if selfHostedEnabled && !serverIP.isEmpty {
                 bargeInTTSService = SelfHostedTTSService.piper(host: serverIP, voice: ttsVoiceSetting)
             } else {
-                bargeInTTSService = AppleTTSService()
+                bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
             }
         case .chatterbox:
             if selfHostedEnabled && !serverIP.isEmpty {
@@ -2494,10 +2494,12 @@ class SessionViewModel: ObservableObject {
                 config.seed = nil  // Barge-in doesn't need reproducibility
                 bargeInTTSService = ChatterboxTTSService.chatterbox(host: serverIP, config: config)
             } else {
-                bargeInTTSService = AppleTTSService()
+                bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
             }
-        default:
+        case .appleTTS:
             bargeInTTSService = AppleTTSService()
+        default:
+            bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
         }
 
         do {

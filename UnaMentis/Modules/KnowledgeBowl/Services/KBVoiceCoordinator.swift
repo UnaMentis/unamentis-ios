@@ -69,13 +69,13 @@ final class KBVoiceCoordinator: ObservableObject {
         Self.logger.info("Setting up KB voice coordinator")
 
         // Check user's TTS provider preference
-        let ttsProviderRaw = UserDefaults.standard.string(forKey: "ttsProvider") ?? TTSProvider.appleTTS.rawValue
-        let ttsProvider = TTSProvider(rawValue: ttsProviderRaw) ?? .appleTTS
+        let ttsProviderRaw = UserDefaults.standard.string(forKey: "ttsProvider") ?? TTSProvider.pocketTTS.rawValue
+        let ttsProvider = TTSProvider(rawValue: ttsProviderRaw) ?? .pocketTTS
 
         // Create TTS service based on user preference
         switch ttsProvider {
-        case .kyutaiPocket:
-            // Use Kyutai Pocket on-device TTS
+        case .pocketTTS:
+            // Use Pocket TTS on-device TTS
             let config = KyutaiPocketTTSConfig.fromUserDefaults()
             let kyutaiTTS = KyutaiPocketTTSService(config: config)
 
@@ -83,10 +83,10 @@ final class KBVoiceCoordinator: ObservableObject {
             do {
                 try await kyutaiTTS.ensureLoaded()
                 self.ttsService = kyutaiTTS
-                Self.logger.info("Using Kyutai Pocket TTS (on-device)")
+                Self.logger.info("Using Pocket TTS (on-device)")
             } catch {
-                // Fall back to Apple TTS if Kyutai models not available
-                Self.logger.warning("Kyutai Pocket models not available, falling back to Apple TTS: \(error)")
+                // Fall back to Apple TTS if Pocket TTS models not available
+                Self.logger.warning("Pocket TTS models not available, falling back to Apple TTS: \(error)")
                 self.ttsService = AppleTTSService()
             }
 

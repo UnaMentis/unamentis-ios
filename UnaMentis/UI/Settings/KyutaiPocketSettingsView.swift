@@ -1,13 +1,13 @@
-// UnaMentis - Kyutai Pocket Settings View
-// Advanced settings UI for Kyutai Pocket TTS on-device model
+// UnaMentis - Pocket TTS Settings View
+// Advanced settings UI for Pocket TTS on-device model
 //
 // Part of UI/Settings
 
 import SwiftUI
 
-/// Advanced settings view for Kyutai Pocket TTS
+/// Advanced settings view for Pocket TTS
 ///
-/// Exposes all Kyutai Pocket TTS configuration options:
+/// Exposes all Pocket TTS configuration options:
 /// - Model download/load management
 /// - Voice selection (8 built-in voices)
 /// - Sampling parameters (temperature, top-p)
@@ -67,7 +67,7 @@ struct KyutaiPocketSettingsView: View {
             // Model Info
             modelInfoSection
         }
-        .navigationTitle("Kyutai Pocket TTS")
+        .navigationTitle("Pocket TTS")
         .navigationBarTitleDisplayMode(.large)
         .onAppear {
             Task {
@@ -147,7 +147,7 @@ struct KyutaiPocketSettingsView: View {
         } header: {
             Text("Model Status")
         } footer: {
-            Text("Kyutai Pocket TTS runs entirely on-device. Models are bundled with the app.")
+            Text("Pocket TTS runs entirely on-device. Models are bundled with the app.")
         }
     }
 
@@ -592,7 +592,7 @@ struct KyutaiPocketSettingsView: View {
         } header: {
             Text("Model Information")
         } footer: {
-            Text("Kyutai Pocket TTS is a 100M parameter model from Kyutai (MIT license). Models are bundled with the app for instant use.")
+            Text("Pocket TTS is a 100M parameter model from Kyutai (MIT license). Models are bundled with the app for instant use.")
         }
     }
 }

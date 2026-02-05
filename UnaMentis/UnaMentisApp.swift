@@ -185,6 +185,26 @@ struct UnaMentisApp: App {
                 userInfo: userInfo.isEmpty ? nil : userInfo
             )
 
+        case "settings":
+            // Handle: unamentis://settings
+            Self.logger.info("DeepLink: Show settings")
+            NotificationCenter.default.post(name: .showSettingsFromDeepLink, object: nil)
+
+        case "history":
+            // Handle: unamentis://history
+            Self.logger.info("DeepLink: Show history")
+            NotificationCenter.default.post(name: .showHistoryFromDeepLink, object: nil)
+
+        case "learning":
+            // Handle: unamentis://learning
+            Self.logger.info("DeepLink: Show learning")
+            NotificationCenter.default.post(name: .showLearningFromDeepLink, object: nil)
+
+        case "onboarding":
+            // Handle: unamentis://onboarding (for demo videos)
+            Self.logger.info("DeepLink: Show onboarding")
+            NotificationCenter.default.post(name: .showOnboardingFromDeepLink, object: nil)
+
         default:
             Self.logger.warning("DeepLink: Unknown path: \(url.host ?? "nil")")
         }
@@ -202,6 +222,14 @@ extension Notification.Name {
     static let showAnalyticsFromDeepLink = Notification.Name("showAnalyticsFromDeepLink")
     /// Posted when freeform chat should start from a deep link
     static let startChatFromDeepLink = Notification.Name("startChatFromDeepLink")
+    /// Posted when settings should be shown from a deep link
+    static let showSettingsFromDeepLink = Notification.Name("showSettingsFromDeepLink")
+    /// Posted when history should be shown from a deep link
+    static let showHistoryFromDeepLink = Notification.Name("showHistoryFromDeepLink")
+    /// Posted when learning should be shown from a deep link
+    static let showLearningFromDeepLink = Notification.Name("showLearningFromDeepLink")
+    /// Posted when onboarding should be shown from a deep link (for demo videos)
+    static let showOnboardingFromDeepLink = Notification.Name("showOnboardingFromDeepLink")
 }
 
 // MARK: - Launch Screen View
@@ -233,12 +261,11 @@ struct LaunchScreenView: View {
 
 /// Tab indices for programmatic navigation
 enum AppTab: Int {
-    case session = 0
-    case learning = 1
-    case todo = 2
+    case learning = 0
+    case chat = 1
+    case assistant = 2
     case history = 3
-    case analytics = 4
-    case settings = 5
+    case more = 4
 }
 
 // MARK: - Session Activity State
@@ -307,7 +334,7 @@ struct ContentView: View {
     private static let logger = Logger(label: "com.unamentis.contentview")
 
     /// Selected tab for programmatic navigation from deep links
-    @State private var selectedTab: Int = AppTab.session.rawValue
+    @State private var selectedTab: Int = AppTab.learning.rawValue
 
     /// Topic to open in session (from deep link)
     @State private var deepLinkTopicId: UUID?
@@ -350,6 +377,18 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .startChatFromDeepLink)) { notification in
             handleStartChat(notification)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .showSettingsFromDeepLink)) { _ in
+            handleShowSettings()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showHistoryFromDeepLink)) { _ in
+            handleShowHistory()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showLearningFromDeepLink)) { _ in
+            handleShowLearning()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showOnboardingFromDeepLink)) { _ in
+            handleShowOnboarding()
+        }
     }
 
     // MARK: - Deep Link Handlers
@@ -360,7 +399,7 @@ struct ContentView: View {
 
         deepLinkTopicId = topicId
         autoStartChat = false
-        selectedTab = AppTab.session.rawValue
+        selectedTab = AppTab.chat.rawValue
     }
 
     private func handleResumeLesson(_ notification: Notification) {
@@ -369,25 +408,58 @@ struct ContentView: View {
 
         deepLinkTopicId = topicId
         autoStartChat = false
-        selectedTab = AppTab.session.rawValue
+        selectedTab = AppTab.chat.rawValue
     }
 
     private func handleShowAnalytics() {
         deepLinkTopicId = nil
         autoStartChat = false
-        selectedTab = AppTab.analytics.rawValue
+        selectedTab = AppTab.more.rawValue
     }
 
     private func handleStartChat(_ notification: Notification) {
         deepLinkTopicId = nil
         autoStartChat = true
         chatPrompt = notification.userInfo?["prompt"] as? String
-        selectedTab = AppTab.session.rawValue
+        selectedTab = AppTab.chat.rawValue
+    }
+
+    private func handleShowSettings() {
+        deepLinkTopicId = nil
+        autoStartChat = false
+        selectedTab = AppTab.more.rawValue
+    }
+
+    private func handleShowHistory() {
+        deepLinkTopicId = nil
+        autoStartChat = false
+        selectedTab = AppTab.history.rawValue
+    }
+
+    private func handleShowLearning() {
+        deepLinkTopicId = nil
+        autoStartChat = false
+        selectedTab = AppTab.learning.rawValue
+    }
+
+    private func handleShowOnboarding() {
+        // Note: For demo video purposes, we'd need to show onboarding overlay
+        // This currently just navigates to chat tab as a placeholder
+        // A full implementation would set a state to show OnboardingView
+        deepLinkTopicId = nil
+        autoStartChat = false
+        selectedTab = AppTab.chat.rawValue
     }
 
     @ViewBuilder
     private var mainContent: some View {
         TabView(selection: $selectedTab) {
+            LearningView()
+                .tabItem {
+                    Label("Learning", systemImage: "book")
+                }
+                .tag(AppTab.learning.rawValue)
+
             // NOTE: Removed debug logging from view body to prevent potential side effects
             SessionTabContent(
                 deepLinkTopicId: $deepLinkTopicId,
@@ -395,24 +467,18 @@ struct ContentView: View {
                 chatPrompt: $chatPrompt
             )
             .tabItem {
-                Label("Session", systemImage: "waveform")
+                Label("Chat", systemImage: "bubble.left.and.bubble.right")
             }
-            .tag(AppTab.session.rawValue)
+            .tag(AppTab.chat.rawValue)
             #if os(iOS)
             .toolbar(sessionActivityState.shouldHideTabBar ? .hidden : .visible, for: .tabBar)
             #endif
 
-            LearningView()
+            AssistantTabView()
                 .tabItem {
-                    Label("Learning", systemImage: "book")
+                    Label("Assistant", systemImage: "person.crop.circle.badge.questionmark")
                 }
-                .tag(AppTab.learning.rawValue)
-
-            TodoListView()
-                .tabItem {
-                    Label("To-Do", systemImage: "checklist")
-                }
-                .tag(AppTab.todo.rawValue)
+                .tag(AppTab.assistant.rawValue)
 
             HistoryView()
                 .tabItem {
@@ -420,17 +486,11 @@ struct ContentView: View {
                 }
                 .tag(AppTab.history.rawValue)
 
-            AnalyticsView()
+            MoreTabView()
                 .tabItem {
-                    Label("Analytics", systemImage: "chart.bar")
+                    Label("More", systemImage: "ellipsis.circle")
                 }
-                .tag(AppTab.analytics.rawValue)
-
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: "gear")
-                }
-                .tag(AppTab.settings.rawValue)
+                .tag(AppTab.more.rawValue)
         }
         // NOTE: Removed .animation() modifier here - it was causing continuous view re-renders
         // The tab bar visibility change is now handled without animation to prevent lockups
@@ -626,6 +686,29 @@ public class AppState: ObservableObject {
 
         await checkConfiguration()
         await initializePatchPanel()
+
+        // Auto-discover server on first launch or when no server is configured
+        await initializeServerDiscovery()
+    }
+
+    /// Initialize server discovery for self-hosted mode
+    /// Attempts auto-discovery if no servers are configured
+    private func initializeServerDiscovery() async {
+        let serverManager = ServerConfigManager.shared
+        let existingServers = await serverManager.getAllServers()
+
+        // Only auto-discover if no servers are configured
+        if existingServers.isEmpty {
+            // Check if we have a cached server first (instant)
+            if await serverManager.hasAutoDiscoveredServer {
+                return // Already have a discovered server
+            }
+
+            // Try auto-discovery in the background (non-blocking)
+            Task {
+                _ = await serverManager.connectWithAutoDiscovery()
+            }
+        }
     }
 
     // MARK: - Configuration
@@ -807,6 +890,30 @@ public class AppState: ObservableObject {
     /// Disable developer mode
     public func disableDeveloperMode() async {
         await patchPanel.disableDeveloperMode()
+    }
+}
+
+// MARK: - More Tab View
+
+/// Combined view for Analytics and Settings in the More tab
+struct MoreTabView: View {
+    var body: some View {
+        NavigationStack {
+            List {
+                NavigationLink {
+                    AnalyticsView()
+                } label: {
+                    Label("Analytics", systemImage: "chart.bar")
+                }
+
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+            .navigationTitle("More")
+        }
     }
 }
 

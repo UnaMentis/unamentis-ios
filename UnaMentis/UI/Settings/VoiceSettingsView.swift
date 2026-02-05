@@ -280,7 +280,7 @@ public struct VoiceSettingsView: View {
     private var ttsSection: some View {
         Section {
             Picker("Provider", selection: $viewModel.ttsProvider) {
-                Text("Kyutai Pocket (On-Device)").tag(TTSProvider.kyutaiPocket)
+                Text("Pocket TTS (On-Device)").tag(TTSProvider.pocketTTS)
                 Text("Apple TTS (On-Device)").tag(TTSProvider.appleTTS)
                 if viewModel.selfHostedEnabled {
                     Text("Piper (22kHz)").tag(TTSProvider.selfHosted)
@@ -303,9 +303,9 @@ public struct VoiceSettingsView: View {
                 .accessibilityHint("Select the AI's voice")
             }
 
-            // Kyutai Pocket TTS settings
-            if viewModel.ttsProvider == .kyutaiPocket {
-                if viewModel.kyutaiPocketModelLoaded {
+            // Pocket TTS settings
+            if viewModel.ttsProvider == .pocketTTS {
+                if viewModel.pocketTTSModelLoaded {
                     HStack {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
@@ -372,7 +372,7 @@ public struct VoiceSettingsView: View {
             }
 
             // Show on-device TTS info
-            if viewModel.ttsProvider == .kyutaiPocket {
+            if viewModel.ttsProvider == .pocketTTS {
                 HStack {
                     Text("Sample Rate")
                     Spacer()
@@ -414,7 +414,7 @@ public struct VoiceSettingsView: View {
                     Text(viewModel.ttsProvider == .selfHosted ? "Uses Piper server - Free" :
                          viewModel.ttsProvider == .vibeVoice ? "Uses VibeVoice server - Free" :
                          viewModel.ttsProvider == .chatterbox ? "Uses Chatterbox server - Free" :
-                         viewModel.ttsProvider == .kyutaiPocket ? "On-device neural TTS - Free" :
+                         viewModel.ttsProvider == .pocketTTS ? "On-device neural TTS - Free" :
                          "Works offline - Free")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -495,9 +495,9 @@ class VoiceSettingsViewModel: ObservableObject {
     @AppStorage("chatterbox_exaggeration") var chatterboxExaggeration: Double = 0.5
     @AppStorage("chatterbox_preset") var chatterboxPresetRaw: String = "default"
 
-    // Kyutai Pocket TTS settings
-    @AppStorage("kyutai_pocket_preset") var kyutaiPocketPresetRaw: String = "default"
-    @Published var kyutaiPocketModelLoaded: Bool = false
+    // Pocket TTS settings
+    @AppStorage("kyutai_pocket_preset") var pocketTTSPresetRaw: String = "default"
+    @Published var pocketTTSModelLoaded: Bool = false
 
     // Self-hosted
     @AppStorage("selfHostedEnabled") var selfHostedEnabled: Bool = false
@@ -523,9 +523,9 @@ class VoiceSettingsViewModel: ObservableObject {
         ChatterboxPreset(rawValue: chatterboxPresetRaw)?.displayName ?? "Default"
     }
 
-    /// Kyutai Pocket preset display name
-    var kyutaiPocketPresetName: String {
-        kyutaiPocketModelLoaded ? "Default" : "Not Installed"
+    /// Pocket TTS preset display name
+    var pocketTTSPresetName: String {
+        pocketTTSModelLoaded ? "Default" : "Not Installed"
     }
 
     /// Get discovered voices for the currently selected TTS provider
@@ -603,14 +603,14 @@ class VoiceSettingsViewModel: ObservableObject {
            let tts = TTSProvider(rawValue: ttsRaw) {
             self.ttsProvider = tts
         } else {
-            self.ttsProvider = .appleTTS
+            self.ttsProvider = .pocketTTS
         }
     }
 
     /// Load async data (capabilities discovery)
     func loadAsync() async {
-        // Check Kyutai Pocket model availability
-        await checkKyutaiPocketModelStatus()
+        // Check Pocket TTS model availability
+        await checkPocketTTSModelStatus()
 
         if selfHostedEnabled {
             let primaryServerIP = defaults.string(forKey: "primaryServerIP") ?? ""
@@ -639,8 +639,8 @@ class VoiceSettingsViewModel: ObservableObject {
         }
     }
 
-    /// Check Kyutai Pocket TTS model availability
-    private func checkKyutaiPocketModelStatus() async {
+    /// Check Pocket TTS model availability
+    private func checkPocketTTSModelStatus() async {
         // Check if model files exist in the expected location
         let fm = FileManager.default
         let documentsPath = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -654,7 +654,7 @@ class VoiceSettingsViewModel: ObservableObject {
                        fm.fileExists(atPath: voicesPath.path)
 
         await MainActor.run {
-            kyutaiPocketModelLoaded = available
+            pocketTTSModelLoaded = available
         }
     }
 

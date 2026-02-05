@@ -71,6 +71,35 @@ public struct SettingsView: View {
                     Text("Audio, speech recognition, language model, and voice output settings.")
                 }
 
+                // Accessibility Section
+                Section {
+                    Toggle("Navigation Voice Announcements", isOn: $viewModel.accessibilityNavigationAnnouncements)
+                } header: {
+                    Text("Accessibility")
+                } footer: {
+                    Text("When enabled, the app announces menus and navigation changes for screen-free use outside of sessions. In-session voice feedback (countdowns, results) is always available.")
+                }
+
+                // On-Device AI Section
+                Section {
+                    NavigationLink {
+                        OnDeviceLLMSettingsView()
+                    } label: {
+                        HStack {
+                            Label("On-Device LLM", systemImage: "cpu")
+                            Spacer()
+                            Text(viewModel.onDeviceLLMStatus)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityHint("Manage the on-device language model for offline AI features")
+                } header: {
+                    Text("On-Device AI")
+                } footer: {
+                    Text("Download and manage AI models that run entirely on your device.")
+                }
+
                 // Self-Hosted Server Section
                 Section {
                     Toggle("Enable Self-Hosted Server", isOn: $viewModel.selfHostedEnabled)
@@ -235,26 +264,6 @@ public struct SettingsView: View {
                     Text("Debug & Testing")
                 } footer: {
                     Text("Tools for testing subsystems and troubleshooting.")
-                }
-
-                // Practice Modules Section
-                Section {
-                    NavigationLink {
-                        KBDashboardView()
-                    } label: {
-                        HStack {
-                            Label("Knowledge Bowl", systemImage: "brain.head.profile")
-                            Spacer()
-                            Text("Practice")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .accessibilityHint("Academic competition practice for written and oral rounds")
-                } header: {
-                    Text("Practice Modules")
-                } footer: {
-                    Text("Specialized practice modes for academic competitions.")
                 }
 
                 // Help Section
@@ -491,6 +500,9 @@ class SettingsViewModel: ObservableObject {
         ChatterboxPreset(rawValue: chatterboxPresetRaw)?.displayName ?? "Default"
     }
 
+    // Accessibility
+    @AppStorage("accessibilityNavigationAnnouncements") var accessibilityNavigationAnnouncements: Bool = false
+
     // Debug
     @AppStorage("debugMode") var debugMode = false
     @AppStorage("verboseLogging") var verboseLogging = false
@@ -506,6 +518,9 @@ class SettingsViewModel: ObservableObject {
     @Published var discoveredPiperVoices: [String] = []
     @Published var discoveredVibeVoiceVoices: [String] = []
     @Published var serverCapabilitiesSummary: String = ""
+
+    // On-Device LLM
+    @Published var onDeviceLLMStatus: String = "Checking..."
 
     /// Get discovered voices for the currently selected TTS provider
     var discoveredVoices: [String] {
@@ -591,7 +606,7 @@ class SettingsViewModel: ObservableObject {
            let tts = TTSProvider(rawValue: ttsRaw) {
             self.ttsProvider = tts
         } else {
-            self.ttsProvider = .appleTTS  // Default to on-device
+            self.ttsProvider = .pocketTTS  // Default to on-device (Pocket TTS)
         }
 
         // Load remote logging setting (defaults to true)
@@ -626,8 +641,9 @@ class SettingsViewModel: ObservableObject {
         async let keyStatusTask: () = loadKeyStatus()
         async let curriculumTask: () = checkSampleCurriculum()
         async let serverTask: () = loadServerStatus()
+        async let llmTask: () = checkOnDeviceLLMStatus()
 
-        _ = await (keyStatusTask, curriculumTask, serverTask)
+        _ = await (keyStatusTask, curriculumTask, serverTask, llmTask)
     }
 
     /// Available models for current provider
@@ -654,6 +670,35 @@ class SettingsViewModel: ObservableObject {
         await MainActor.run {
             selfHostedServerCount = servers.filter { $0.isEnabled }.count
             healthySelfHostedCount = healthy.count
+        }
+    }
+
+    private func checkOnDeviceLLMStatus() async {
+        let manager = OnDeviceLLMModelManager.shared
+        // Wait for manager to check filesystem state
+        let state = await manager.currentState()
+        let isAvailable = await manager.isModelAvailable()
+        await MainActor.run {
+            // Use file presence as ground truth for downloaded states
+            if isAvailable {
+                switch state {
+                case .loaded:
+                    onDeviceLLMStatus = "Active"
+                default:
+                    onDeviceLLMStatus = "Ready"
+                }
+            } else {
+                switch state {
+                case .downloading(let progress):
+                    onDeviceLLMStatus = "Downloading \(Int(progress * 100))%"
+                case .verifying:
+                    onDeviceLLMStatus = "Verifying..."
+                case .error:
+                    onDeviceLLMStatus = "Error"
+                default:
+                    onDeviceLLMStatus = "Not Downloaded"
+                }
+            }
         }
     }
 
