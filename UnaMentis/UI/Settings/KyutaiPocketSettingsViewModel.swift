@@ -1,5 +1,5 @@
-// UnaMentis - Kyutai Pocket Settings ViewModel
-// ViewModel for Kyutai Pocket TTS settings UI
+// UnaMentis - Pocket TTS Settings ViewModel
+// ViewModel for Pocket TTS settings UI
 //
 // Part of UI/Settings
 
@@ -8,7 +8,7 @@ import Combine
 import Foundation
 import SwiftUI
 
-/// ViewModel for Kyutai Pocket TTS settings
+/// ViewModel for Pocket TTS settings
 @MainActor
 final class KyutaiPocketSettingsViewModel: ObservableObject {
 
@@ -82,7 +82,7 @@ final class KyutaiPocketSettingsViewModel: ObservableObject {
 
     // MARK: - Testing
 
-    @Published var testText = "Hello, this is a test of the Kyutai Pocket text to speech system."
+    @Published var testText = "Hello, this is a test of the Pocket TTS text to speech system."
     @Published var isTesting = false
     @Published var testResult: String?
 

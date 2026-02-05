@@ -679,9 +679,9 @@ public actor LatencyTestCoordinator {
         case .appleTTS:
             return AppleTTSService()
 
-        case .kyutaiPocket:
-            // On-device Kyutai Pocket TTS (disabled - xcframework not linked)
-            throw TestCoordinatorError.providerCreationFailed("Kyutai Pocket TTS is not available in this build")
+        case .pocketTTS:
+            // On-device Pocket TTS (disabled - xcframework not linked)
+            throw TestCoordinatorError.providerCreationFailed("Pocket TTS is not available in this build")
 
         case .selfHosted:
             // Piper TTS

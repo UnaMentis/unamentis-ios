@@ -1,5 +1,5 @@
-// UnaMentis - Kyutai Pocket TTS Model Manager
-// Manages Kyutai Pocket TTS model files for Rust/Candle inference
+// UnaMentis - Pocket TTS Model Manager
+// Manages Pocket TTS model files for Rust/Candle inference
 //
 // Part of Services/TTS
 
@@ -8,7 +8,7 @@ import OSLog
 
 // MARK: - Model Manager
 
-/// Manager for Kyutai Pocket TTS model files
+/// Manager for Pocket TTS model files
 ///
 /// Model files (~230MB total) are stored in Documents/models/kyutai-pocket-ios/
 /// and loaded by the Rust/Candle inference engine.
@@ -68,7 +68,7 @@ actor KyutaiPocketModelManager {
 
     // MARK: - Model Paths
 
-    /// Base directory for Kyutai Pocket TTS models
+    /// Base directory for Pocket TTS models
     private var modelDirectory: URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         return documentsPath.appendingPathComponent("models/PocketTTS", isDirectory: true)
@@ -143,7 +143,7 @@ actor KyutaiPocketModelManager {
 
     /// Load model configuration (validates files exist)
     func loadModels(config: KyutaiPocketTTSConfig) async throws {
-        logger.info("Validating Kyutai Pocket TTS model files for Rust/Candle")
+        logger.info("Validating Pocket TTS model files for Rust/Candle")
         state = .loading(0.0)
 
         guard await isModelAvailable() else {
@@ -170,7 +170,7 @@ actor KyutaiPocketModelManager {
 
     /// Unload models (reset state)
     func unloadModels() {
-        logger.info("Resetting Kyutai Pocket TTS state")
+        logger.info("Resetting Pocket TTS state")
         state = .available
     }
 
@@ -255,7 +255,7 @@ actor KyutaiPocketModelManager {
     /// Download models from server
     private func downloadModels() async throws {
         state = .downloading(0.0)
-        logger.info("Downloading Kyutai Pocket TTS models...")
+        logger.info("Downloading Pocket TTS models...")
 
         // TODO: Implement actual download from models.unamentis.com
         // For now, throw error indicating models need to be copied manually
@@ -278,7 +278,7 @@ actor KyutaiPocketModelManager {
 
 // MARK: - Model Error
 
-/// Errors for Kyutai Pocket model operations
+/// Errors for Pocket TTS model operations
 enum KyutaiPocketModelError: Error, LocalizedError {
     case modelsNotDownloaded
     case modelsNotLoaded
@@ -290,9 +290,9 @@ enum KyutaiPocketModelError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .modelsNotDownloaded:
-            return "Kyutai Pocket TTS models are not installed. Please copy models to Documents/models/kyutai-pocket-ios/"
+            return "Pocket TTS models are not installed. Please copy models to Documents/models/kyutai-pocket-ios/"
         case .modelsNotLoaded:
-            return "Kyutai Pocket TTS engine is not loaded."
+            return "Pocket TTS engine is not loaded."
         case .serverUnavailable:
             return "Model download server is not available."
         case .networkError(let error):

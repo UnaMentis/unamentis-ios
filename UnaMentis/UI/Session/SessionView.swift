@@ -1434,7 +1434,7 @@ class SessionViewModel: ObservableObject {
         let llmProviderSetting = UserDefaults.standard.string(forKey: "llmProvider")
             .flatMap { LLMProvider(rawValue: $0) } ?? .localMLX
         let ttsProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
-            .flatMap { TTSProvider(rawValue: $0) } ?? .kyutaiPocket
+            .flatMap { TTSProvider(rawValue: $0) } ?? .pocketTTS
 
         // Get self-hosted server settings (needed for TTS and LLM configuration)
         let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
@@ -1532,11 +1532,11 @@ class SessionViewModel: ObservableObject {
                 logger.warning("Deepgram TTS API key not configured, falling back to Apple TTS")
                 ttsService = AppleTTSService()
             }
-        case .kyutaiPocket:
-            logger.info("Using Kyutai Pocket TTS (on-device)")
+        case .pocketTTS:
+            logger.info("Using Pocket TTS (on-device)")
             ttsService = KyutaiPocketTTSService(config: .lowLatency)
         default:
-            logger.info("Using Kyutai Pocket TTS as default TTS provider")
+            logger.info("Using Pocket TTS as default TTS provider")
             ttsService = KyutaiPocketTTSService(config: .lowLatency)
         }
 
@@ -2471,11 +2471,11 @@ class SessionViewModel: ObservableObject {
 
         // Configure TTS service for speaking barge-in responses
         let bargeInTTSProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
-            .flatMap { TTSProvider(rawValue: $0) } ?? .kyutaiPocket
+            .flatMap { TTSProvider(rawValue: $0) } ?? .pocketTTS
         let ttsVoiceSetting = UserDefaults.standard.string(forKey: "ttsVoice") ?? "nova"
 
         switch bargeInTTSProviderSetting {
-        case .kyutaiPocket:
+        case .pocketTTS:
             bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
         case .vibeVoice:
             if selfHostedEnabled && !serverIP.isEmpty {

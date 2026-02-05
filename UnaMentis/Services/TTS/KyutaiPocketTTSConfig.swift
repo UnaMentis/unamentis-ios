@@ -1,15 +1,15 @@
-// UnaMentis - Kyutai Pocket TTS Configuration
-// Configuration struct for Kyutai Pocket TTS on-device model
+// UnaMentis - Pocket TTS Configuration
+// Configuration struct for Pocket TTS on-device model
 //
 // Part of Services/TTS
 
 import Foundation
 
-// MARK: - Kyutai Pocket TTS Configuration
+// MARK: - Pocket TTS Configuration
 
-/// Configuration for Kyutai Pocket TTS on-device model
+/// Configuration for Pocket TTS on-device model
 ///
-/// Kyutai Pocket TTS is a 100M parameter on-device text-to-speech model with:
+/// Pocket TTS is a 100M parameter on-device text-to-speech model with:
 /// - 8 built-in voices (alba, marius, javert, jean, fantine, cosette, eponine, azelma)
 /// - 5-second voice cloning capability
 /// - 24kHz high-quality output
@@ -177,7 +177,7 @@ public struct KyutaiPocketTTSConfig: Codable, Sendable, Equatable {
 
 // MARK: - Voice Enum
 
-/// Built-in voices for Kyutai Pocket TTS
+/// Built-in voices for Pocket TTS
 public enum KyutaiPocketVoice: Int, Codable, CaseIterable, Sendable {
     case alba = 0
     case marius = 1
@@ -249,7 +249,7 @@ public enum VoiceGender: String, Codable, CaseIterable, Sendable {
 
 // MARK: - Preset Enum
 
-/// Kyutai Pocket configuration presets
+/// Pocket TTS configuration presets
 public enum KyutaiPocketPreset: String, Codable, CaseIterable, Sendable {
     case `default` = "default"
     case lowLatency = "lowLatency"
@@ -298,7 +298,7 @@ public enum KyutaiPocketPreset: String, Codable, CaseIterable, Sendable {
 
 // MARK: - UserDefaults Keys
 
-/// UserDefaults keys for Kyutai Pocket settings
+/// UserDefaults keys for Pocket TTS settings
 extension KyutaiPocketTTSConfig {
 
     private enum UserDefaultsKey {
@@ -403,7 +403,7 @@ extension KyutaiPocketTTSConfig {
 
 // MARK: - Model Info
 
-/// Static information about the Kyutai Pocket TTS model
+/// Static information about the Pocket TTS model
 public enum KyutaiPocketModelInfo {
     /// Total model size in MB (all components bundled)
     public static let totalSizeMB: Int = 230

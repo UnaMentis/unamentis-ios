@@ -176,7 +176,7 @@ actor KBAudioGenerator {
         case .appleTTS:
             return AppleTTSService()
 
-        case .kyutaiPocket:
+        case .pocketTTS:
             return KyutaiPocketTTSService()
 
         // For cloud/self-hosted providers, we'd need server configuration

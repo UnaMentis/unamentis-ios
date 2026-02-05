@@ -246,7 +246,7 @@ public enum TTSProvider: String, Codable, Sendable, CaseIterable {
     case selfHosted = "Self-Hosted (Piper)"
     case vibeVoice = "Self-Hosted (VibeVoice)"
     case chatterbox = "Chatterbox TTS"
-    case kyutaiPocket = "Kyutai Pocket (On-Device)"
+    case pocketTTS = "Pocket TTS (On-Device)"
 
     /// Display name for UI
     public var displayName: String {
@@ -264,14 +264,14 @@ public enum TTSProvider: String, Codable, Sendable, CaseIterable {
         case .selfHosted: return "piper"
         case .vibeVoice: return "vibevoice"
         case .chatterbox: return "chatterbox"
-        case .kyutaiPocket: return "kyutai-pocket"
+        case .pocketTTS: return "pocket-tts"
         }
     }
 
     /// Whether this provider requires network connectivity
     public var requiresNetwork: Bool {
         switch self {
-        case .appleTTS, .kyutaiPocket:
+        case .appleTTS, .pocketTTS:
             return false
         case .selfHosted, .vibeVoice, .chatterbox:
             return true  // Requires local network to self-hosted server
@@ -283,7 +283,7 @@ public enum TTSProvider: String, Codable, Sendable, CaseIterable {
     /// Whether this provider requires an API key
     public var requiresAPIKey: Bool {
         switch self {
-        case .appleTTS, .selfHosted, .vibeVoice, .chatterbox, .kyutaiPocket:
+        case .appleTTS, .selfHosted, .vibeVoice, .chatterbox, .pocketTTS:
             return false
         default:
             return true
@@ -306,7 +306,7 @@ public enum TTSProvider: String, Codable, Sendable, CaseIterable {
         case .selfHosted: return 22050  // Piper outputs 22050 Hz
         case .vibeVoice: return 24000   // VibeVoice outputs 24000 Hz
         case .chatterbox: return 24000  // Chatterbox outputs 24000 Hz
-        case .kyutaiPocket: return 24000  // Kyutai Pocket outputs 24000 Hz
+        case .pocketTTS: return 24000  // Pocket TTS outputs 24000 Hz
         default: return 24000
         }
     }
@@ -324,7 +324,7 @@ public enum TTSProvider: String, Codable, Sendable, CaseIterable {
     /// Whether this is an on-device provider (runs locally without network)
     public var isOnDevice: Bool {
         switch self {
-        case .appleTTS, .kyutaiPocket:
+        case .appleTTS, .pocketTTS:
             return true
         default:
             return false
@@ -350,8 +350,8 @@ public enum TTSProvider: String, Codable, Sendable, CaseIterable {
             return "Self-hosted VibeVoice server"
         case .chatterbox:
             return "Self-hosted Chatterbox with emotion control"
-        case .kyutaiPocket:
-            return "On-device neural TTS, works offline, 8 voices"
+        case .pocketTTS:
+            return "On-device Pocket TTS, works offline, 8 voices"
         }
     }
 }

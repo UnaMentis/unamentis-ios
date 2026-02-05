@@ -106,14 +106,14 @@ actor KBOnDeviceTTS {
         // Configure the service (creates it if needed)
         await ensureServiceConfigured()
 
-        // For Kyutai, also ensure the model is loaded
+        // For Pocket TTS, also ensure the model is loaded
         if let kyutaiService = ttsService as? KyutaiPocketTTSService {
-            NSLog("⏱️ [KBOnDeviceTTS] prewarm() - loading Kyutai engine...")
+            NSLog("⏱️ [KBOnDeviceTTS] prewarm() - loading Pocket TTS engine...")
             do {
                 try await kyutaiService.ensureLoaded()
             } catch {
-                logger.error("Failed to prewarm Kyutai engine: \(error.localizedDescription)")
-                NSLog("⏱️ [KBOnDeviceTTS] prewarm() - Kyutai load FAILED: \(error.localizedDescription)")
+                logger.error("Failed to prewarm Pocket TTS engine: \(error.localizedDescription)")
+                NSLog("⏱️ [KBOnDeviceTTS] prewarm() - Pocket TTS load FAILED: \(error.localizedDescription)")
             }
         }
 
@@ -181,8 +181,8 @@ actor KBOnDeviceTTS {
                     }
                 }
             } else {
-                NSLog("🟡 KBOnDeviceTTS.speak() - using Kyutai/external playback path")
-                // For services that return raw audio (e.g., Kyutai), collect and play
+                NSLog("🟡 KBOnDeviceTTS.speak() - using Pocket TTS/external playback path")
+                // For services that return raw audio (e.g., Pocket TTS), collect and play
                 var audioChunks: [TTSAudioChunk] = []
 
                 for try await chunk in audioStream {
@@ -433,7 +433,7 @@ actor KBOnDeviceTTS {
             ttsProvider = provider
             NSLog("🔵 Parsed TTS provider: \(ttsProvider.rawValue)")
         } else {
-            ttsProvider = .kyutaiPocket  // Default to on-device Kyutai Pocket
+            ttsProvider = .pocketTTS  // Default to on-device Pocket TTS
             NSLog("🔵 Using default TTS provider: \(ttsProvider.rawValue)")
         }
 
@@ -447,10 +447,10 @@ actor KBOnDeviceTTS {
             NSLog("🔵 Creating AppleTTSService")
             ttsService = AppleTTSService()
 
-        case .kyutaiPocket:
-            // Use Kyutai Pocket TTS (on-device Rust/Candle inference)
+        case .pocketTTS:
+            // Use Pocket TTS (on-device Rust/Candle inference)
             // Use lowLatency preset for KB sessions to minimize delay before audio
-            logger.info("Using Kyutai Pocket TTS (on-device) with lowLatency preset")
+            logger.info("Using Pocket TTS (on-device) with lowLatency preset")
             NSLog("🔵 Creating KyutaiPocketTTSService with lowLatency config")
             ttsService = KyutaiPocketTTSService(config: .lowLatency)
 

@@ -28,7 +28,7 @@ struct KBAudioTestCase: Codable, Sendable, Identifiable {
         question: KBQuestion,
         expectedAnswer: String? = nil,
         answerType: KBAnswerType? = nil,
-        audioSource: AudioSource = .generateTTS(provider: .kyutaiPocket),
+        audioSource: AudioSource = .generateTTS(provider: .pocketTTS),
         validationConfig: ValidationConfig = .standard
     ) {
         self.id = id
@@ -135,7 +135,7 @@ extension KBAudioTestCase {
     /// Create test cases from a list of questions
     static func fromQuestions(
         _ questions: [KBQuestion],
-        audioSource: AudioSource = .generateTTS(provider: .kyutaiPocket),
+        audioSource: AudioSource = .generateTTS(provider: .pocketTTS),
         validationConfig: ValidationConfig = .standard
     ) -> [KBAudioTestCase] {
         questions.map { question in

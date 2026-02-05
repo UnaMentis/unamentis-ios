@@ -34,13 +34,13 @@ final class KBAudioTestHarnessTests: XCTestCase {
     // MARK: - Audio Generator Tests
 
     func testAudioGeneratorCreatesValidBuffer() async throws {
-        // Use Kyutai Pocket TTS - the project's standard on-device TTS
-        // Unlike Apple TTS, Kyutai Pocket provides extractable raw audio data
+        // Use Pocket TTS - the project's standard on-device TTS
+        // Unlike Apple TTS, Pocket TTS provides extractable raw audio data
         let generator = KBAudioGenerator()
 
         let result = try await generator.generateAudio(
             for: "Paris",
-            using: .kyutaiPocket,
+            using: .pocketTTS,
             convertToSTTFormat: true
         )
 
@@ -53,14 +53,14 @@ final class KBAudioTestHarnessTests: XCTestCase {
     }
 
     func testAudioGeneratorFromSource() async throws {
-        // Use Kyutai Pocket TTS - provides extractable raw audio data
+        // Use Pocket TTS - provides extractable raw audio data
         let generator = KBAudioGenerator()
-        let source = KBAudioTestCase.AudioSource.generateTTS(provider: .kyutaiPocket)
+        let source = KBAudioTestCase.AudioSource.generateTTS(provider: .pocketTTS)
 
         let result = try await generator.generateFromSource(source, text: "Hello world")
 
         XCTAssertGreaterThan(result.buffer.frameLength, 0)
-        XCTAssertEqual(result.provider, .kyutaiPocket)
+        XCTAssertEqual(result.provider, .pocketTTS)
     }
 
     // MARK: - Transcript Validator Tests
@@ -281,7 +281,7 @@ final class KBAudioTestHarnessTests: XCTestCase {
 
     // MARK: - Full Pipeline Tests
 
-    /// Test the complete pipeline with Kyutai Pocket TTS
+    /// Test the complete pipeline with Pocket TTS
     /// Tests the full round-trip: TTS -> STT -> Validation
     func testFullPipelineWithKyutaiPocketTTS() async throws {
         // Skip if speech recognition not available

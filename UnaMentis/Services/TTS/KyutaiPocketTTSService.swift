@@ -1,5 +1,5 @@
-// UnaMentis - Kyutai Pocket TTS Service
-// On-device Text-to-Speech service using Kyutai Pocket TTS via Rust/Candle
+// UnaMentis - Pocket TTS Service
+// On-device Text-to-Speech service using Pocket TTS via Rust/Candle
 //
 // Part of Services/TTS
 
@@ -72,11 +72,11 @@ private final class StreamingEventHandler: TtsEventHandler {
     }
 }
 
-// MARK: - Kyutai Pocket TTS Service
+// MARK: - Pocket TTS Service
 
-/// On-device TTS service using Kyutai Pocket TTS with Rust/Candle inference
+/// On-device TTS service using Pocket TTS with Rust/Candle inference
 ///
-/// Kyutai Pocket TTS is a 100M parameter on-device model featuring:
+/// Pocket TTS is a 100M parameter on-device model featuring:
 /// - 8 built-in voices (Les Misérables characters)
 /// - 5-second voice cloning capability
 /// - 24kHz high-quality audio output
@@ -121,7 +121,7 @@ public actor KyutaiPocketTTSService: TTSService {
 
     /// Initialize with configuration
     /// - Parameters:
-    ///   - config: Kyutai Pocket TTS configuration
+    ///   - config: Pocket TTS configuration
     ///   - modelManager: Model manager instance (shared)
     init(
         config: KyutaiPocketTTSConfig = .default,
@@ -161,7 +161,7 @@ public actor KyutaiPocketTTSService: TTSService {
         logger.debug("Voice configured: \(config.voiceId)")
     }
 
-    /// Configure Kyutai Pocket specific settings
+    /// Configure Pocket TTS specific settings
     public func configurePocket(_ config: KyutaiPocketTTSConfig) async {
         self.config = config
         // Update voice config to match
@@ -182,7 +182,7 @@ public actor KyutaiPocketTTSService: TTSService {
             }
         }
 
-        logger.debug("Kyutai Pocket configured: voice=\(config.voiceIndex), temp=\(config.temperature)")
+        logger.debug("Pocket TTS configured: voice=\(config.voiceIndex), temp=\(config.temperature)")
     }
 
     /// Synthesize text to audio stream using streaming API for low latency
@@ -403,7 +403,7 @@ extension KyutaiPocketTTSService {
             VoiceInfo(
                 id: String(pocketVoice.index),
                 name: pocketVoice.name,
-                language: "en",  // Kyutai Pocket is English only
+                language: "en",  // Pocket TTS is English only
                 gender: pocketVoice.gender
             )
         }
