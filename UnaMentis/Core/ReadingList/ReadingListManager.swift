@@ -95,10 +95,13 @@ public actor ReadingListManager {
             throw ReadingListError.duplicateDocument(existingItem.title ?? "Unknown")
         }
 
-        // Extract text and chunk
-        let chunks = try await chunker.processDocument(from: destinationURL, sourceType: sourceType)
+        // Extract text, chunk, and extract images
+        let result = try await chunker.processDocumentWithImages(
+            from: destinationURL,
+            sourceType: sourceType
+        )
 
-        guard !chunks.isEmpty else {
+        guard !result.chunks.isEmpty else {
             // Clean up if no text extracted
             try? FileManager.default.removeItem(at: destinationURL)
             throw ReadingListError.noTextContent
@@ -118,7 +121,7 @@ public actor ReadingListManager {
         item.fileSizeBytes = fileSize
 
         // Create chunk entities
-        for chunkData in chunks {
+        for chunkData in result.chunks {
             let chunk = ReadingChunk(context: context)
             chunk.configure(
                 index: Int32(chunkData.index),
@@ -129,8 +132,32 @@ public actor ReadingListManager {
             item.addToChunks(chunk)
         }
 
+        // Create visual asset entities for extracted images
+        if !result.images.isEmpty {
+            let imagesDir = Self.imagesDirectory(forDocumentDir: documentsDirectoryPath)
+            for mappedImage in result.images {
+                let asset = ReadingVisualAsset(context: context)
+                let localPath = Self.saveImageToDisk(
+                    mappedImage.imageData,
+                    directory: imagesDir
+                )
+                asset.configure(
+                    chunkIndex: Int32(mappedImage.chunkIndex),
+                    pageIndex: Int32(mappedImage.pageIndex),
+                    positionOnPage: mappedImage.positionOnPage,
+                    width: Int32(mappedImage.width),
+                    height: Int32(mappedImage.height),
+                    localPath: localPath
+                )
+                item.addToVisualAssets(asset)
+            }
+            logger.info("Created \(result.images.count) visual assets")
+        }
+
         try persistenceController.save()
-        logger.info("Imported document with \(chunks.count) chunks: \(item.title ?? "Unknown")")
+        logger.info(
+            "Imported document with \(result.chunks.count) chunks: \(item.title ?? "Unknown")"
+        )
 
         return item
     }
@@ -151,6 +178,33 @@ public actor ReadingListManager {
 
         try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
         return destinationURL
+    }
+
+    /// Get or create the images subdirectory
+    nonisolated private static func imagesDirectory(forDocumentDir documentDir: String) -> String {
+        let imagesDir = URL(fileURLWithPath: documentDir)
+            .appendingPathComponent("Images", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: imagesDir,
+            withIntermediateDirectories: true
+        )
+        return imagesDir.path
+    }
+
+    /// Save image data to disk, returning the file path
+    nonisolated private static func saveImageToDisk(
+        _ data: Data,
+        directory: String
+    ) -> String? {
+        let filename = UUID().uuidString + ".png"
+        let filePath = URL(fileURLWithPath: directory)
+            .appendingPathComponent(filename)
+        do {
+            try data.write(to: filePath)
+            return filePath.path
+        } catch {
+            return nil
+        }
     }
 
     /// Compute SHA256 hash of a file (nonisolated for file system access)
@@ -332,12 +386,21 @@ public actor ReadingListManager {
 
     // MARK: - Delete Operations
 
-    /// Delete a reading item and its associated file
+    /// Delete a reading item and its associated files (document + images)
     @MainActor
     public func deleteItem(_ item: ReadingListItem) throws {
-        // Delete the file if it exists
+        // Delete the document file if it exists
         if let fileURL = item.fileURL {
             try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        // Delete associated image files
+        for asset in item.visualAssetsArray {
+            if let localPath = asset.localPath {
+                try? FileManager.default.removeItem(
+                    at: URL(fileURLWithPath: localPath)
+                )
+            }
         }
 
         let context = persistenceController.viewContext

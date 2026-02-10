@@ -35,25 +35,33 @@ public struct AssistantTabView: View {
     // MARK: - State
 
     @State private var selectedSegment: AssistantSegment = .todo
+    @State private var showReadingFilePicker = false
 
     // MARK: - Body
 
     public var body: some View {
-        // Switch between the two views based on segment
-        // Each has its own NavigationStack to maintain separate navigation state
-        Group {
+        VStack(spacing: 0) {
+            segmentedPicker
+
             switch selectedSegment {
             case .todo:
                 TodoListView()
             case .readingList:
                 NavigationStack {
-                    ReadingListView()
+                    ReadingListView(showFilePicker: $showReadingFilePicker)
                         .navigationTitle("Reading List")
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button {
+                                    showReadingFilePicker = true
+                                } label: {
+                                    Image(systemName: "plus")
+                                }
+                                .accessibilityLabel("Add document")
+                            }
+                        }
                 }
             }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            segmentedPicker
         }
     }
 

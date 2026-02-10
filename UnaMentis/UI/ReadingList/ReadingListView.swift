@@ -11,40 +11,11 @@ import UniformTypeIdentifiers
 /// Main view for managing reading list items
 public struct ReadingListView: View {
     @StateObject private var viewModel = ReadingListViewModel()
-    @State private var showFilePicker = false
+    @Binding var showFilePicker: Bool
 
     public var body: some View {
-        Group {
-            switch viewModel.selectedFilter {
-            case .active:
-                if viewModel.activeItems.isEmpty && !viewModel.isLoading {
-                    emptyActiveView
-                } else {
-                    activeListView
-                }
-            case .completed:
-                if viewModel.completedItems.isEmpty && !viewModel.isLoading {
-                    emptyCompletedView
-                } else {
-                    completedListView
-                }
-            case .archived:
-                if viewModel.archivedItems.isEmpty && !viewModel.isLoading {
-                    emptyArchivedView
-                } else {
-                    archivedListView
-                }
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                filterPicker
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                addButton
-            }
-        }
-        .sheet(isPresented: $showFilePicker) {
+        contentView
+            .sheet(isPresented: $showFilePicker) {
             DocumentPicker(viewModel: viewModel)
         }
         .task {
@@ -60,6 +31,32 @@ public struct ReadingListView: View {
         } message: {
             if let error = viewModel.errorMessage {
                 Text(error)
+            }
+        }
+    }
+
+    // MARK: - Content View
+
+    @ViewBuilder
+    private var contentView: some View {
+        switch viewModel.selectedFilter {
+        case .active:
+            if viewModel.activeItems.isEmpty && !viewModel.isLoading {
+                emptyActiveView
+            } else {
+                activeListView
+            }
+        case .completed:
+            if viewModel.completedItems.isEmpty && !viewModel.isLoading {
+                emptyCompletedView
+            } else {
+                completedListView
+            }
+        case .archived:
+            if viewModel.archivedItems.isEmpty && !viewModel.isLoading {
+                emptyArchivedView
+            } else {
+                archivedListView
             }
         }
     }
@@ -288,6 +285,6 @@ struct DocumentPicker: UIViewControllerRepresentable {
 
 #Preview {
     NavigationStack {
-        ReadingListView()
+        ReadingListView(showFilePicker: .constant(false))
     }
 }

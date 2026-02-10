@@ -8,6 +8,7 @@
 
 import Foundation
 import PDFKit
+import UIKit
 import Logging
 
 // MARK: - Chunking Configuration
@@ -67,6 +68,48 @@ public struct TextChunkResult: Sendable {
         self.characterOffset = characterOffset
         self.estimatedDurationSeconds = estimatedDurationSeconds
     }
+}
+
+// MARK: - PDF Image Extraction Types
+
+/// An image extracted from a PDF, mapped to a specific reading chunk
+public struct MappedPDFImage: Sendable {
+    public let chunkIndex: Int
+    public let pageIndex: Int
+    public let positionOnPage: Float
+    public let imageData: Data
+    public let width: Int
+    public let height: Int
+}
+
+/// Result of processing a PDF with both text chunks and images
+public struct PDFProcessingResult: Sendable {
+    public let chunks: [TextChunkResult]
+    public let images: [MappedPDFImage]
+}
+
+/// Raw image data extracted from a PDF page before chunk mapping
+private struct RawPDFImage {
+    let pageIndex: Int
+    let positionOnPage: Float
+    let data: Data
+    let width: Int
+    let height: Int
+}
+
+// MARK: - CGPDF Dictionary Key Collector
+
+/// Collects keys from a CGPDFDictionary via CGPDFDictionaryApplyFunction
+private final class PDFDictionaryKeyCollector {
+    var keys: [String] = []
+}
+
+/// C function pointer for enumerating CGPDFDictionary keys
+private let collectPDFDictionaryKeys: CGPDFDictionaryApplierFunction = { key, _, info in
+    guard let info else { return }
+    let collector = Unmanaged<PDFDictionaryKeyCollector>
+        .fromOpaque(info).takeUnretainedValue()
+    collector.keys.append(String(cString: key))
 }
 
 // MARK: - Reading Text Chunker
@@ -326,6 +369,296 @@ public actor ReadingTextChunker {
         logger.info("Document chunked into \(chunks.count) segments")
 
         return chunks
+    }
+
+    // MARK: - PDF Image Extraction
+
+    /// Minimum pixel dimension for extracted images (skip icons/decorations)
+    private static let minImageDimension = 20
+    /// Maximum output dimension (downscale larger images)
+    private static let maxImageDimension: CGFloat = 1024
+    /// Maximum total images per document
+    private static let maxImagesPerDocument = 100
+
+    /// Extract text and images from a PDF, mapping images to chunks
+    /// - Parameters:
+    ///   - url: File URL to process
+    ///   - sourceType: The type of source file
+    /// - Returns: Chunks and mapped images
+    public func processDocumentWithImages(
+        from url: URL,
+        sourceType: ReadingListSourceType
+    ) throws -> PDFProcessingResult {
+        logger.info("Processing document with images: \(url.lastPathComponent)")
+
+        // Non-PDF sources have no inline images
+        guard sourceType == .pdf else {
+            let chunks = try processDocument(from: url, sourceType: sourceType)
+            return PDFProcessingResult(chunks: chunks, images: [])
+        }
+
+        guard let pdfDocument = PDFDocument(url: url) else {
+            throw ReadingChunkerError.pdfLoadFailed(url)
+        }
+
+        // Extract text with per-page character boundaries
+        var fullText = ""
+        var pageBoundaries: [(pageIndex: Int, charStart: Int64, charEnd: Int64)] = []
+
+        for pageIndex in 0..<pdfDocument.pageCount {
+            guard let page = pdfDocument.page(at: pageIndex),
+                  let pageText = page.string else { continue }
+
+            let start = Int64(fullText.count)
+            fullText += pageText + "\n\n"
+            let end = Int64(fullText.count)
+            pageBoundaries.append((pageIndex: pageIndex, charStart: start, charEnd: end))
+        }
+
+        guard !fullText.isEmpty else {
+            throw ReadingChunkerError.extractionFailed("PDF contains no extractable text")
+        }
+
+        let cleanedText = cleanText(fullText)
+        let chunks = chunkText(cleanedText)
+
+        // Extract images from PDF pages
+        let rawImages = extractPDFImages(from: pdfDocument)
+        logger.info("Extracted \(rawImages.count) images from PDF")
+
+        // Map images to chunks using page boundaries
+        let mappedImages = mapImagesToChunks(
+            images: rawImages,
+            chunks: chunks,
+            pageBoundaries: pageBoundaries
+        )
+
+        return PDFProcessingResult(chunks: chunks, images: mappedImages)
+    }
+
+    /// Extract images from all pages of a PDF
+    private func extractPDFImages(
+        from pdfDocument: PDFDocument
+    ) -> [RawPDFImage] {
+        var allImages: [RawPDFImage] = []
+
+        for pageIndex in 0..<pdfDocument.pageCount {
+            guard allImages.count < Self.maxImagesPerDocument else { break }
+            guard let page = pdfDocument.page(at: pageIndex),
+                  let cgPage = page.pageRef else { continue }
+
+            let pageImages = extractImagesFromPage(cgPage: cgPage, pageIndex: pageIndex)
+            allImages.append(contentsOf: pageImages)
+        }
+
+        return allImages
+    }
+
+    /// Extract image XObjects from a single PDF page
+    private func extractImagesFromPage(
+        cgPage: CGPDFPage,
+        pageIndex: Int
+    ) -> [RawPDFImage] {
+        var images: [RawPDFImage] = []
+
+        guard let pageDict = cgPage.dictionary else { return images }
+
+        var resourcesRef: CGPDFDictionaryRef?
+        guard CGPDFDictionaryGetDictionary(pageDict, "Resources", &resourcesRef),
+              let resources = resourcesRef else { return images }
+
+        var xObjectRef: CGPDFDictionaryRef?
+        guard CGPDFDictionaryGetDictionary(resources, "XObject", &xObjectRef),
+              let xObjects = xObjectRef else { return images }
+
+        // Collect all keys from the XObject dictionary
+        let collector = PDFDictionaryKeyCollector()
+        let info = Unmanaged.passUnretained(collector).toOpaque()
+        CGPDFDictionaryApplyFunction(xObjects, collectPDFDictionaryKeys, info)
+
+        // Process each XObject to find images
+        var imageIndex = 0
+        for key in collector.keys {
+            var stream: CGPDFStreamRef?
+            guard CGPDFDictionaryGetStream(xObjects, key, &stream),
+                  let stream else { continue }
+            guard let streamDict = CGPDFStreamGetDictionary(stream) else { continue }
+
+            // Verify this XObject is an image
+            var subtypePtr: UnsafePointer<CChar>?
+            guard CGPDFDictionaryGetName(streamDict, "Subtype", &subtypePtr),
+                  let subtype = subtypePtr,
+                  String(cString: subtype) == "Image" else { continue }
+
+            // Get dimensions
+            var width: CGPDFInteger = 0
+            var height: CGPDFInteger = 0
+            CGPDFDictionaryGetInteger(streamDict, "Width", &width)
+            CGPDFDictionaryGetInteger(streamDict, "Height", &height)
+
+            guard width >= Self.minImageDimension, height >= Self.minImageDimension else { continue }
+
+            // Extract and optionally downscale the image
+            if let result = extractImageData(
+                from: stream,
+                streamDict: streamDict,
+                width: Int(width),
+                height: Int(height)
+            ) {
+                let position = Float(imageIndex) / Float(max(collector.keys.count, 1))
+                images.append(RawPDFImage(
+                    pageIndex: pageIndex,
+                    positionOnPage: position,
+                    data: result.data,
+                    width: result.width,
+                    height: result.height
+                ))
+                imageIndex += 1
+            }
+        }
+
+        return images
+    }
+
+    /// Extract usable image data from a PDF stream
+    private func extractImageData(
+        from stream: CGPDFStreamRef,
+        streamDict: CGPDFDictionaryRef,
+        width: Int,
+        height: Int
+    ) -> (data: Data, width: Int, height: Int)? {
+        var format: CGPDFDataFormat = .raw
+        guard let cfData = CGPDFStreamCopyData(stream, &format) else { return nil }
+        let rawData = cfData as Data
+
+        // JPEG data: create UIImage directly
+        if format == .jpegEncoded {
+            guard let uiImage = UIImage(data: rawData) else {
+                return (data: rawData, width: width, height: height)
+            }
+            return downscaleIfNeeded(image: uiImage, originalWidth: width, originalHeight: height)
+        }
+
+        // Raw pixel data: reconstruct a CGImage
+        var bitsPerComponent: CGPDFInteger = 8
+        CGPDFDictionaryGetInteger(streamDict, "BitsPerComponent", &bitsPerComponent)
+
+        let componentsPerPixel = detectColorComponents(from: streamDict)
+        let bytesPerRow = width * componentsPerPixel * Int(bitsPerComponent) / 8
+
+        // Validate data size
+        let expectedSize = bytesPerRow * height
+        guard rawData.count >= expectedSize else {
+            logger.debug("Image data size mismatch: expected \(expectedSize), got \(rawData.count)")
+            return nil
+        }
+
+        guard let provider = CGDataProvider(data: rawData as CFData) else { return nil }
+
+        let colorSpace: CGColorSpace
+        switch componentsPerPixel {
+        case 1: colorSpace = CGColorSpaceCreateDeviceGray()
+        default: colorSpace = CGColorSpaceCreateDeviceRGB()
+        }
+
+        guard let cgImage = CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: Int(bitsPerComponent),
+            bitsPerPixel: Int(bitsPerComponent) * componentsPerPixel,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: true,
+            intent: .defaultIntent
+        ) else { return nil }
+
+        let uiImage = UIImage(cgImage: cgImage)
+        return downscaleIfNeeded(image: uiImage, originalWidth: width, originalHeight: height)
+    }
+
+    /// Detect number of color components from the PDF color space specification
+    private func detectColorComponents(from streamDict: CGPDFDictionaryRef) -> Int {
+        var colorSpaceName: UnsafePointer<CChar>?
+        if CGPDFDictionaryGetName(streamDict, "ColorSpace", &colorSpaceName),
+           let name = colorSpaceName {
+            switch String(cString: name) {
+            case "DeviceGray": return 1
+            case "DeviceRGB": return 3
+            case "DeviceCMYK": return 4
+            default: break
+            }
+        }
+        // Default to RGB for complex/array-based color spaces
+        return 3
+    }
+
+    /// Downscale an image if it exceeds the maximum dimension, return PNG data
+    private func downscaleIfNeeded(
+        image: UIImage,
+        originalWidth: Int,
+        originalHeight: Int
+    ) -> (data: Data, width: Int, height: Int)? {
+        let maxDim = Self.maxImageDimension
+        let scale = min(1.0, maxDim / max(CGFloat(originalWidth), CGFloat(originalHeight)))
+
+        let finalImage: UIImage
+        let finalWidth: Int
+        let finalHeight: Int
+
+        if scale < 1.0 {
+            finalWidth = Int(CGFloat(originalWidth) * scale)
+            finalHeight = Int(CGFloat(originalHeight) * scale)
+            let newSize = CGSize(width: finalWidth, height: finalHeight)
+            let renderer = UIGraphicsImageRenderer(size: newSize)
+            finalImage = renderer.image { _ in
+                image.draw(in: CGRect(origin: .zero, size: newSize))
+            }
+        } else {
+            finalWidth = originalWidth
+            finalHeight = originalHeight
+            finalImage = image
+        }
+
+        guard let pngData = finalImage.pngData() else { return nil }
+        return (data: pngData, width: finalWidth, height: finalHeight)
+    }
+
+    /// Map extracted images to text chunks using page character boundaries
+    private func mapImagesToChunks(
+        images: [RawPDFImage],
+        chunks: [TextChunkResult],
+        pageBoundaries: [(pageIndex: Int, charStart: Int64, charEnd: Int64)]
+    ) -> [MappedPDFImage] {
+        guard !images.isEmpty, !chunks.isEmpty else { return [] }
+
+        return images.compactMap { image in
+            // Find the page boundary for this image's page
+            guard let boundary = pageBoundaries.first(
+                where: { $0.pageIndex == image.pageIndex }
+            ) else { return nil }
+
+            // Estimate character offset proportional to position on page
+            let pageCharRange = boundary.charEnd - boundary.charStart
+            let estimatedOffset = boundary.charStart
+                + Int64(Float(pageCharRange) * image.positionOnPage)
+
+            // Find the chunk containing this character offset
+            let chunkIndex = chunks.lastIndex(
+                where: { $0.characterOffset <= estimatedOffset }
+            ) ?? 0
+
+            return MappedPDFImage(
+                chunkIndex: chunkIndex,
+                pageIndex: image.pageIndex,
+                positionOnPage: image.positionOnPage,
+                imageData: image.data,
+                width: image.width,
+                height: image.height
+            )
+        }
     }
 }
 

@@ -8,6 +8,19 @@ import SwiftUI
 import Combine
 import Logging
 
+// MARK: - Visual Asset Data Transfer Object
+
+/// Sendable DTO for visual asset data (safe to cross actor boundaries)
+public struct ReadingVisualAssetData: Identifiable, Sendable {
+    public let id: UUID
+    public let chunkIndex: Int32
+    public let localPath: String?
+    public let cachedData: Data?
+    public let width: Int32
+    public let height: Int32
+    public let altText: String?
+}
+
 // MARK: - Reading Playback View Model
 
 /// View model for the reading playback interface
@@ -21,6 +34,7 @@ public final class ReadingPlaybackViewModel: ObservableObject {
     @Published public var totalChunks: Int = 0
     @Published public var currentChunkText: String?
     @Published public var bookmarks: [ReadingBookmarkData] = []
+    @Published public var currentChunkImages: [ReadingVisualAssetData] = []
     @Published public var showError: Bool = false
     @Published public var errorMessage: String?
 
@@ -53,6 +67,9 @@ public final class ReadingPlaybackViewModel: ObservableObject {
     private let item: ReadingListItem
     private var chunks: [ReadingChunkData] = []
     private var playbackService: ReadingPlaybackService?
+    private var allVisualAssets: [ReadingVisualAssetData] = []
+    private var storedAudioEngine: AudioEngine?
+    private var storedTTSService: (any TTSService)?
 
     // MARK: - Initialization
 
@@ -80,6 +97,10 @@ public final class ReadingPlaybackViewModel: ObservableObject {
 
             // Load bookmarks
             loadBookmarks()
+
+            // Load visual assets and set images for current chunk
+            loadVisualAssets()
+            updateCurrentChunkImages(for: currentChunkIndex)
 
             // Create and configure playback service
             // Note: In production, these would be injected via dependency injection
@@ -118,34 +139,47 @@ public final class ReadingPlaybackViewModel: ObservableObject {
 
     /// Load chunks from the reading item
     private func loadChunksFromItem() -> [ReadingChunkData] {
-        guard let chunksSet = item.chunks as? Set<ReadingChunk> else { return [] }
-
-        return chunksSet
-            .sorted { $0.index < $1.index }
-            .map { chunk in
-                ReadingChunkData(
-                    index: chunk.index,
-                    text: chunk.text ?? "",
-                    characterOffset: chunk.characterOffset,
-                    estimatedDurationSeconds: chunk.estimatedDurationSeconds
-                )
-            }
+        return item.chunksArray.map { chunk in
+            ReadingChunkData(
+                index: chunk.index,
+                text: chunk.text ?? "",
+                characterOffset: chunk.characterOffset,
+                estimatedDurationSeconds: chunk.estimatedDurationSeconds
+            )
+        }
     }
 
     /// Load bookmarks from the reading item
     private func loadBookmarks() {
-        guard let bookmarksSet = item.bookmarks as? Set<ReadingBookmark> else { return }
+        bookmarks = item.bookmarksArray.compactMap { bookmark in
+            guard let id = bookmark.id else { return nil }
+            return ReadingBookmarkData(
+                id: id,
+                chunkIndex: bookmark.chunkIndex,
+                note: bookmark.note
+            )
+        }
+    }
 
-        bookmarks = bookmarksSet
-            .sorted { $0.createdAt ?? Date.distantPast < $1.createdAt ?? Date.distantPast }
-            .compactMap { bookmark in
-                guard let id = bookmark.id else { return nil }
-                return ReadingBookmarkData(
-                    id: id,
-                    chunkIndex: bookmark.chunkIndex,
-                    note: bookmark.note
-                )
-            }
+    /// Load visual assets from the reading item
+    private func loadVisualAssets() {
+        allVisualAssets = item.visualAssetsArray.compactMap { asset in
+            guard let id = asset.id else { return nil }
+            return ReadingVisualAssetData(
+                id: id,
+                chunkIndex: asset.chunkIndex,
+                localPath: asset.localPath,
+                cachedData: asset.cachedData,
+                width: asset.width,
+                height: asset.height,
+                altText: asset.altText
+            )
+        }
+    }
+
+    /// Update the current chunk images for display
+    private func updateCurrentChunkImages(for index: Int32) {
+        currentChunkImages = allVisualAssets.filter { $0.chunkIndex == index }
     }
 
     // MARK: - Playback Control
@@ -188,10 +222,21 @@ public final class ReadingPlaybackViewModel: ObservableObject {
         }
     }
 
-    /// Stop playback
+    /// Stop playback and release audio resources
     public func stopPlayback() async {
-        guard let service = playbackService else { return }
-        await service.stopPlayback()
+        if let service = playbackService {
+            await service.stopPlayback()
+        }
+
+        // Release AudioEngine resources
+        if let engine = storedAudioEngine {
+            await engine.stop()
+            await engine.cleanup()
+            storedAudioEngine = nil
+        }
+
+        // Release TTS model memory
+        storedTTSService = nil
     }
 
     /// Skip forward
@@ -271,6 +316,7 @@ public final class ReadingPlaybackViewModel: ObservableObject {
                 if Int(index) < weakChunks.count {
                     self?.currentChunkText = weakChunks[Int(index)].text
                 }
+                self?.updateCurrentChunkImages(for: index)
             },
             onError: { [weak self] error in
                 self?.state = .error(error.localizedDescription)
@@ -282,20 +328,28 @@ public final class ReadingPlaybackViewModel: ObservableObject {
 
     // MARK: - Service Access (Simplified)
 
-    /// Get the audio engine from app services
-    /// Note: In production, use proper dependency injection
+    /// Create or return cached AudioEngine for TTS playback
     private func getAudioEngine() async -> AudioEngine? {
-        // This would typically come from a service locator or DI container
-        // For now, return nil and let the UI handle it gracefully
-        // The actual integration will be done when wiring up the full app
-        return nil
+        if let engine = storedAudioEngine { return engine }
+
+        let engine = AudioEngine(vadService: SileroVADService(), telemetry: TelemetryEngine())
+        do {
+            try await engine.configure(config: .default)
+            try await engine.start()
+            self.storedAudioEngine = engine
+            return engine
+        } catch {
+            logger.error("Failed to create AudioEngine: \(error.localizedDescription)")
+            return nil
+        }
     }
 
-    /// Get the TTS service from app services
-    /// Note: In production, use proper dependency injection
+    /// Create or return cached on-device Pocket TTS for reading narration
     private func getTTSService() async -> (any TTSService)? {
-        // This would typically come from a service locator or DI container
-        // For now, return nil and let the UI handle it gracefully
-        return nil
+        if let service = storedTTSService { return service }
+
+        let service = KyutaiPocketTTSService(config: .highQuality)
+        self.storedTTSService = service
+        return service
     }
 }

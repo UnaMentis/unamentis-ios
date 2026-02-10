@@ -118,6 +118,7 @@
         <attribute name="title" attributeType="String"/>
         <relationship name="bookmarks" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ReadingBookmark" inverseName="readingItem" inverseEntity="ReadingBookmark"/>
         <relationship name="chunks" optional="YES" toMany="YES" deletionRule="Cascade" ordered="YES" destinationEntity="ReadingChunk" inverseName="readingItem" inverseEntity="ReadingChunk"/>
+        <relationship name="visualAssets" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ReadingVisualAsset" inverseName="readingItem" inverseEntity="ReadingVisualAsset"/>
     </entity>
     <entity name="ReadingChunk" representedClassName="ReadingChunk" syncable="YES">
         <attribute name="characterOffset" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
@@ -134,5 +135,18 @@
         <attribute name="note" optional="YES" attributeType="String"/>
         <attribute name="snippetPreview" optional="YES" attributeType="String"/>
         <relationship name="readingItem" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ReadingListItem" inverseName="bookmarks" inverseEntity="ReadingListItem"/>
+    </entity>
+    <entity name="ReadingVisualAsset" representedClassName="ReadingVisualAsset" syncable="YES">
+        <attribute name="altText" optional="YES" attributeType="String"/>
+        <attribute name="cachedData" optional="YES" attributeType="Binary" allowsExternalBinaryDataStorage="YES"/>
+        <attribute name="chunkIndex" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="height" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="localPath" optional="YES" attributeType="String"/>
+        <attribute name="mimeType" optional="YES" attributeType="String" defaultValueString="image/png"/>
+        <attribute name="pageIndex" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="positionOnPage" attributeType="Float" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="width" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="readingItem" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ReadingListItem" inverseName="visualAssets" inverseEntity="ReadingListItem"/>
     </entity>
 </model>

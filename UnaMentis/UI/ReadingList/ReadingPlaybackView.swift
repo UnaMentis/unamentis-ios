@@ -86,15 +86,22 @@ public struct ReadingPlaybackView: View {
 
     private var contentArea: some View {
         VStack(spacing: 16) {
-            // Current chunk text preview
+            // Current chunk text and inline images
             if let currentChunk = viewModel.currentChunkText {
                 ScrollView {
-                    Text(currentChunk)
-                        .font(.body)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(spacing: 12) {
+                        Text(currentChunk)
+                            .font(.body)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // Inline images for this chunk
+                        ForEach(viewModel.currentChunkImages) { asset in
+                            ReadingInlineImageView(asset: asset)
+                        }
+                    }
                 }
-                .frame(maxHeight: 200)
+                .frame(maxHeight: viewModel.currentChunkImages.isEmpty ? 200 : 320)
                 .padding()
                 .background(Color(.systemGray6))
                 .cornerRadius(12)

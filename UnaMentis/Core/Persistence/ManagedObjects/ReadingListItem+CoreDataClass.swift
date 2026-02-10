@@ -42,6 +42,7 @@ public class ReadingListItem: NSManagedObject {
 
     @NSManaged public var chunks: NSOrderedSet?
     @NSManaged public var bookmarks: NSSet?
+    @NSManaged public var visualAssets: NSSet?
 
     // MARK: - Computed Properties
 
@@ -80,6 +81,21 @@ public class ReadingListItem: NSManagedObject {
         (bookmarks?.allObjects as? [ReadingBookmark] ?? []).sorted {
             $0.chunkIndex < $1.chunkIndex
         }
+    }
+
+    /// Array of visual assets sorted by chunkIndex then positionOnPage
+    public var visualAssetsArray: [ReadingVisualAsset] {
+        (visualAssets?.allObjects as? [ReadingVisualAsset] ?? []).sorted {
+            if $0.chunkIndex != $1.chunkIndex {
+                return $0.chunkIndex < $1.chunkIndex
+            }
+            return $0.positionOnPage < $1.positionOnPage
+        }
+    }
+
+    /// Visual assets for a specific chunk
+    public func visualAssets(forChunkIndex index: Int32) -> [ReadingVisualAsset] {
+        visualAssetsArray.filter { $0.chunkIndex == index }
     }
 
     /// Total number of chunks
@@ -198,6 +214,13 @@ extension ReadingListItem {
 
     @objc(removeBookmarksObject:)
     @NSManaged public func removeFromBookmarks(_ value: ReadingBookmark)
+
+    /// Add a visual asset to this reading item
+    @objc(addVisualAssetsObject:)
+    @NSManaged public func addToVisualAssets(_ value: ReadingVisualAsset)
+
+    @objc(removeVisualAssetsObject:)
+    @NSManaged public func removeFromVisualAssets(_ value: ReadingVisualAsset)
 }
 
 // NOTE: Do NOT override hash/isEqual on NSManagedObject subclasses!

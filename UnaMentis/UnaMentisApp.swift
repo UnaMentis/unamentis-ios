@@ -675,6 +675,9 @@ public class AppState: ObservableObject {
         // Detect device capability tier (synchronous, no I/O)
         self.deviceTier = Self.detectDeviceTier()
 
+        // Initialize ReadingListManager for local document playback (no server needed)
+        ReadingListManager.shared = ReadingListManager(persistenceController: .shared)
+
         // NOTE: No Task spawning here! Async work is deferred to initializeAsync()
     }
 
