@@ -69,3 +69,17 @@ public enum ReadingListStatus: String, Codable, Sendable, CaseIterable {
         }
     }
 }
+
+// MARK: - Audio Pre-generation Status
+
+/// Status of first-chunk audio pre-generation for a reading list item
+public enum AudioPreGenStatus: String, Codable, Sendable {
+    /// No pre-generation attempted
+    case none = "none"
+    /// Pre-generation is in progress
+    case generating = "generating"
+    /// Pre-generated audio is ready for instant playback
+    case ready = "ready"
+    /// Pre-generation failed (will fall back to streaming)
+    case failed = "failed"
+}

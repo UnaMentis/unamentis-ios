@@ -161,6 +161,19 @@ public actor ReadingListManager {
             "Imported document with \(result.chunks.count) chunks: \(item.title ?? "Unknown")"
         )
 
+        // Pre-generate TTS audio for the first chunk in the background.
+        // This runs asynchronously so it doesn't block the import flow.
+        // When the user hits play, the cached audio provides instant start.
+        if let itemId = item.id, let firstChunkText = result.chunks.first?.text {
+            item.audioPreGenStatus = .generating
+            try? persistenceController.save()
+            await ReadingAudioPreGenerator.shared.preGenerateFirstChunk(
+                itemId: itemId,
+                chunkText: firstChunkText,
+                persistenceController: persistenceController
+            )
+        }
+
         return item
     }
 
@@ -242,6 +255,17 @@ public actor ReadingListManager {
         logger.info(
             "Imported web article with \(result.chunks.count) chunks: \(item.title ?? "Unknown")"
         )
+
+        // Pre-generate TTS audio for the first chunk in the background
+        if let itemId = item.id, let firstChunkText = result.chunks.first?.text {
+            item.audioPreGenStatus = .generating
+            try? persistenceController.save()
+            await ReadingAudioPreGenerator.shared.preGenerateFirstChunk(
+                itemId: itemId,
+                chunkText: firstChunkText,
+                persistenceController: persistenceController
+            )
+        }
 
         return item
     }

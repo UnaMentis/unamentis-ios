@@ -21,6 +21,17 @@ public class ReadingChunk: NSManagedObject {
     @NSManaged public var characterOffset: Int64
     @NSManaged public var estimatedDurationSeconds: Float
 
+    // MARK: - Cached Audio (Pre-generated TTS for instant playback)
+
+    /// Raw PCM Float32 audio data for this chunk, pre-generated at import time.
+    /// Only populated for chunk 0 (first chunk). Uses external binary storage
+    /// to keep the Core Data store lean.
+    /// TODO: Migrate to Opus encoding when project-wide Opus codec is implemented
+    @NSManaged public var cachedAudioData: Data?
+
+    /// Sample rate of the cached audio (e.g. 24000 for Pocket TTS). Zero means no cached audio.
+    @NSManaged public var cachedAudioSampleRate: Double
+
     // MARK: - Relationships
 
     @NSManaged public var readingItem: ReadingListItem?
@@ -36,6 +47,11 @@ public class ReadingChunk: NSManagedObject {
     /// Character count for this chunk
     public var characterCount: Int {
         text?.count ?? 0
+    }
+
+    /// Whether this chunk has pre-generated audio available
+    public var hasCachedAudio: Bool {
+        cachedAudioData != nil && cachedAudioSampleRate > 0
     }
 
     /// Preview text (first N characters)

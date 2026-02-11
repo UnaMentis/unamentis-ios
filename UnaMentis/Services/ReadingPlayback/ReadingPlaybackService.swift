@@ -41,11 +41,30 @@ public struct ReadingChunkData: Sendable {
     public let characterOffset: Int64
     public let estimatedDurationSeconds: Float
 
-    public init(index: Int32, text: String, characterOffset: Int64, estimatedDurationSeconds: Float) {
+    /// Pre-generated PCM Float32 audio data (only for first chunk, if available)
+    public let cachedAudioData: Data?
+    /// Sample rate of cached audio (0 = no cached audio)
+    public let cachedAudioSampleRate: Double
+
+    public init(
+        index: Int32,
+        text: String,
+        characterOffset: Int64,
+        estimatedDurationSeconds: Float,
+        cachedAudioData: Data? = nil,
+        cachedAudioSampleRate: Double = 0
+    ) {
         self.index = index
         self.text = text
         self.characterOffset = characterOffset
         self.estimatedDurationSeconds = estimatedDurationSeconds
+        self.cachedAudioData = cachedAudioData
+        self.cachedAudioSampleRate = cachedAudioSampleRate
+    }
+
+    /// Whether this chunk has pre-generated audio ready for instant playback
+    public var hasCachedAudio: Bool {
+        cachedAudioData != nil && cachedAudioSampleRate > 0
     }
 }
 
@@ -187,19 +206,26 @@ public actor ReadingPlaybackService {
         self.currentChunkIndex = min(startIndex, Int32(chunks.count - 1))
         self.preBufferedChunks.removeAll()
 
-        // Update state
-        state = .loading
-        if let cb = callbacks { await notify(cb.onStart) }
+        // Pre-buffer from the NEXT chunk while we stream the first one directly
+        let nextIndex = currentChunkIndex + 1
+        if nextIndex < Int32(chunks.count) {
+            startPreBuffering(from: nextIndex)
+        }
 
-        // Start pre-buffering ahead of current position
-        startPreBuffering(from: currentChunkIndex)
+        // Check if first chunk has pre-generated audio (instant playback)
+        let firstChunk = chunks[Int(currentChunkIndex)]
+        let useCachedAudio = firstChunk.hasCachedAudio
 
-        // Wait for first chunk to be ready
-        try await waitForChunk(at: currentChunkIndex)
+        if useCachedAudio {
+            logger.info("Using pre-generated audio for chunk \(currentChunkIndex) (instant start)")
+        }
 
-        // Start playback loop
+        // Stream first chunk directly for lowest time-to-first-audio.
+        // If pre-generated audio exists, it plays instantly from cache.
+        // Otherwise, streams from TTS as each segment arrives (~200ms TTFB).
         state = .playing
-        startPlaybackLoop()
+        if let cb = callbacks { await notify(cb.onStart) }
+        startPlaybackLoop(streamFirstChunk: true, useCachedAudio: useCachedAudio)
     }
 
     /// Pause playback (for barge-in)
@@ -275,7 +301,9 @@ public actor ReadingPlaybackService {
 
         logger.debug("Skipping to chunk \(index)")
 
-        // Stop current audio
+        // Stop current audio and cancel pending tasks
+        playbackTask?.cancel()
+        playbackTask = nil
         if let audioEngine {
             await audioEngine.stopPlayback()
         }
@@ -283,17 +311,18 @@ public actor ReadingPlaybackService {
         // Update position
         currentChunkIndex = index
 
-        // Clear pre-buffer and start fresh from new position
+        // Clear pre-buffer and start fresh from next position
         preBufferedChunks.removeAll()
         preBufferTask?.cancel()
-        startPreBuffering(from: index)
+        let nextIndex = index + 1
+        if nextIndex < Int32(chunks.count) {
+            startPreBuffering(from: nextIndex)
+        }
 
-        // Wait for chunk to be ready and resume
+        // Stream the target chunk directly for immediate playback
         if state == .playing || state == .paused {
-            state = .buffering
-            try await waitForChunk(at: index)
             state = .playing
-            startPlaybackLoop()
+            startPlaybackLoop(streamFirstChunk: true)
         }
 
         let total = chunks.count
@@ -407,19 +436,33 @@ public actor ReadingPlaybackService {
     // MARK: - Playback Loop
 
     /// Start the main playback loop
-    private func startPlaybackLoop() {
+    /// - Parameters:
+    ///   - streamFirstChunk: If true, the first chunk is streamed directly
+    ///     from TTS to AudioEngine for lowest time-to-first-audio instead of waiting
+    ///     for the full pre-buffer.
+    ///   - useCachedAudio: If true, the first chunk uses pre-generated cached audio
+    ///     for instant playback (0ms latency vs ~200ms for TTS streaming).
+    private func startPlaybackLoop(streamFirstChunk: Bool = false, useCachedAudio: Bool = false) {
         playbackTask?.cancel()
 
+        let streamFirst = streamFirstChunk
+        let cached = useCachedAudio
         playbackTask = Task { [weak self] in
             guard let self else { return }
 
-            await self.runPlaybackLoop()
+            await self.runPlaybackLoop(streamFirstChunk: streamFirst, useCachedAudio: cached)
         }
     }
 
     /// Run the main playback loop
-    private func runPlaybackLoop() async {
-        guard let audioEngine else { return }
+    /// - Parameters:
+    ///   - streamFirstChunk: Stream the first chunk directly from TTS
+    ///   - useCachedAudio: Play the first chunk from pre-generated cache
+    private func runPlaybackLoop(streamFirstChunk: Bool = false, useCachedAudio: Bool = false) async {
+        guard let audioEngine, let ttsService else { return }
+
+        var shouldStreamNext = streamFirstChunk
+        var shouldUseCached = useCachedAudio
 
         while !Task.isCancelled && state == .playing {
             // Check if we've reached the end
@@ -430,15 +473,61 @@ public actor ReadingPlaybackService {
                 break
             }
 
-            // Get pre-buffered chunk
-            guard let preBuffered = preBufferedChunks[currentChunkIndex] else {
-                // Need to wait for buffer
-                state = .buffering
+            // Notify chunk change
+            let chunkIdx = currentChunkIndex
+            let totalCount = chunks.count
+            if let cb = callbacks {
+                await MainActor.run { cb.onChunkChange(chunkIdx, totalCount) }
+            }
+
+            if shouldUseCached {
+                // Play pre-generated audio from cache (instant, 0ms latency).
+                // This audio was synthesized at import time and stored on the chunk.
+                shouldUseCached = false
+                shouldStreamNext = false
+                let chunk = chunks[Int(currentChunkIndex)]
+
+                logger.debug("Playing cached audio for chunk \(currentChunkIndex) (instant)")
+
+                if let audioData = chunk.cachedAudioData {
+                    let ttsChunk = TTSAudioChunk(
+                        audioData: audioData,
+                        format: .pcmFloat32(sampleRate: chunk.cachedAudioSampleRate, channels: 1),
+                        sequenceNumber: 0,
+                        isFirst: true,
+                        isLast: true
+                    )
+                    do {
+                        try await audioEngine.playAudio(ttsChunk)
+                    } catch {
+                        logger.error("Cached audio playback error: \(error.localizedDescription)")
+                        // Fall through to streaming on next iteration
+                        shouldStreamNext = true
+                        continue
+                    }
+                } else {
+                    // Cache was expected but missing, fall through to streaming
+                    shouldStreamNext = true
+                    continue
+                }
+            } else if shouldStreamNext {
+                // Stream this chunk directly from TTS to AudioEngine.
+                // Audio plays as soon as the first TTS segment arrives (~200ms)
+                // instead of waiting for the entire chunk to be synthesized.
+                shouldStreamNext = false
+                let chunk = chunks[Int(currentChunkIndex)]
+
+                logger.debug("Streaming chunk \(currentChunkIndex) directly for low latency")
+
                 do {
-                    try await waitForChunk(at: currentChunkIndex)
-                    state = .playing
+                    let audioStream = try await ttsService.synthesize(text: chunk.text)
+                    for await audioChunk in audioStream {
+                        if Task.isCancelled || state != .playing { break }
+                        try await audioEngine.playAudio(audioChunk)
+                    }
                 } catch {
-                    state = .error("Buffering failed")
+                    logger.error("Streaming playback error at chunk \(currentChunkIndex): \(error.localizedDescription)")
+                    state = .error(error.localizedDescription)
                     if let cb = callbacks {
                         let errMsg = error.localizedDescription
                         await MainActor.run {
@@ -447,34 +536,46 @@ public actor ReadingPlaybackService {
                     }
                     break
                 }
-                continue
-            }
-
-            // Notify chunk change
-            let chunkIdx = currentChunkIndex
-            let totalCount = chunks.count
-            if let cb = callbacks {
-                await MainActor.run { cb.onChunkChange(chunkIdx, totalCount) }
-            }
-
-            // Play all audio chunks for this text chunk
-            do {
-                for audioChunk in preBuffered.audioChunks {
-                    if Task.isCancelled || state != .playing {
+            } else {
+                // Use pre-buffered chunk (normal path for chunks 1+)
+                guard let preBuffered = preBufferedChunks[currentChunkIndex] else {
+                    // Need to wait for buffer
+                    state = .buffering
+                    do {
+                        try await waitForChunk(at: currentChunkIndex)
+                        state = .playing
+                    } catch {
+                        state = .error("Buffering failed")
+                        if let cb = callbacks {
+                            let errMsg = error.localizedDescription
+                            await MainActor.run {
+                                cb.onError(ReadingPlaybackError.playbackFailed(errMsg))
+                            }
+                        }
                         break
                     }
-                    try await audioEngine.playAudio(audioChunk)
+                    continue
                 }
-            } catch {
-                logger.error("Playback error at chunk \(currentChunkIndex): \(error.localizedDescription)")
-                state = .error(error.localizedDescription)
-                if let cb = callbacks {
-                    let errMsg = error.localizedDescription
-                    await MainActor.run {
-                        cb.onError(ReadingPlaybackError.playbackFailed(errMsg))
+
+                // Play all audio chunks for this text chunk
+                do {
+                    for audioChunk in preBuffered.audioChunks {
+                        if Task.isCancelled || state != .playing {
+                            break
+                        }
+                        try await audioEngine.playAudio(audioChunk)
                     }
+                } catch {
+                    logger.error("Playback error at chunk \(currentChunkIndex): \(error.localizedDescription)")
+                    state = .error(error.localizedDescription)
+                    if let cb = callbacks {
+                        let errMsg = error.localizedDescription
+                        await MainActor.run {
+                            cb.onError(ReadingPlaybackError.playbackFailed(errMsg))
+                        }
+                    }
+                    break
                 }
-                break
             }
 
             // Check if we should continue (might have been paused/stopped)

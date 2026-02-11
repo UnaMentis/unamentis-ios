@@ -86,7 +86,16 @@ public final class ReadingPlaybackViewModel: ObservableObject {
         state = .loading
 
         do {
-            // Load chunks from Core Data
+            // If audio pre-generation is in progress for this item, wait for it
+            // so we have the cached audio ready before loading chunks.
+            if item.audioPreGenStatus == .generating, let itemId = item.id {
+                logger.info("Waiting for audio pre-generation to complete...")
+                _ = await ReadingAudioPreGenerator.shared.waitForPreGeneration(itemId: itemId)
+                // Re-fault the item to pick up the cached audio data
+                item.managedObjectContext?.refresh(item, mergeChanges: true)
+            }
+
+            // Load chunks from Core Data (includes cached audio on chunk 0)
             chunks = loadChunksFromItem()
             totalChunks = chunks.count
 
@@ -102,16 +111,21 @@ public final class ReadingPlaybackViewModel: ObservableObject {
             loadVisualAssets()
             updateCurrentChunkImages(for: currentChunkIndex)
 
-            // Create and configure playback service
-            // Note: In production, these would be injected via dependency injection
-            // For now, we'll get them from the app's service locator pattern
+            // Create playback service
             let service = ReadingPlaybackService()
 
-            // Get dependencies from app state (simplified for now)
-            // In a real implementation, use proper DI
-            if let audioEngine = await getAudioEngine(),
-               let ttsService = await getTTSService(),
+            // Initialize AudioEngine and TTS service in parallel
+            async let audioEngineResult = getAudioEngine()
+            async let ttsServiceResult = getTTSService()
+
+            if let audioEngine = await audioEngineResult,
+               let ttsService = await ttsServiceResult,
                let manager = ReadingListManager.shared {
+
+                // Pre-warm the TTS model so synthesis starts instantly
+                if let pocketService = ttsService as? KyutaiPocketTTSService {
+                    try await pocketService.ensureLoaded()
+                }
 
                 let callbacks = makeCallbacks()
                 await service.configure(
@@ -137,14 +151,16 @@ public final class ReadingPlaybackViewModel: ObservableObject {
         }
     }
 
-    /// Load chunks from the reading item
+    /// Load chunks from the reading item, including cached audio on chunk 0
     private func loadChunksFromItem() -> [ReadingChunkData] {
         return item.chunksArray.map { chunk in
             ReadingChunkData(
                 index: chunk.index,
                 text: chunk.text ?? "",
                 characterOffset: chunk.characterOffset,
-                estimatedDurationSeconds: chunk.estimatedDurationSeconds
+                estimatedDurationSeconds: chunk.estimatedDurationSeconds,
+                cachedAudioData: chunk.cachedAudioData,
+                cachedAudioSampleRate: chunk.cachedAudioSampleRate
             )
         }
     }
@@ -261,18 +277,63 @@ public final class ReadingPlaybackViewModel: ObservableObject {
         }
     }
 
+    /// Start playback from a specific chunk index (for "listen from here" in reader view)
+    public func startPlaybackFromChunk(_ chunkIndex: Int32) async {
+        currentChunkIndex = chunkIndex
+
+        if state == .paused {
+            // If paused, skip to the new position
+            guard let service = playbackService else { return }
+            do {
+                try await service.skipToChunk(chunkIndex)
+                await service.resume()
+            } catch {
+                logger.error("Skip to chunk failed: \(error.localizedDescription)")
+            }
+        } else {
+            // Start fresh from the requested position
+            guard let service = playbackService else { return }
+            do {
+                try await service.startPlayback(
+                    itemId: item.id ?? UUID(),
+                    chunks: chunks,
+                    startIndex: chunkIndex
+                )
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+        }
+    }
+
     // MARK: - Bookmarks
 
-    /// Add bookmark at current position
-    public func addBookmark(note: String? = nil) async {
-        guard let service = playbackService else { return }
+    /// Add bookmark at a specific chunk index (or current position if nil)
+    public func addBookmark(note: String? = nil, atChunk chunkIndex: Int32? = nil) async {
+        let targetIndex = chunkIndex ?? currentChunkIndex
 
-        do {
-            try await service.addBookmark(note: note)
-            loadBookmarks() // Refresh bookmarks list
-        } catch {
-            errorMessage = "Failed to add bookmark"
-            showError = true
+        if let service = playbackService {
+            // Use service path if available (saves via service)
+            do {
+                try await service.addBookmark(note: note)
+                loadBookmarks()
+            } catch {
+                errorMessage = "Failed to add bookmark"
+                showError = true
+            }
+        } else if let manager = ReadingListManager.shared {
+            // Direct path when playback service isn't active (reader mode)
+            do {
+                _ = try await manager.addBookmarkById(
+                    itemId: item.id ?? UUID(),
+                    chunkIndex: targetIndex,
+                    note: note
+                )
+                loadBookmarks()
+            } catch {
+                errorMessage = "Failed to add bookmark"
+                showError = true
+            }
         }
     }
 
@@ -348,7 +409,8 @@ public final class ReadingPlaybackViewModel: ObservableObject {
     private func getTTSService() async -> (any TTSService)? {
         if let service = storedTTSService { return service }
 
-        let service = KyutaiPocketTTSService(config: .highQuality)
+        // Use user's Pocket TTS settings (respects voice, speed, quality prefs)
+        let service = KyutaiPocketTTSService(config: .fromUserDefaults())
         self.storedTTSService = service
         return service
     }

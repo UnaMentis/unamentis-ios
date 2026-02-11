@@ -142,11 +142,12 @@ public struct ReadingListView: View {
 struct ReadingItemRow: View {
     let item: ReadingListItem
     @ObservedObject var viewModel: ReadingListViewModel
+    @State private var showReader = false
     @State private var showPlayback = false
 
     var body: some View {
         Button {
-            showPlayback = true
+            showReader = true
         } label: {
             HStack(spacing: 12) {
                 // Source type icon
@@ -182,6 +183,17 @@ struct ReadingItemRow: View {
                 }
 
                 Spacer()
+
+                // Quick-listen button (goes straight to audio playback)
+                Button {
+                    showPlayback = true
+                } label: {
+                    Image(systemName: "headphones")
+                        .font(.body)
+                        .foregroundStyle(.blue)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
 
                 // Status indicator
                 Image(systemName: item.status.iconName)
@@ -221,6 +233,9 @@ struct ReadingItemRow: View {
                 }
                 .tint(.green)
             }
+        }
+        .sheet(isPresented: $showReader) {
+            ReadingReaderView(item: item)
         }
         .sheet(isPresented: $showPlayback) {
             ReadingPlaybackView(item: item)

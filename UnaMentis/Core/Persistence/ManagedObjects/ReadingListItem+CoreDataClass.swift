@@ -38,6 +38,10 @@ public class ReadingListItem: NSManagedObject {
     @NSManaged public var lastReadAt: Date?
     @NSManaged public var completedAt: Date?
 
+    // MARK: - Audio Pre-generation
+
+    @NSManaged public var audioPreGenStatusRaw: String?
+
     // MARK: - Relationships
 
     @NSManaged public var chunks: NSOrderedSet?
@@ -45,6 +49,17 @@ public class ReadingListItem: NSManagedObject {
     @NSManaged public var visualAssets: NSSet?
 
     // MARK: - Computed Properties
+
+    /// Audio pre-generation status for first chunk
+    public var audioPreGenStatus: AudioPreGenStatus {
+        get {
+            guard let raw = audioPreGenStatusRaw else { return .none }
+            return AudioPreGenStatus(rawValue: raw) ?? .none
+        }
+        set {
+            audioPreGenStatusRaw = newValue == .none ? nil : newValue.rawValue
+        }
+    }
 
     /// Source type (defaults to pdf if not set)
     public var sourceType: ReadingListSourceType {
