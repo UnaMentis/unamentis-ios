@@ -12,6 +12,8 @@ import SwiftUI
 public enum ReadingListSourceType: String, Codable, Sendable, CaseIterable {
     case pdf = "pdf"
     case plainText = "text"
+    case markdown = "markdown"
+    case webArticle = "web_article"
 
     // MARK: - Display Properties
 
@@ -20,6 +22,8 @@ public enum ReadingListSourceType: String, Codable, Sendable, CaseIterable {
         switch self {
         case .pdf: return "PDF Document"
         case .plainText: return "Plain Text"
+        case .markdown: return "Markdown"
+        case .webArticle: return "Web Article"
         }
     }
 
@@ -28,6 +32,8 @@ public enum ReadingListSourceType: String, Codable, Sendable, CaseIterable {
         switch self {
         case .pdf: return "doc.fill"
         case .plainText: return "doc.text.fill"
+        case .markdown: return "doc.richtext.fill"
+        case .webArticle: return "globe"
         }
     }
 
@@ -36,6 +42,8 @@ public enum ReadingListSourceType: String, Codable, Sendable, CaseIterable {
         switch self {
         case .pdf: return .red
         case .plainText: return .blue
+        case .markdown: return .purple
+        case .webArticle: return .orange
         }
     }
 
@@ -46,6 +54,8 @@ public enum ReadingListSourceType: String, Codable, Sendable, CaseIterable {
         switch self {
         case .pdf: return ["pdf"]
         case .plainText: return ["txt", "text"]
+        case .markdown: return ["md", "markdown"]
+        case .webArticle: return []
         }
     }
 

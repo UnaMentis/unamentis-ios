@@ -36,6 +36,9 @@ public struct AssistantTabView: View {
 
     @State private var selectedSegment: AssistantSegment = .todo
     @State private var showReadingFilePicker = false
+    @State private var showImportOptions = false
+    @State private var showURLImportSheet = false
+    @StateObject private var readingViewModel = ReadingListViewModel()
 
     // MARK: - Body
 
@@ -48,18 +51,39 @@ public struct AssistantTabView: View {
                 TodoListView()
             case .readingList:
                 NavigationStack {
-                    ReadingListView(showFilePicker: $showReadingFilePicker)
-                        .navigationTitle("Reading List")
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button {
-                                    showReadingFilePicker = true
-                                } label: {
-                                    Image(systemName: "plus")
-                                }
-                                .accessibilityLabel("Add document")
+                    ReadingListView(
+                        viewModel: readingViewModel,
+                        showFilePicker: $showReadingFilePicker,
+                        showImportOptions: $showImportOptions
+                    )
+                    .navigationTitle("Reading List")
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                showImportOptions = true
+                            } label: {
+                                Image(systemName: "plus")
                             }
+                            .accessibilityLabel("Import content")
                         }
+                    }
+                    .confirmationDialog(
+                        "Import to Reading List",
+                        isPresented: $showImportOptions
+                    ) {
+                        Button("Import File") {
+                            showReadingFilePicker = true
+                        }
+                        Button("Import from URL") {
+                            showURLImportSheet = true
+                        }
+                        Button("Cancel", role: .cancel) { }
+                    } message: {
+                        Text("Choose how to add content")
+                    }
+                    .sheet(isPresented: $showURLImportSheet) {
+                        URLImportSheet(viewModel: readingViewModel)
+                    }
                 }
             }
         }

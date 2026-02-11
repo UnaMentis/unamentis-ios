@@ -109,6 +109,34 @@ public final class ReadingListViewModel: ObservableObject {
         isLoading = false
     }
 
+    /// Import a web article from a URL
+    public func importWebArticle(from url: URL, title: String? = nil, author: String? = nil) async {
+        guard let manager = readingListManager else {
+            errorMessage = "Reading list manager not available"
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let item = try await manager.importWebArticle(from: url, title: title, author: author)
+            logger.info("Imported web article: \(item.title ?? "Unknown")")
+            await loadItems()
+        } catch let error as ReadingListError {
+            errorMessage = error.localizedDescription
+            logger.error("Web article import failed: \(error.localizedDescription)")
+        } catch let error as WebFetchError {
+            errorMessage = error.localizedDescription
+            logger.error("Web fetch failed: \(error.localizedDescription)")
+        } catch {
+            errorMessage = "Failed to import web article: \(error.localizedDescription)"
+            logger.error("Web article import failed: \(error.localizedDescription)")
+        }
+
+        isLoading = false
+    }
+
     // MARK: - Item Actions
 
     /// Update reading position for an item

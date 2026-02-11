@@ -23,6 +23,7 @@ public actor ReadingListManager {
 
     private let persistenceController: PersistenceController
     private let chunker: ReadingTextChunker
+    private let webFetcher: WebArticleFetcher
     private let logger = Logger(label: "com.unamentis.readinglist.manager")
 
     /// Directory for storing imported documents (computed once at init)
@@ -44,6 +45,7 @@ public actor ReadingListManager {
     ) {
         self.persistenceController = persistenceController
         self.chunker = ReadingTextChunker(config: chunkingConfig)
+        self.webFetcher = WebArticleFetcher()
 
         // Create documents directory for reading list
         let appDocuments = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -157,6 +159,88 @@ public actor ReadingListManager {
         try persistenceController.save()
         logger.info(
             "Imported document with \(result.chunks.count) chunks: \(item.title ?? "Unknown")"
+        )
+
+        return item
+    }
+
+    /// Import a web article from a URL into the reading list
+    /// - Parameters:
+    ///   - url: Web page URL to fetch and extract
+    ///   - title: Optional custom title (defaults to extracted title)
+    ///   - author: Optional author name (defaults to extracted author)
+    /// - Returns: Created ReadingListItem with pre-chunked text
+    @MainActor
+    public func importWebArticle(
+        from url: URL,
+        title: String? = nil,
+        author: String? = nil
+    ) async throws -> ReadingListItem {
+        logger.info("Importing web article: \(url.absoluteString)")
+
+        // Fetch and extract article content
+        let article = try await webFetcher.fetchArticle(from: url)
+
+        guard !article.text.isEmpty else {
+            throw ReadingListError.noTextContent
+        }
+
+        // Save extracted text to a file in app storage
+        let filename = UUID().uuidString + "_article.txt"
+        let destinationURL = URL(fileURLWithPath: documentsDirectoryPath)
+            .appendingPathComponent(filename)
+        try article.text.write(to: destinationURL, atomically: true, encoding: .utf8)
+
+        // Compute hash for dedup (hash the extracted text, not the HTML)
+        let textData = article.text.data(using: .utf8) ?? Data()
+        let fileHash = textData.sha256Hash
+
+        // Check for duplicates
+        if let existingItem = try findItemByHash(fileHash) {
+            logger.warning("Duplicate article detected: \(existingItem.title ?? "Unknown")")
+            try? FileManager.default.removeItem(at: destinationURL)
+            throw ReadingListError.duplicateDocument(existingItem.title ?? "Unknown")
+        }
+
+        // Chunk the extracted text
+        let result = try await chunker.processDocumentWithImages(
+            from: destinationURL,
+            sourceType: .webArticle
+        )
+
+        guard !result.chunks.isEmpty else {
+            try? FileManager.default.removeItem(at: destinationURL)
+            throw ReadingListError.noTextContent
+        }
+
+        // Create Core Data entities
+        let context = persistenceController.viewContext
+
+        let item = ReadingListItem(context: context)
+        item.configure(
+            title: title ?? article.title ?? url.host ?? "Web Article",
+            sourceType: .webArticle,
+            fileURL: destinationURL,
+            author: author ?? article.author
+        )
+        item.fileHash = fileHash
+        item.fileSizeBytes = Int64(textData.count)
+
+        // Create chunk entities
+        for chunkData in result.chunks {
+            let chunk = ReadingChunk(context: context)
+            chunk.configure(
+                index: Int32(chunkData.index),
+                text: chunkData.text,
+                characterOffset: chunkData.characterOffset,
+                estimatedDuration: chunkData.estimatedDurationSeconds
+            )
+            item.addToChunks(chunk)
+        }
+
+        try persistenceController.save()
+        logger.info(
+            "Imported web article with \(result.chunks.count) chunks: \(item.title ?? "Unknown")"
         )
 
         return item
@@ -490,7 +574,7 @@ public enum ReadingListError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .unsupportedFileType(let ext):
-            return "Unsupported file type: .\(ext). Supported types: PDF, TXT"
+            return "Unsupported file type: .\(ext). Supported types: PDF, TXT, MD"
         case .duplicateDocument(let title):
             return "This document has already been imported: \(title)"
         case .noTextContent:

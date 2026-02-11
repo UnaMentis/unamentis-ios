@@ -9,6 +9,7 @@
 import Foundation
 import PDFKit
 import UIKit
+import Vision
 import Logging
 
 // MARK: - Chunking Configuration
@@ -143,32 +144,51 @@ public actor ReadingTextChunker {
     ///   - url: File URL to extract from
     ///   - sourceType: The type of source file
     /// - Returns: Extracted text content
-    public func extractText(from url: URL, sourceType: ReadingListSourceType) throws -> String {
+    public func extractText(from url: URL, sourceType: ReadingListSourceType) async throws -> String {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw ReadingChunkerError.fileNotFound(url)
         }
 
         switch sourceType {
         case .pdf:
-            return try extractPDFText(from: url)
+            return try await extractPDFText(from: url)
         case .plainText:
             return try extractPlainText(from: url)
+        case .markdown:
+            return try extractMarkdownText(from: url)
+        case .webArticle:
+            return try extractPlainText(from: url) // Already extracted to plain text at fetch time
         }
     }
 
-    /// Extract text from a PDF file
-    private func extractPDFText(from url: URL) throws -> String {
+    /// Extract text from a PDF file, with Vision OCR fallback for scanned pages
+    private func extractPDFText(from url: URL) async throws -> String {
         guard let pdfDocument = PDFDocument(url: url) else {
             throw ReadingChunkerError.pdfLoadFailed(url)
         }
 
         var text = ""
+        var usedOCR = false
+
         for pageIndex in 0..<pdfDocument.pageCount {
-            guard let page = pdfDocument.page(at: pageIndex),
-                  let pageText = page.string else {
-                continue
+            guard let page = pdfDocument.page(at: pageIndex) else { continue }
+
+            // Try native text extraction first
+            if let pageText = page.string,
+               !pageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                text += pageText + "\n\n"
+            } else {
+                // Scanned page: fall back to Vision OCR
+                let ocrText = try await performOCR(on: page)
+                if !ocrText.isEmpty {
+                    text += ocrText + "\n\n"
+                    usedOCR = true
+                }
             }
-            text += pageText + "\n\n"
+        }
+
+        if usedOCR {
+            logger.info("Used Vision OCR for scanned pages in PDF")
         }
 
         guard !text.isEmpty else {
@@ -178,6 +198,37 @@ public actor ReadingTextChunker {
         return cleanText(text)
     }
 
+    /// Perform OCR on a PDF page using Apple Vision framework
+    private func performOCR(on page: PDFPage) async throws -> String {
+        let bounds = page.bounds(for: .mediaBox)
+        let scale: CGFloat = 2.0
+        let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            ctx.cgContext.translateBy(x: 0, y: size.height)
+            ctx.cgContext.scaleBy(x: scale, y: -scale)
+            page.draw(with: .mediaBox, to: ctx.cgContext)
+        }
+
+        guard let cgImage = image.cgImage else { return "" }
+
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["en-US"]
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try handler.perform([request])
+
+        guard let observations = request.results else { return "" }
+
+        return observations
+            .compactMap { $0.topCandidates(1).first?.string }
+            .joined(separator: "\n")
+    }
+
     /// Extract text from a plain text file
     private func extractPlainText(from url: URL) throws -> String {
         do {
@@ -185,6 +236,18 @@ public actor ReadingTextChunker {
             return cleanText(text)
         } catch {
             throw ReadingChunkerError.extractionFailed("Failed to read text file: \(error.localizedDescription)")
+        }
+    }
+
+    /// Extract text from a markdown file, stripping markdown syntax for TTS
+    private func extractMarkdownText(from url: URL) throws -> String {
+        do {
+            let rawText = try String(contentsOf: url, encoding: .utf8)
+            let stripper = MarkdownStripper()
+            let stripped = stripper.stripMarkdown(rawText)
+            return cleanText(stripped)
+        } catch {
+            throw ReadingChunkerError.extractionFailed("Failed to read markdown file: \(error.localizedDescription)")
         }
     }
 
@@ -359,10 +422,10 @@ public actor ReadingTextChunker {
     ///   - url: File URL to process
     ///   - sourceType: The type of source file
     /// - Returns: Array of chunks ready for Core Data
-    public func processDocument(from url: URL, sourceType: ReadingListSourceType) throws -> [TextChunkResult] {
+    public func processDocument(from url: URL, sourceType: ReadingListSourceType) async throws -> [TextChunkResult] {
         logger.info("Processing document: \(url.lastPathComponent)")
 
-        let text = try extractText(from: url, sourceType: sourceType)
+        let text = try await extractText(from: url, sourceType: sourceType)
         logger.debug("Extracted \(text.count) characters")
 
         let chunks = chunkText(text)
@@ -388,12 +451,12 @@ public actor ReadingTextChunker {
     public func processDocumentWithImages(
         from url: URL,
         sourceType: ReadingListSourceType
-    ) throws -> PDFProcessingResult {
+    ) async throws -> PDFProcessingResult {
         logger.info("Processing document with images: \(url.lastPathComponent)")
 
         // Non-PDF sources have no inline images
         guard sourceType == .pdf else {
-            let chunks = try processDocument(from: url, sourceType: sourceType)
+            let chunks = try await processDocument(from: url, sourceType: sourceType)
             return PDFProcessingResult(chunks: chunks, images: [])
         }
 
@@ -401,13 +464,23 @@ public actor ReadingTextChunker {
             throw ReadingChunkerError.pdfLoadFailed(url)
         }
 
-        // Extract text with per-page character boundaries
+        // Extract text with per-page character boundaries (with OCR fallback)
         var fullText = ""
         var pageBoundaries: [(pageIndex: Int, charStart: Int64, charEnd: Int64)] = []
 
         for pageIndex in 0..<pdfDocument.pageCount {
-            guard let page = pdfDocument.page(at: pageIndex),
-                  let pageText = page.string else { continue }
+            guard let page = pdfDocument.page(at: pageIndex) else { continue }
+
+            var pageText = ""
+            if let nativeText = page.string,
+               !nativeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                pageText = nativeText
+            } else {
+                // Scanned page: fall back to Vision OCR
+                pageText = (try? await performOCR(on: page)) ?? ""
+            }
+
+            guard !pageText.isEmpty else { continue }
 
             let start = Int64(fullText.count)
             fullText += pageText + "\n\n"

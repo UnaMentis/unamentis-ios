@@ -10,8 +10,9 @@ import UniformTypeIdentifiers
 
 /// Main view for managing reading list items
 public struct ReadingListView: View {
-    @StateObject private var viewModel = ReadingListViewModel()
+    @ObservedObject var viewModel: ReadingListViewModel
     @Binding var showFilePicker: Bool
+    @Binding var showImportOptions: Bool
 
     public var body: some View {
         contentView
@@ -72,17 +73,6 @@ public struct ReadingListView: View {
         .pickerStyle(.menu)
     }
 
-    // MARK: - Add Button
-
-    private var addButton: some View {
-        Button {
-            showFilePicker = true
-        } label: {
-            Image(systemName: "plus")
-        }
-        .accessibilityLabel("Add document")
-    }
-
     // MARK: - List Views
 
     private var activeListView: some View {
@@ -118,12 +108,12 @@ public struct ReadingListView: View {
         ContentUnavailableView {
             Label("No Reading Items", systemImage: "book.pages")
         } description: {
-            Text("Add PDFs or text files to your reading list.")
+            Text("Add PDFs, text files, markdown, or web articles to your reading list.")
         } actions: {
             Button {
-                showFilePicker = true
+                showImportOptions = true
             } label: {
-                Text("Add Document")
+                Text("Add Content")
             }
             .buttonStyle(.borderedProminent)
         }
@@ -246,7 +236,14 @@ struct DocumentPicker: UIViewControllerRepresentable {
     @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let types: [UTType] = [.pdf, .plainText, .text]
+        var types: [UTType] = [.pdf, .plainText, .text]
+        // Add markdown support
+        if let mdType = UTType(filenameExtension: "md") {
+            types.append(mdType)
+        }
+        if let markdownType = UTType(filenameExtension: "markdown") {
+            types.append(markdownType)
+        }
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
         picker.delegate = context.coordinator
         picker.allowsMultipleSelection = false
@@ -285,6 +282,10 @@ struct DocumentPicker: UIViewControllerRepresentable {
 
 #Preview {
     NavigationStack {
-        ReadingListView(showFilePicker: .constant(false))
+        ReadingListView(
+            viewModel: ReadingListViewModel(),
+            showFilePicker: .constant(false),
+            showImportOptions: .constant(false)
+        )
     }
 }
