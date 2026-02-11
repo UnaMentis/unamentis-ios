@@ -639,9 +639,8 @@ class VoiceSettingsViewModel: ObservableObject {
         }
     }
 
-    /// Check Pocket TTS model availability
+    /// Check Pocket TTS model availability, copying from bundle if needed
     private func checkPocketTTSModelStatus() async {
-        // Check if model files exist in the expected location
         let fm = FileManager.default
         let documentsPath = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let modelDir = documentsPath.appendingPathComponent("models/PocketTTS")
@@ -649,9 +648,36 @@ class VoiceSettingsViewModel: ObservableObject {
         let tokenizerPath = modelDir.appendingPathComponent("tokenizer.model")
         let voicesPath = modelDir.appendingPathComponent("voices")
 
-        let available = fm.fileExists(atPath: modelPath.path) &&
+        var available = fm.fileExists(atPath: modelPath.path) &&
                        fm.fileExists(atPath: tokenizerPath.path) &&
                        fm.fileExists(atPath: voicesPath.path)
+
+        // Copy from app bundle if not already in Documents
+        if !available, let bundleURL = Bundle.main.resourceURL {
+            let bundleModelDir = bundleURL.appendingPathComponent("Models")
+            if fm.fileExists(atPath: bundleModelDir.path) {
+                do {
+                    try fm.createDirectory(at: modelDir, withIntermediateDirectories: true)
+                    let bundleModel = bundleModelDir.appendingPathComponent("model.safetensors")
+                    let bundleTokenizer = bundleModelDir.appendingPathComponent("tokenizer.model")
+                    let bundleVoices = bundleModelDir.appendingPathComponent("voices")
+                    if !fm.fileExists(atPath: modelPath.path), fm.fileExists(atPath: bundleModel.path) {
+                        try fm.copyItem(at: bundleModel, to: modelPath)
+                    }
+                    if !fm.fileExists(atPath: tokenizerPath.path), fm.fileExists(atPath: bundleTokenizer.path) {
+                        try fm.copyItem(at: bundleTokenizer, to: tokenizerPath)
+                    }
+                    if !fm.fileExists(atPath: voicesPath.path), fm.fileExists(atPath: bundleVoices.path) {
+                        try fm.copyItem(at: bundleVoices, to: voicesPath)
+                    }
+                    available = fm.fileExists(atPath: modelPath.path) &&
+                               fm.fileExists(atPath: tokenizerPath.path) &&
+                               fm.fileExists(atPath: voicesPath.path)
+                } catch {
+                    // Copy failed, available remains false
+                }
+            }
+        }
 
         await MainActor.run {
             pocketTTSModelLoaded = available

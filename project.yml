@@ -69,6 +69,9 @@ targets:
       - path: models/llama-3.2-3b-instruct-q4_k_m.gguf
         buildPhase: resources
         type: file
+      - path: models/Models
+        buildPhase: resources
+        type: folder
       - path: UnaMentis/Resources/kb-sample-questions.json
         buildPhase: resources
         type: file
