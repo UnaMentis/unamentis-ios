@@ -1,0 +1,87 @@
+# Xcode
+# Note: project.pbxproj is generated from project.yml via XcodeGen
+# Run `xcodegen generate` after cloning to create the Xcode project
+*.xcodeproj/*
+!*.xcodeproj/xcshareddata/
+!*.xcworkspace/contents.xcworkspacedata
+*.xcworkspace/*
+!*.xcworkspace/xcshareddata/
+xcuserdata/
+DerivedData/
+build/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Code coverage
+*.gcda
+*.gcno
+*.profraw
+.coverage
+htmlcov/
+
+# Xcode test results
+*.xcresult
+*.xcresult/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+
+# Environment
+.env
+*.env
+
+# Test recordings
+Tests/Recordings/
+*.wav
+*.m4a
+
+# Logs
+*.log
+
+# ML Models (too large for git)
+# Use explicit path to avoid matching Swift code directories like Routing/Models/
+/models/
+*.mlmodel
+*.mlpackage
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.gguf
+
+# llama.cpp XCFramework (large binary, download separately)
+llama.xcframework/
+llama-xcframework.tar.gz
+
+# llama.cpp source clones (used for building, not tracked)
+llama.cpp/
+tools/llama.cpp/
+
+# Claude draft files
+.claude/draft-commit.md
+
+# Archive files in project root
+/*.zip
+/*.tar.gz

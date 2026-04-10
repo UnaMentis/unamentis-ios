@@ -1,0 +1,37 @@
+{
+  "mcpServers": {
+    "ios-simulator": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "ios-simulator-mcp"
+      ],
+      "env": {}
+    },
+    "XcodeBuildMCP": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "xcodebuildmcp@latest"
+      ],
+      "env": {}
+    },
+    "apple-docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@anthropic/apple-docs-mcp"
+      ],
+      "env": {}
+    },
+    "slack": {
+      "command": "/Users/ramerman/dev/unamentis/scripts/mcp-slack.sh"
+    },
+    "trello": {
+      "command": "/Users/ramerman/dev/unamentis/scripts/mcp-trello.sh"
+    }
+  }
+}
