@@ -242,8 +242,15 @@ Claude automatically tracks work completed, building commit message notes tied t
 
 ## Key Documentation
 
+**In this repo:**
 - `UnaMentis/CLAUDE.md` - iOS app-specific guidance (architecture, style, patterns)
 - `docs/ios/IOS_STYLE_GUIDE.md` - Mandatory iOS coding standards
-- `docs/design/HANDS_FREE_FIRST_DESIGN.md` - Hands-free design specification
+- `docs/APP_STORE_COMPLIANCE.md` - App Store submission requirements
 
-For server architecture, API specs, and project-wide documentation, see the main `unamentis` repo.
+**In the main repo** (accessible via cross-repo access at `/Users/ramerman/dev/unamentis/docs/`):
+- `docs/client-spec/` - Canonical client UI/UX specification
+- `docs/design/HANDS_FREE_FIRST_DESIGN.md` - Hands-free design specification
+- `docs/modules/` - Knowledge Bowl, SAT, and other module specs
+- `docs/testing/TESTING.md` - Testing philosophy (Real Over Mock)
+- `docs/architecture/PROJECT_OVERVIEW.md` - Authoritative project overview
+- `docs/api-spec/` - Server REST API documentation

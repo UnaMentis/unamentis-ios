@@ -50,12 +50,20 @@ UnaMentis/
 └── Persistence/    # Core Data stack
 ```
 
+## Shared Documentation
+
+Cross-cutting documentation (client specs, module designs, testing philosophy) lives in the [main UnaMentis repository](https://github.com/UnaMentis/unamentis). See [docs/README.md](docs/README.md) for the full index with links.
+
 ## Related Repositories
 
 | Repo | Purpose |
 |------|---------|
 | [unamentis](https://github.com/UnaMentis/unamentis) | Server infrastructure, documentation, curriculum |
 | [unamentis-android](https://github.com/UnaMentis/unamentis-android) | Android client |
+
+## Contributing
+
+See [CONTRIBUTING.md](https://github.com/UnaMentis/unamentis/blob/main/docs/CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](https://github.com/UnaMentis/unamentis/blob/main/docs/CODE_OF_CONDUCT.md) in the main repository.
 
 ## License
 
