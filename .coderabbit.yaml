@@ -1,0 +1,56 @@
+# CodeRabbit Configuration for UnaMentis iOS
+# AI-powered code review
+# https://docs.coderabbit.ai/guides/configure-coderabbit
+
+language: en-US
+
+reviews:
+  auto_review:
+    enabled: true
+    drafts: true
+    base_branches:
+      - main
+
+  profile: assertive
+  request_changes_workflow: true
+  sequence_diagrams: true
+  collapse_walkthrough: true
+  high_level_summary: true
+  poem: false
+
+  path_instructions:
+    - path: "**/*.swift"
+      instructions: |
+        Review for Swift 6.0 concurrency safety. Check for:
+        - Actor isolation violations
+        - Sendable conformance issues
+        - Data races in async code
+        - Memory leaks and retain cycles
+        - Force unwrapping (prefer guard/if-let)
+        - Performance in hot paths (voice pipeline is latency-critical)
+        Follow the iOS Style Guide in docs/ios/IOS_STYLE_GUIDE.md
+
+    - path: ".github/workflows/**/*.yml"
+      instructions: |
+        Review for GitHub Actions security and best practices:
+        - Pinned action versions (no @latest)
+        - Minimal permissions (principle of least privilege)
+        - Secrets handling
+        - Caching efficiency
+        - Job dependencies and parallelization
+
+    - path: "**/*.{json,yaml,yml}"
+      instructions: |
+        Check for:
+        - Valid syntax
+        - Security (no hardcoded secrets)
+        - Consistent formatting
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  learnings:
+    scope: auto
+
+early_access: true
