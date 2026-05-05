@@ -101,6 +101,10 @@ jobs:
 
     - name: Create placeholder model files
       run: |
+        # The tracked `models` entry is a symlink to a developer-local path
+        # that does not exist on CI runners. Remove it before creating a real
+        # directory tree of empty placeholder files for the build.
+        if [ -L models ]; then rm models; fi
         mkdir -p models
         touch models/llama-3.2-3b-instruct-q4_k_m.gguf
         touch models/ministral-3b-instruct-q4_k_m.gguf
@@ -249,6 +253,10 @@ jobs:
 
     - name: Create placeholder model files
       run: |
+        # The tracked `models` entry is a symlink to a developer-local path
+        # that does not exist on CI runners. Remove it before creating a real
+        # directory tree of empty placeholder files for the build.
+        if [ -L models ]; then rm models; fi
         mkdir -p models
         touch models/llama-3.2-3b-instruct-q4_k_m.gguf
         touch models/ministral-3b-instruct-q4_k_m.gguf

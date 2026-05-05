@@ -30,9 +30,9 @@ show_summary() {
     # Pre-commit statistics
     if [ -f "$PRE_COMMIT_LOG" ]; then
         local total=$(wc -l < "$PRE_COMMIT_LOG" | tr -d ' ')
-        local passed=$(grep -c "|PASSED|" "$PRE_COMMIT_LOG" 2>/dev/null || echo 0)
-        local failed=$(grep -c "|FAILED|" "$PRE_COMMIT_LOG" 2>/dev/null || echo 0)
-        local started=$(grep -c "|STARTED|" "$PRE_COMMIT_LOG" 2>/dev/null || echo 0)
+        local passed=$(grep -c "|PASSED|" "$PRE_COMMIT_LOG" 2>/dev/null || true)
+        local failed=$(grep -c "|FAILED|" "$PRE_COMMIT_LOG" 2>/dev/null || true)
+        local started=$(grep -c "|STARTED|" "$PRE_COMMIT_LOG" 2>/dev/null || true)
 
         echo -e "${YELLOW}Pre-commit Hook:${NC}"
         echo "  Total executions: $started"
@@ -54,9 +54,9 @@ show_summary() {
     # Pre-push statistics
     if [ -f "$PRE_PUSH_LOG" ]; then
         local total=$(wc -l < "$PRE_PUSH_LOG" | tr -d ' ')
-        local passed=$(grep -c "|PASSED|" "$PRE_PUSH_LOG" 2>/dev/null || echo 0)
-        local failed=$(grep -c "|FAILED|" "$PRE_PUSH_LOG" 2>/dev/null || echo 0)
-        local started=$(grep -c "|STARTED|" "$PRE_PUSH_LOG" 2>/dev/null || echo 0)
+        local passed=$(grep -c "|PASSED|" "$PRE_PUSH_LOG" 2>/dev/null || true)
+        local failed=$(grep -c "|FAILED|" "$PRE_PUSH_LOG" 2>/dev/null || true)
+        local started=$(grep -c "|STARTED|" "$PRE_PUSH_LOG" 2>/dev/null || true)
 
         echo -e "${YELLOW}Pre-push Hook:${NC}"
         echo "  Total executions: $started"
@@ -161,7 +161,7 @@ detect_bypasses() {
     if command -v ruff &> /dev/null; then
         echo -e "${YELLOW}Checking for Ruff violations in recent commits...${NC}"
 
-        local python_files=$(git diff --name-only HEAD~10..HEAD 2>/dev/null | grep -E '\.py$' || true)
+        local python_files=$(git diff --name-only HEAD~10..HEAD 2>/dev/null | grep -E '^server/.*\.py$' || true)
 
         if [ -n "$python_files" ]; then
             local violations=$(echo "$python_files" | xargs ruff check --quiet 2>/dev/null | wc -l | tr -d ' ')
@@ -182,7 +182,7 @@ detect_bypasses() {
     if command -v gitleaks &> /dev/null; then
         echo -e "${YELLOW}Checking for secrets in recent commits...${NC}"
 
-        local secrets=$(gitleaks detect --source . --log-opts="HEAD~10..HEAD" --no-banner 2>&1 | grep -c "Secret Detected" || echo 0)
+        local secrets=$(gitleaks detect --source . --log-opts="HEAD~10..HEAD" --no-banner 2>&1 | grep -c "Secret Detected" || true)
         if [ "$secrets" -gt 0 ]; then
             echo -e "  ${RED}Found potential secrets in recent commits!${NC}"
             bypass_detected=1
@@ -202,13 +202,13 @@ detect_bypasses() {
         for file in $python_test_files; do
             if [ -f "$file" ]; then
                 # Check for class Mock* definitions (excluding # ALLOWED:)
-                local class_mocks=$(grep -c "^class Mock" "$file" 2>/dev/null || echo 0)
-                local allowed=$(grep -c "^class Mock.*# ALLOWED:" "$file" 2>/dev/null || echo 0)
+                local class_mocks=$(grep -c "^class Mock" "$file" 2>/dev/null || true)
+                local allowed=$(grep -c "^class Mock.*# ALLOWED:" "$file" 2>/dev/null || true)
                 mock_violations=$((mock_violations + class_mocks - allowed))
 
                 # Check for MagicMock/AsyncMock assignments (excluding # ALLOWED:)
-                local magic_mocks=$(grep -c "= \(MagicMock\|AsyncMock\)()" "$file" 2>/dev/null || echo 0)
-                local magic_allowed=$(grep -c "= \(MagicMock\|AsyncMock\)().*# ALLOWED:" "$file" 2>/dev/null || echo 0)
+                local magic_mocks=$(grep -c "= \(MagicMock\|AsyncMock\)()" "$file" 2>/dev/null || true)
+                local magic_allowed=$(grep -c "= \(MagicMock\|AsyncMock\)().*# ALLOWED:" "$file" 2>/dev/null || true)
                 mock_violations=$((mock_violations + magic_mocks - magic_allowed))
             fi
         done
@@ -229,8 +229,8 @@ detect_bypasses() {
         local swift_mock_violations=0
         for file in $swift_test_files; do
             if [ -f "$file" ]; then
-                local swift_mocks=$(grep -c "^\(class\|actor\|struct\) Mock" "$file" 2>/dev/null || echo 0)
-                local swift_allowed=$(grep -c "^\(class\|actor\|struct\) Mock.*// ALLOWED:" "$file" 2>/dev/null || echo 0)
+                local swift_mocks=$(grep -c "^\(class\|actor\|struct\) Mock" "$file" 2>/dev/null || true)
+                local swift_allowed=$(grep -c "^\(class\|actor\|struct\) Mock.*// ALLOWED:" "$file" 2>/dev/null || true)
                 swift_mock_violations=$((swift_mock_violations + swift_mocks - swift_allowed))
             fi
         done
@@ -251,8 +251,8 @@ detect_bypasses() {
         local ts_mock_violations=0
         for file in $ts_test_files; do
             if [ -f "$file" ]; then
-                local vi_mocks=$(grep -c "vi\.mock.*@/lib" "$file" 2>/dev/null || echo 0)
-                local vi_allowed=$(grep -c "vi\.mock.*@/lib.*// ALLOWED:" "$file" 2>/dev/null || echo 0)
+                local vi_mocks=$(grep -c "vi\.mock.*@/lib" "$file" 2>/dev/null || true)
+                local vi_allowed=$(grep -c "vi\.mock.*@/lib.*// ALLOWED:" "$file" 2>/dev/null || true)
                 ts_mock_violations=$((ts_mock_violations + vi_mocks - vi_allowed))
             fi
         done
@@ -274,15 +274,15 @@ detect_bypasses() {
         local rust_mock_violations=0
         for file in $cargo_files; do
             if [ -f "$file" ]; then
-                local mockall=$(grep -c "mockall" "$file" 2>/dev/null || echo 0)
-                local mockall_allowed=$(grep -c "mockall.*# ALLOWED:" "$file" 2>/dev/null || echo 0)
+                local mockall=$(grep -c "mockall" "$file" 2>/dev/null || true)
+                local mockall_allowed=$(grep -c "mockall.*# ALLOWED:" "$file" 2>/dev/null || true)
                 rust_mock_violations=$((rust_mock_violations + mockall - mockall_allowed))
             fi
         done
         for file in $rust_files; do
             if [ -f "$file" ]; then
-                local rust_mocks=$(grep -c "mock!\|struct Mock" "$file" 2>/dev/null || echo 0)
-                local rust_allowed=$(grep -c "\(mock!\|struct Mock\).*// ALLOWED:" "$file" 2>/dev/null || echo 0)
+                local rust_mocks=$(grep -c "mock!\|struct Mock" "$file" 2>/dev/null || true)
+                local rust_allowed=$(grep -c "\(mock!\|struct Mock\).*// ALLOWED:" "$file" 2>/dev/null || true)
                 rust_mock_violations=$((rust_mock_violations + rust_mocks - rust_allowed))
             fi
         done

@@ -17,12 +17,15 @@ settings:
     SWIFT_VERSION: "6.0"
     TARGETED_DEVICE_FAMILY: "1"  # iPhone only
     ENABLE_USER_SCRIPT_SANDBOXING: NO
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: YULZMCHT8T
+    CODE_SIGN_STYLE: Automatic
   configs:
     Debug:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      CODE_SIGN_IDENTITY: "Apple Development"
     Release:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
+      CODE_SIGN_IDENTITY: "Apple Distribution"
 
 packages:
   LiveKit:
