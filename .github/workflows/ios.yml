@@ -129,7 +129,7 @@ jobs:
     - name: Resolve Simulator
       id: sim
       run: |
-        for name in "iPhone 16 Pro" "iPhone 17 Pro" "iPhone 15 Pro" "iPhone 14 Pro"; do
+        for name in "iPhone 17 Pro" "iPhone 16 Pro" "iPhone 15 Pro" "iPhone 14 Pro"; do
           if xcrun simctl list devices available 2>/dev/null | grep -q "$name"; then
             echo "simulator=$name" >> "$GITHUB_OUTPUT"
             echo "Using simulator: $name"
@@ -281,7 +281,7 @@ jobs:
     - name: Resolve Simulator
       id: sim
       run: |
-        for name in "iPhone 16 Pro" "iPhone 17 Pro" "iPhone 15 Pro" "iPhone 14 Pro"; do
+        for name in "iPhone 17 Pro" "iPhone 16 Pro" "iPhone 15 Pro" "iPhone 14 Pro"; do
           if xcrun simctl list devices available 2>/dev/null | grep -q "$name"; then
             echo "simulator=$name" >> "$GITHUB_OUTPUT"
             echo "Using simulator: $name"

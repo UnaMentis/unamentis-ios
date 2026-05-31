@@ -187,7 +187,7 @@ When SwiftLint or any established tool flags an issue:
 - Voice-centric activities must support 100% hands-free operation
 - Voice-first is automatic when entering activities
 - All voice work must follow accessibility standards (VoiceOver compatible)
-- See `docs/design/HANDS_FREE_FIRST_DESIGN.md`
+- See `HANDS_FREE_FIRST_DESIGN.md` in the main repo (`/Users/ramerman/dev/unamentis/docs/design/`), the canonical cross-platform spec
 
 **Testing Philosophy (Real Over Mock):**
 - Only mock paid external APIs (LLM, STT, TTS, Embeddings)

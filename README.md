@@ -18,7 +18,7 @@ xcodebuild -project UnaMentis.xcodeproj -scheme UnaMentis \
 
 ## Requirements
 
-- Xcode 15.2+
+- Xcode 26 or newer
 - iOS 18.0+ deployment target
 - XcodeGen (`brew install xcodegen`)
 - Shared models folder at `/Users/ramerman/dev/unamentis-models/` (or set `UNAMENTIS_MODELS_PATH`)
@@ -38,16 +38,16 @@ UnaMentis/
 ├── Core/           # Business logic (actors)
 │   ├── Audio/      # Audio pipeline, VAD integration
 │   ├── Curriculum/ # Curriculum management, progress tracking
+│   ├── Persistence/# Core Data stack
 │   ├── Session/    # Session management
 │   └── Telemetry/  # Metrics, cost tracking
 ├── Services/       # Provider integrations
-│   ├── STT/        # Speech-to-text (9 providers)
-│   ├── TTS/        # Text-to-speech (8 providers)
-│   ├── LLM/        # Language models (5 providers)
+│   ├── STT/        # Speech-to-text (7 providers)
+│   ├── TTS/        # Text-to-speech (9 providers)
+│   ├── LLM/        # Language models (4 providers)
 │   └── Protocols/  # Service protocol definitions
-├── Intents/        # Siri & App Intents (iOS 16+)
-├── UI/             # SwiftUI views
-└── Persistence/    # Core Data stack
+├── Intents/        # Siri & App Intents
+└── UI/             # SwiftUI views
 ```
 
 ## Shared Documentation
@@ -63,8 +63,10 @@ Cross-cutting documentation (client specs, module designs, testing philosophy) l
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/UnaMentis/unamentis/blob/main/docs/CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](https://github.com/UnaMentis/unamentis/blob/main/docs/CODE_OF_CONDUCT.md) in the main repository.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). These cover the iOS-specific workflow and link to the project-wide conventions in the [main UnaMentis repository](https://github.com/UnaMentis/unamentis).
+
+To report a security issue, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+UnaMentis iOS is released under the MIT License. See [LICENSE](LICENSE) for details.

@@ -2,17 +2,22 @@
 //  KBOnDeviceSTT.swift
 //  UnaMentis
 //
-//  On-device speech-to-text using SFSpeechRecognizer for Knowledge Bowl oral rounds
+//  On-device speech-to-text adapter for Knowledge Bowl oral rounds.
+//  Captures audio through the unified AudioEngine and transcribes via the
+//  shared AppleSpeechSTTService provider. It owns no audio engine or input tap
+//  of its own; capture flows through the single voice pipeline.
 //
 
-import AVFoundation
-import OSLog
+@preconcurrency import AVFoundation
+import Combine
+import Logging
 import Speech
 
-// MARK: - On-Device STT Service
+// MARK: - On-Device STT Adapter
 
-/// Provides offline speech recognition using SFSpeechRecognizer
-/// Conforms to STTService protocol for integration with provider abstraction layer
+/// Provides offline speech recognition for Knowledge Bowl by driving the shared
+/// AppleSpeechSTTService with audio from the unified AudioEngine. Conforms to
+/// STTService for integration with the provider abstraction layer.
 public actor KBOnDeviceSTT: STTService {
     // MARK: - STTService Protocol Requirements
 
@@ -28,38 +33,29 @@ public actor KBOnDeviceSTT: STTService {
 
     // MARK: - Private State
 
-    private let logger = Logger(subsystem: "com.unamentis", category: "KBOnDeviceSTT")
-    private var speechRecognizer: SFSpeechRecognizer?
-    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
-    private var recognitionTask: SFSpeechRecognitionTask?
-    private var audioEngine: AVAudioEngine?
+    private let logger = Logger(label: "com.unamentis.kb.stt")
+    private var provider: AppleSpeechSTTService?
+    private var engine: AudioEngine?
+    private var audioSubscription: AnyCancellable?
+    private var relayTask: Task<Void, Never>?
     private var resultContinuation: AsyncStream<STTResult>.Continuation?
-
-    private var sessionStartTime: Date?
-    private var latencyMeasurements: [TimeInterval] = []
-    private var lastAudioTime: Date?
 
     // MARK: - Initialization
 
     public init() {
-        logger.info("KBOnDeviceSTT initialized")
+        logger.info("KBOnDeviceSTT initialized (unified pipeline adapter)")
     }
 
     // MARK: - Authorization
 
-    /// Request speech recognition authorization
+    /// Request speech recognition authorization.
     public static func requestAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
-        await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status)
-            }
-        }
+        await AppleSpeechSTTService.requestAuthorization()
     }
 
-    /// Check if speech recognition is available
+    /// Whether speech recognition is available on this device.
     public static var isAvailable: Bool {
-        let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-        return recognizer?.isAvailable ?? false
+        AppleSpeechSTTService.isAvailable
     }
 
     // MARK: - STTService Protocol
@@ -69,225 +65,109 @@ public actor KBOnDeviceSTT: STTService {
             throw STTError.alreadyStreaming
         }
 
-        // Check authorization
-        let authStatus = await Self.requestAuthorization()
-        guard authStatus == .authorized else {
-            logger.error("Speech recognition not authorized: \(authStatus.rawValue)")
-            throw STTError.authenticationFailed
+        // Acquire the shared, warm audio engine: a single capture pipeline.
+        guard let engine = await AudioEngineCache.shared.getEngine() else {
+            throw STTError.connectionFailed("Audio engine unavailable")
+        }
+        self.engine = engine
+
+        // Use the engine's real input format. The passed-in format is a placeholder
+        // because, unlike a raw capture path, this adapter does not own the input node.
+        guard let format = await engine.format else {
+            throw STTError.invalidAudioFormat
+        }
+        guard let formatCopy = AVAudioFormat(
+            commonFormat: format.commonFormat,
+            sampleRate: format.sampleRate,
+            channels: format.channelCount,
+            interleaved: format.isInterleaved
+        ) else {
+            throw STTError.invalidAudioFormat
         }
 
-        // Check microphone permission
-        let micGranted = await AVAudioApplication.requestRecordPermission()
-        guard micGranted else {
-            logger.error("Microphone access denied")
-            throw STTError.authenticationFailed
-        }
-
-        // Initialize recognizer
-        speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
-            logger.error("Speech recognizer not available")
-            throw STTError.connectionFailed("Speech recognizer not available")
-        }
-
-        logger.info("Starting Apple Speech stream")
-
+        let provider = AppleSpeechSTTService()
+        self.provider = provider
+        let providerStream = try await provider.startStreaming(audioFormat: formatCopy)
         isStreaming = true
-        let startTime = Date()
-        sessionStartTime = startTime
-        latencyMeasurements = []
 
-        // Create recognition request
-        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        guard let request = recognitionRequest else {
-            throw STTError.streamingFailed("Failed to create recognition request")
-        }
-
-        // Configure for streaming
-        request.shouldReportPartialResults = true
-        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-
-        // Create audio engine
-        audioEngine = AVAudioEngine()
-        guard let audioEngine = audioEngine else {
-            throw STTError.streamingFailed("Failed to create audio engine")
-        }
-
-        // Configure audio session
-        let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
-        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-
-        // Create result stream using AsyncStream.makeStream for proper actor isolation
+        // Relay the provider's results to the caller.
         let (stream, continuation) = AsyncStream<STTResult>.makeStream()
         self.resultContinuation = continuation
 
-        // Start recognition task
-        // The callback from SFSpeechRecognizer runs on an arbitrary thread, so we must
-        // dispatch results to avoid actor isolation violations
-        self.recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            // Handle error
-            if let error = error {
-                // Log errors asynchronously to avoid actor isolation issues
-                Task { [weak self] in
-                    await self?.logError("Recognition error: \(error.localizedDescription)")
+        relayTask = Task { [weak self] in
+            for await result in providerStream {
+                continuation.yield(result)
+                if result.isFinal {
+                    continuation.finish()
+                    break
                 }
-                continuation.finish()
-                return
+            }
+            _ = self
+        }
+
+        // Feed unified-engine audio buffers into the provider (mirrors SessionManager).
+        audioSubscription = engine.audioStream
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] (buffer, _) in
+                guard let self = self else { return }
+                Task.detached {
+                    await self.feed(buffer)
+                }
             }
 
-            guard let result = result else { return }
-
-            // Extract all data locally before yielding
-            let transcript = result.bestTranscription.formattedString
-            let isFinal = result.isFinal
-            let confidence = result.bestTranscription.segments.last?.confidence ?? 0.0
-            let latency = Date().timeIntervalSince(startTime)
-
-            let sttResult = STTResult(
-                transcript: transcript,
-                isFinal: isFinal,
-                isEndOfUtterance: isFinal,
-                confidence: confidence,
-                timestamp: Date().timeIntervalSince1970,
-                latency: latency,
-                wordTimestamps: nil
-            )
-
-            continuation.yield(sttResult)
-
-            if isFinal {
-                Task { [weak self] in
-                    await self?.logInfo("Final transcript: \(transcript)")
-                }
-                continuation.finish()
-            }
-        }
-
-        // Install tap on input node
-        let inputNode = audioEngine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-
-        guard recordingFormat.sampleRate > 0 && recordingFormat.channelCount > 0 else {
-            continuation.finish()
-            return stream
-        }
-
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-            // Send buffer directly to recognition request
-            request.append(buffer)
-        }
-
-        // Start audio engine
-        audioEngine.prepare()
-        do {
-            try audioEngine.start()
-            logger.info("Audio engine started")
-        } catch {
-            logger.error("Failed to start audio engine: \(error.localizedDescription)")
-            continuation.finish()
-        }
-
-        // Handle cancellation
         continuation.onTermination = { @Sendable [weak self] _ in
-            guard let self = self else { return }
-            Task {
-                await self.cleanup()
-            }
+            Task { await self?.cleanup() }
         }
 
+        logger.info("KBOnDeviceSTT streaming started via unified engine")
         return stream
-    }
-
-    // MARK: - Logging Helpers (for safe access from callbacks)
-
-    private func logError(_ message: String) {
-        logger.error("\(message)")
-    }
-
-    private func logInfo(_ message: String) {
-        logger.info("\(message)")
     }
 
     public func sendAudio(_ buffer: sending AVAudioPCMBuffer) async throws {
         guard isStreaming else {
             throw STTError.notStreaming
         }
-
-        lastAudioTime = Date()
-        recognitionRequest?.append(buffer)
+        try await provider?.sendAudio(buffer)
     }
 
     public func stopStreaming() async throws {
         guard isStreaming else { return }
-
-        logger.info("Stopping Apple Speech stream")
-
-        recognitionRequest?.endAudio()
-        resultContinuation?.finish()
-
+        logger.info("Stopping KBOnDeviceSTT stream")
+        try? await provider?.stopStreaming()
         await cleanup()
     }
 
     public func cancelStreaming() async {
-        logger.info("Cancelling Apple Speech stream")
-
-        recognitionTask?.cancel()
-        resultContinuation?.finish()
-
+        logger.info("Cancelling KBOnDeviceSTT stream")
+        await provider?.cancelStreaming()
         await cleanup()
     }
 
     // MARK: - Private Helpers
 
-    private func cleanup() {
-        audioEngine?.stop()
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine = nil
+    private func feed(_ buffer: AVAudioPCMBuffer) async {
+        guard isStreaming else { return }
+        do {
+            try await provider?.sendAudio(buffer)
+        } catch {
+            logger.error("Failed to send audio to STT: \(error.localizedDescription)")
+        }
+    }
 
-        recognitionRequest = nil
-        recognitionTask?.cancel()
-        recognitionTask = nil
-
+    private func cleanup() async {
+        audioSubscription?.cancel()
+        audioSubscription = nil
+        relayTask?.cancel()
+        relayTask = nil
+        resultContinuation?.finish()
         resultContinuation = nil
+        provider = nil
+        engine = nil
         isStreaming = false
 
-        // Deactivate audio session
-        do {
-            try AVAudioSession.sharedInstance().setActive(false)
-        } catch {
-            logger.error("Failed to deactivate audio session: \(error.localizedDescription)")
-        }
-
-        logger.debug("Cleanup complete")
-    }
-}
-
-// MARK: - Errors
-
-enum KBSTTError: LocalizedError, Sendable {
-    case authorizationDenied
-    case microphoneAccessDenied
-    case restricted
-    case recognizerUnavailable
-    case recognitionRequestFailed
-    case recognitionFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .authorizationDenied:
-            return "Speech recognition permission was denied"
-        case .microphoneAccessDenied:
-            return "Microphone access was denied"
-        case .restricted:
-            return "Speech recognition is restricted on this device"
-        case .recognizerUnavailable:
-            return "Speech recognizer is not available"
-        case .recognitionRequestFailed:
-            return "Failed to create speech recognition request"
-        case .recognitionFailed(let message):
-            return "Speech recognition failed: \(message)"
-        }
+        // Let the shared engine stay warm briefly, then release if unused.
+        await AudioEngineCache.shared.scheduleRelease()
+        logger.debug("KBOnDeviceSTT cleanup complete")
     }
 }
 
@@ -295,7 +175,7 @@ enum KBSTTError: LocalizedError, Sendable {
 
 #if DEBUG
 extension KBOnDeviceSTT {
-    /// Create an STT instance for previews
+    /// Create an STT instance for previews.
     static func preview() -> KBOnDeviceSTT {
         KBOnDeviceSTT()
     }

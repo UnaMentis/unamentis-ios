@@ -598,7 +598,7 @@ class HistoryViewModel: ObservableObject {
 
             // Write to temp file
             let tempDir = FileManager.default.temporaryDirectory
-            let fileName = "voicelearn_sessions_\(Date().ISO8601Format()).json"
+            let fileName = "unamentis_sessions_\(Date().ISO8601Format()).json"
             let fileURL = tempDir.appendingPathComponent(fileName)
             try jsonData.write(to: fileURL)
 

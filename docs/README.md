@@ -45,14 +45,6 @@ iOS-specific documentation for the UnaMentis voice AI learning platform.
 
 ---
 
-## Knowledge Bowl
-
-| Document | Description |
-|----------|-------------|
-| [knowledgebowl/notes.md](knowledgebowl/notes.md) | Knowledge Bowl implementation notes |
-
----
-
 ## Shared Documentation
 
 Cross-cutting documentation lives in the [main UnaMentis repository](https://github.com/UnaMentis/unamentis).
@@ -72,4 +64,3 @@ When working locally with Claude Code, these are accessible at `/Users/ramerman/
 | AI/ML Docs | [docs/ai-ml/](https://github.com/UnaMentis/unamentis/tree/main/docs/ai-ml) | AI model guides (GLM-ASR, LLM tools, Apple Intelligence) |
 | Feature Flags | [docs/FEATURE_FLAGS.md](https://github.com/UnaMentis/unamentis/blob/main/docs/FEATURE_FLAGS.md) | Feature flag definitions |
 | Chaos Engineering | [docs/testing/CHAOS_ENGINEERING_RUNBOOK.md](https://github.com/UnaMentis/unamentis/blob/main/docs/testing/CHAOS_ENGINEERING_RUNBOOK.md) | Voice pipeline resilience testing |
-| Expert Panel Review | [docs/reviews/EXPERT_PANEL_REVIEW.md](https://github.com/UnaMentis/unamentis/blob/main/docs/reviews/EXPERT_PANEL_REVIEW.md) | Expert panel review (42 findings) |

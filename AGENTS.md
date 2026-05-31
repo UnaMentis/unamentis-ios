@@ -29,10 +29,10 @@ This project is developed with **100% AI assistance**. All code, tests, document
 
 | Task | Use This | NOT This |
 |------|----------|----------|
-| Build iOS app | `mcp__XcodeBuildMCP__build_for_simulator` | `xcodebuild` CLI |
-| Capture app logs | `mcp__XcodeBuildMCP__simulator_get_app_logs` | Manual log fetching |
-| Install app | `mcp__XcodeBuildMCP__simulator_app_install` | `xcrun simctl install` |
-| Launch app | `mcp__XcodeBuildMCP__simulator_app_launch` | `xcrun simctl launch` |
+| Build iOS app | `mcp__XcodeBuildMCP__build_sim` | `xcodebuild` CLI |
+| Capture app logs | `mcp__XcodeBuildMCP__start_sim_log_cap` / `stop_sim_log_cap` | Manual log fetching |
+| Install app | `mcp__XcodeBuildMCP__install_app_sim` | `xcrun simctl install` |
+| Launch app | `mcp__XcodeBuildMCP__launch_app_sim` | `xcrun simctl launch` |
 | Take screenshot | `mcp__ios-simulator__screenshot` | Manual screenshot |
 | Tap UI element | `mcp__ios-simulator__ui_tap` | N/A |
 

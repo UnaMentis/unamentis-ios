@@ -12,7 +12,7 @@
 #   ./scripts/ttfa-test.sh --create-baseline main   # Create baseline
 #
 # Environment variables:
-#   SIMULATOR       - Simulator device name (default: "iPhone 16 Pro")
+#   SIMULATOR       - Simulator device name (default: "iPhone 17 Pro")
 #   TTFA_SUITE      - Test suite to run (default: "quick")
 #   TTFA_BASELINE   - Baseline name to compare against
 #   TTFA_FORMAT     - Output format: text, json, markdown (default: text)
@@ -25,7 +25,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_DIR="$PROJECT_DIR/server"
 
 # Configuration
-SIMULATOR="${SIMULATOR:-iPhone 16 Pro}"
+SIMULATOR="${SIMULATOR:-iPhone 17 Pro}"
 TTFA_SUITE="${TTFA_SUITE:-quick}"
 TTFA_FORMAT="${TTFA_FORMAT:-text}"
 SKIP_BUILD="${SKIP_BUILD:-false}"

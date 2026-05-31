@@ -300,8 +300,8 @@ public struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Link("Documentation", destination: URL(string: "https://voicelearn.app/docs")!)
-                    Link("Privacy Policy", destination: URL(string: "https://voicelearn.app/privacy")!)
+                    Link("Documentation", destination: URL(string: "https://github.com/UnaMentis/unamentis")!)
+                    Link("Privacy Policy", destination: URL(string: "https://unamentis.com/privacy")!)
                 }
             }
             .navigationTitle("Settings")

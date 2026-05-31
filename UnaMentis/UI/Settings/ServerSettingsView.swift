@@ -475,9 +475,9 @@ struct ServerSetupGuideView: View {
                         .font(.headline)
 
                     CodeBlock("""
-                    voicelearn-server start
-                    voicelearn-server stop
-                    voicelearn-server status
+                    unamentis-server start
+                    unamentis-server stop
+                    unamentis-server status
                     """)
                 }
             }

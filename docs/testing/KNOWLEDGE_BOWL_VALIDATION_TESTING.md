@@ -36,7 +36,7 @@ The Knowledge Bowl answer validation system uses a multi-layered testing approac
 
 **Run:**
 ```bash
-xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:UnaMentisTests/KBPhoneticMatcherTests
 ```
 
@@ -63,7 +63,7 @@ xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPho
 
 **Run:**
 ```bash
-xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:UnaMentisTests/KBNGramMatcherTests
 ```
 
@@ -92,7 +92,7 @@ xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPho
 
 **Run:**
 ```bash
-xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:UnaMentisTests/KBTokenMatcherTests
 ```
 
@@ -117,7 +117,7 @@ xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPho
 
 **Run:**
 ```bash
-xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:UnaMentisTests/KBSynonymDictionariesTests
 ```
 
@@ -143,7 +143,7 @@ xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPho
 
 **Run:**
 ```bash
-xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+xcodebuild test -scheme UnaMentis -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:UnaMentisTests/KBLinguisticMatcherTests
 ```
 
@@ -332,7 +332,7 @@ func testMemory_ModelUnload() {
 
 # Run iOS tests and export results
 xcodebuild test -scheme UnaMentis \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:UnaMentisTests/KBAnswerValidationIntegrationTests | \
   grep "PASS\|FAIL" > ios_results.txt
 

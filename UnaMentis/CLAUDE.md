@@ -5,9 +5,9 @@ Swift 6.0/SwiftUI iOS application for voice-first AI tutoring.
 ## Build Commands
 
 ```bash
-# Build for simulator (iPhone 16 Pro for CI parity)
+# Build for simulator (iPhone 17 Pro for CI parity)
 xcodebuild -project UnaMentis.xcodeproj -scheme UnaMentis \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 
 # Testing - use the unified test runner for CI parity
 ./scripts/test-quick.sh          # Unit tests only (fast)
@@ -16,7 +16,7 @@ xcodebuild -project UnaMentis.xcodeproj -scheme UnaMentis \
 
 # Run specific test class
 xcodebuild test -project UnaMentis.xcodeproj -scheme UnaMentis \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:UnaMentisTests/ProgressTrackerTests
 ```
 
