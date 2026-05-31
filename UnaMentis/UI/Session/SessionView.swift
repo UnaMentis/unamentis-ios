@@ -919,9 +919,6 @@ class SessionViewModel: ObservableObject {
     /// Audio player delegate for handling playback completion
     private var audioDelegate: AudioPlayerDelegate?
 
-    /// Player for transition announcements (retained to prevent deallocation during playback)
-    private var announcementPlayer: AVAudioPlayer?
-
     /// Timer for updating audio level from playback metering
     private var audioMeteringTimer: Timer?
 
@@ -2150,41 +2147,12 @@ class SessionViewModel: ObservableObject {
         await startDirectStreamingForCurrentTopic()
     }
 
-    /// Speak a transition announcement using the configured TTS provider
+    /// Speak a transition announcement through the unified announcement pipeline.
     private func speakTransitionAnnouncement(_ text: String) async {
-        do {
-            let ttsService = TTSProvider.resolveConfiguredService()
-
-            // Synthesize the announcement
-            let stream = try await ttsService.synthesize(text: text)
-
-            // Collect all audio chunks
-            var audioData = Data()
-            for try await chunk in stream {
-                audioData.append(chunk.audioData)
-            }
-
-            guard !audioData.isEmpty else {
-                logger.warning("No audio data generated for transition announcement")
-                return
-            }
-
-            // Play the complete announcement (retain player to prevent deallocation)
-            announcementPlayer = try AVAudioPlayer(data: audioData)
-            announcementPlayer?.play()
-
-            // Wait for playback to complete
-            if let duration = announcementPlayer?.duration {
-                try await Task.sleep(for: .milliseconds(Int(duration * 1000) + 100))
-            }
-
-            // Release the player
-            announcementPlayer = nil
-        } catch {
-            logger.warning("Failed to speak transition announcement: \(error.localizedDescription)")
-            announcementPlayer = nil
-            // Continue anyway - the announcement is not critical
-        }
+        // Routes through AudioPlaybackOrchestrator + AudioEngine (single voice pipeline),
+        // so it plays correctly for the default raw-PCM provider instead of a private
+        // AVAudioPlayer that silently drops headerless PCM.
+        await UnifiedAnnouncer.shared.speak(text)
     }
 
     /// Start direct streaming for the current topic
@@ -2920,29 +2888,31 @@ class SessionViewModel: ObservableObject {
             return
         }
 
+        guard let audioEngine = bargeInAudioEngine else {
+            logger.warning("No audio engine available for barge-in response - text only")
+            return
+        }
+
         logger.info("Speaking barge-in response: '\(text.prefix(50))...'")
 
         do {
             let audioStream = try await ttsService.synthesize(text: text)
 
+            var isFirstChunk = true
             for await chunk in audioStream {
-                // Convert chunk to AVAudioPlayer and play
+                if isFirstChunk {
+                    await TTFAInstrumentation.shared.markTTSFirstChunk()
+                    isFirstChunk = false
+                }
+                // Apple TTS yields empty chunks (it plays internally via AVSpeechSynthesizer); skip those.
+                guard !chunk.audioData.isEmpty else { continue }
                 do {
-                    let player = try AVAudioPlayer(data: chunk.audioData)
-                    player.volume = 1.0
-
-                    // Play synchronously using a continuation
-                    await withCheckedContinuation { continuation in
-                        let delegate = AudioPlayerDelegate {
-                            continuation.resume()
-                        }
-                        // Store delegate to prevent deallocation
-                        self.audioDelegate = delegate
-                        player.delegate = delegate
-                        player.play()
-                    }
+                    // Play through the unified AudioEngine (format-aware), reusing the engine
+                    // already running for barge-in VAD instead of a private AVAudioPlayer that
+                    // silently drops the default provider's headerless PCM.
+                    try await audioEngine.playAudio(chunk)
                 } catch {
-                    logger.error("Failed to play TTS audio chunk: \(error)")
+                    logger.error("Failed to play barge-in audio chunk: \(error)")
                 }
             }
 

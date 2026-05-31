@@ -789,7 +789,6 @@ final class KBReboundTrainingViewModel {
     var audioMode: Bool = false  // Audio toggle for TTS question reading
 
     // Audio
-    private var announcementPlayer: AVAudioPlayer?
     private var speakingTask: Task<Void, Never>?
     private(set) var isSpeaking: Bool = false
 
@@ -893,54 +892,8 @@ final class KBReboundTrainingViewModel {
     private func speakQuestion(_ text: String) async {
         isSpeaking = true
 
-        // TTFA: mark activation for rebound training audio
-        await TTFAInstrumentation.shared.markActivation(.kbRebound)
-
-        let ttsService = TTSProvider.resolveConfiguredService()
-
-        do {
-            let stream = try await ttsService.synthesize(text: text)
-
-            // Collect all audio chunks
-            var audioData = Data()
-            var isFirstChunk = true
-            for await chunk in stream {
-                guard !Task.isCancelled else {
-                    isSpeaking = false
-                    return
-                }
-                audioData.append(chunk.audioData)
-                if isFirstChunk {
-                    // TTFA: mark first TTS chunk received
-                    await TTFAInstrumentation.shared.markTTSFirstChunk()
-                    isFirstChunk = false
-                }
-            }
-
-            guard !audioData.isEmpty, !Task.isCancelled else {
-                isSpeaking = false
-                return
-            }
-
-            // TTFA: mark audio scheduled (AVAudioPlayer path)
-            await TTFAInstrumentation.shared.markAudioScheduled()
-
-            // Play the collected audio
-            announcementPlayer = try AVAudioPlayer(data: audioData)
-            announcementPlayer?.play()
-
-            // TTFA: mark audio playing
-            await TTFAInstrumentation.shared.markAudioPlaying()
-
-            // Wait for playback to complete
-            if let duration = announcementPlayer?.duration {
-                try await Task.sleep(for: .milliseconds(Int(duration * 1000) + 50))
-            }
-
-            announcementPlayer = nil
-        } catch {
-            announcementPlayer = nil
-        }
+        // Speak through the unified announcement pipeline (single voice engine).
+        await UnifiedAnnouncer.shared.speak(text, activation: .kbRebound)
 
         isSpeaking = false
     }
@@ -949,8 +902,7 @@ final class KBReboundTrainingViewModel {
     private func cancelSpeech() {
         speakingTask?.cancel()
         speakingTask = nil
-        announcementPlayer?.stop()
-        announcementPlayer = nil
+        Task { await UnifiedAnnouncer.shared.stop() }
         isSpeaking = false
     }
 

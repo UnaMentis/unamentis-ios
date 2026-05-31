@@ -55,7 +55,6 @@ public final class VoiceActivityFeedback: ObservableObject {
     // MARK: - Private State
 
     private var soundIDs: [FeedbackTone: SystemSoundID] = [:]
-    private var announcementPlayer: AVAudioPlayer?
     private var currentSpeakingTask: Task<Void, Never>?
     @Published private var _isSpeaking: Bool = false
 
@@ -244,8 +243,7 @@ public final class VoiceActivityFeedback: ObservableObject {
     public func stopSpeaking() {
         currentSpeakingTask?.cancel()
         currentSpeakingTask = nil
-        announcementPlayer?.stop()
-        announcementPlayer = nil
+        Task { await UnifiedAnnouncer.shared.stop() }
         _isSpeaking = false
     }
 
@@ -256,69 +254,13 @@ public final class VoiceActivityFeedback: ObservableObject {
 
     // MARK: - Private: TTS Synthesis
 
-    /// Synthesize and play text using the configured TTS provider
+    /// Synthesize and play text through the unified announcement pipeline.
+    /// The announcer routes PCM providers through AudioPlaybackOrchestrator + AudioEngine
+    /// and falls back to Apple TTS internally, so this no longer uses a private AVAudioPlayer.
     private func speakWithConfiguredTTS(_ text: String) async {
         _isSpeaking = true
         defer { _isSpeaking = false }
-
-        let ttsService = TTSProvider.resolveConfiguredService()
-
-        do {
-            let stream = try await ttsService.synthesize(text: text)
-
-            // Collect all audio chunks
-            var audioData = Data()
-            for await chunk in stream {
-                guard !Task.isCancelled else { return }
-                audioData.append(chunk.audioData)
-            }
-
-            guard !audioData.isEmpty, !Task.isCancelled else { return }
-
-            // Play the collected audio
-            announcementPlayer = try AVAudioPlayer(data: audioData)
-            announcementPlayer?.play()
-
-            // Wait for playback to complete
-            if let duration = announcementPlayer?.duration {
-                try await Task.sleep(for: .milliseconds(Int(duration * 1000) + 50))
-            }
-
-            announcementPlayer = nil
-        } catch {
-            guard !Task.isCancelled else { return }
-            logger.warning("Configured TTS failed for announcement, falling back to Apple TTS: \(error.localizedDescription)")
-            // Fall back to Apple TTS if the configured provider fails
-            await speakWithAppleTTSFallback(text)
-        }
-    }
-
-    /// Fallback to Apple TTS if the configured provider fails
-    private func speakWithAppleTTSFallback(_ text: String) async {
-        do {
-            let appleTTS = AppleTTSService()
-            let stream = try await appleTTS.synthesize(text: text)
-
-            var audioData = Data()
-            for await chunk in stream {
-                guard !Task.isCancelled else { return }
-                audioData.append(chunk.audioData)
-            }
-
-            guard !audioData.isEmpty, !Task.isCancelled else { return }
-
-            announcementPlayer = try AVAudioPlayer(data: audioData)
-            announcementPlayer?.play()
-
-            if let duration = announcementPlayer?.duration {
-                try await Task.sleep(for: .milliseconds(Int(duration * 1000) + 50))
-            }
-
-            announcementPlayer = nil
-        } catch {
-            logger.error("Apple TTS fallback also failed: \(error.localizedDescription)")
-            announcementPlayer = nil
-        }
+        await UnifiedAnnouncer.shared.speak(text)
     }
 
     // MARK: - Private Helpers
