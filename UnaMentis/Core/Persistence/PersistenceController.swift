@@ -94,6 +94,14 @@ public final class PersistenceController: @unchecked Sendable {
             // In-memory stores load synchronously and quickly, safe to block
             loadStoresSynchronously()
         } else {
+            // Protect the on-disk store at rest: the file is encrypted and inaccessible
+            // until the device is first unlocked after boot (still usable by background tasks).
+            if let description = container.persistentStoreDescriptions.first {
+                description.setOption(
+                    FileProtectionType.completeUntilFirstUserAuthentication.rawValue as NSString,
+                    forKey: NSPersistentStoreFileProtectionKey
+                )
+            }
             // For persistent stores, load asynchronously via continuation
             // This runs on a background thread and doesn't block MainActor
             loadStoresWithContinuation()

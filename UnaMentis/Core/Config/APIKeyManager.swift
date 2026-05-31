@@ -10,9 +10,9 @@ import Logging
 /// Manages API keys securely using Keychain and environment variables
 ///
 /// Priority order:
-/// 1. Keychain (most secure, persistent)
-/// 2. Environment variables (development)
-/// 3. UserDefaults (fallback, least secure)
+/// 1. Keychain (most secure, persistent) - the only source in release builds
+/// 2. Environment variables (DEBUG builds only)
+/// 3. UserDefaults (DEBUG builds only, least secure)
 public actor APIKeyManager {
     
     // MARK: - Singleton
@@ -189,21 +189,23 @@ public actor APIKeyManager {
     
     /// Get an API key, checking sources in priority order
     public func getKey(_ keyType: KeyType) -> String? {
-        // 1. Try Keychain first
+        // 1. Try Keychain first (the only source in release builds)
         if let key = getFromKeychain(keyType) {
             return key
         }
-        
-        // 2. Try environment variable
+
+        #if DEBUG
+        // 2. Try environment variable (development only)
         if let key = ProcessInfo.processInfo.environment[keyType.rawValue], !key.isEmpty {
             return key
         }
-        
-        // 3. Try UserDefaults (for development only)
+
+        // 3. Try UserDefaults (development only, least secure; never compiled into release)
         if let key = UserDefaults.standard.string(forKey: keyType.rawValue), !key.isEmpty {
             return key
         }
-        
+        #endif
+
         logger.warning("No API key found for: \(keyType.displayName)")
         return nil
     }

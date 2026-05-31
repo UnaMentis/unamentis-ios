@@ -2757,7 +2757,7 @@ class SessionViewModel: ObservableObject {
                 await resumeAfterBargeIn(userQuestion: nil)
             } else {
                 // Got a real question/comment - process with LLM
-                logger.info("User said: \(transcript)")
+                logger.debug("User said: \(transcript)")
                 userTranscript = transcript
                 conversationHistory.append(ConversationMessage(
                     text: transcript,
@@ -2815,7 +2815,7 @@ class SessionViewModel: ObservableObject {
             }
         }
 
-        logger.info("Barge-in transcription complete: '\(finalTranscript)'")
+        logger.debug("Barge-in transcription complete: '\(finalTranscript)'")
         return finalTranscript
     }
 

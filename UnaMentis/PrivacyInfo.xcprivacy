@@ -81,14 +81,14 @@
             </array>
         </dict>
 
-        <!-- System boot time API - used by ProcessInfo for thermal monitoring -->
+        <!-- Disk space API - used to show available storage and check room before downloading on-device models -->
         <dict>
             <key>NSPrivacyAccessedAPIType</key>
-            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
             <key>NSPrivacyAccessedAPITypeReasons</key>
             <array>
-                <!-- 35F9.1: Access system boot time for measuring time elapsed between events in the app -->
-                <string>35F9.1</string>
+                <!-- 85F4.1: Display disk space information to the person using the device -->
+                <string>85F4.1</string>
             </array>
         </dict>
     </array>

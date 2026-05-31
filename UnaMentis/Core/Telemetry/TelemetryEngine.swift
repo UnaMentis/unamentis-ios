@@ -753,15 +753,11 @@ public struct DeviceMetricsCollector: Sendable {
     /// Get CPU usage percentage (0-100)
     private static func getCPUUsage() -> Double {
         var totalUsageOfCPU: Double = 0.0
-        var threadsList = UnsafeMutablePointer(mutating: [thread_act_t]())
+        var threadsList: thread_act_array_t?
         var threadsCount = mach_msg_type_number_t(0)
-        let threadsResult = withUnsafeMutablePointer(to: &threadsList) {
-            $0.withMemoryRebound(to: thread_act_array_t?.self, capacity: 1) {
-                task_threads(mach_task_self_, $0, &threadsCount)
-            }
-        }
+        let threadsResult = task_threads(mach_task_self_, &threadsList, &threadsCount)
 
-        guard threadsResult == KERN_SUCCESS else {
+        guard threadsResult == KERN_SUCCESS, let threadsList else {
             return 0
         }
 

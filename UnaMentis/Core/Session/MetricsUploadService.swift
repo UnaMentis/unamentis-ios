@@ -43,17 +43,22 @@ public actor MetricsUploadService {
         logger.info("MetricsUploadService initialized with clientId: \(logClientId)")
     }
 
-    /// Configure device identification from MainActor context
+    /// Configure device identification from MainActor context.
+    /// Uses a random, per-install identifier (persisted) rather than the device IDFV,
+    /// and does not send the user-assigned device name, so telemetry carries no
+    /// device-linkable identifier.
     @MainActor
     public func configureDeviceInfo() async {
-        let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
-        let deviceName = UIDevice.current.name
+        let deviceId: String
+        if let existing = UserDefaults.standard.string(forKey: "MetricsClientId") {
+            deviceId = existing
+        } else {
+            deviceId = UUID().uuidString
+            UserDefaults.standard.set(deviceId, forKey: "MetricsClientId")
+        }
 
-        // Store for persistence
-        UserDefaults.standard.set(deviceId, forKey: "MetricsClientId")
-        UserDefaults.standard.set(deviceName, forKey: "MetricsClientName")
-
-        await updateDeviceInfo(id: deviceId, name: deviceName)
+        // Generic, non-identifying client label (no user-assigned device name).
+        await updateDeviceInfo(id: deviceId, name: "UnaMentis Client")
     }
 
     private func updateDeviceInfo(id: String, name: String) {

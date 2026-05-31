@@ -24,6 +24,8 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -38,7 +40,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>UnaMentis needs microphone access for voice-based educational conversations.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>UnaMentis uses speech recognition for voice commands.</string>
+	<string>UnaMentis uses speech recognition to transcribe what you say during voice tutoring sessions so the AI tutor can respond. Recognition may be performed on Apple's servers when on-device recognition is unavailable.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

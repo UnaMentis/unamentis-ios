@@ -805,7 +805,7 @@ public final class SessionManager: ObservableObject {
                             return
                         }
 
-                        await self.logger.info("🔇 Silence threshold reached, completing utterance: \(transcript.prefix(50))...")
+                        await self.logger.debug("Silence threshold reached, completing utterance: \(transcript.prefix(50))...")
                         await self.completeUtteranceFromSilence(transcript)
                     }
                 }
@@ -894,7 +894,7 @@ public final class SessionManager: ObservableObject {
             return
         }
 
-        logger.info("[DEBUG] Injecting utterance: \(text.prefix(50))...")
+        logger.debug("Injecting utterance: \(text.prefix(50))...")
 
         // Update transcript display
         await MainActor.run {
@@ -949,7 +949,7 @@ public final class SessionManager: ObservableObject {
     // MARK: - Utterance Processing
 
     private func processUserUtterance(_ transcript: String) async {
-        logger.info("Processing user utterance: \(transcript.prefix(50))...")
+        logger.debug("Processing user utterance: \(transcript.prefix(50))...")
 
         await setState(.processingUserUtterance)
         currentTurnStartTime = Date()

@@ -153,7 +153,7 @@ public actor VisualAssetCache {
     /// NOTE: Must be called from MainActor context since Curriculum is an NSManagedObject
     @MainActor
     public func preloadAssets(for curriculum: Curriculum) async {
-        guard let topics = curriculum.topics as? Set<Topic> else { return }
+        guard let topics = curriculum.topics?.array as? [Topic] else { return }
 
         logger.info("Preloading assets for curriculum: \(curriculum.name ?? "unknown") (\(topics.count) topics)")
 

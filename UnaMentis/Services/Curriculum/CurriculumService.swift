@@ -527,7 +527,8 @@ public actor CurriculumService {
         }
 
         // Also update Core Data entities with cached data for any matching visual assets
-        if let topics = curriculum.topics as? Set<Topic> {
+        // topics is an ordered Core Data relationship (NSOrderedSet), so read it via .array.
+        if let topics = curriculum.topics?.array as? [Topic] {
             for topic in topics {
                 for asset in topic.visualAssetSet {
                     if let assetId = asset.assetId, let data = assetDataMap[assetId] {
