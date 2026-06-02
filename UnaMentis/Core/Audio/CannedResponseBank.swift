@@ -28,6 +28,21 @@ public actor CannedResponseBank {
         public let audioData: Data
         /// Duration in seconds
         public let duration: TimeInterval
+        /// The audio format the clip was rendered in. Preserved so playback through the
+        /// unified AudioEngine is faithful (the on-device path is Pocket TTS pcmFloat32).
+        public let format: TTSAudioFormat
+
+        /// Convert to a single playable audio chunk for the unified AudioEngine,
+        /// so a filler plays on the same pipeline as the streamed model response.
+        public func toTTSAudioChunk() -> TTSAudioChunk {
+            TTSAudioChunk(
+                audioData: audioData,
+                format: format,
+                sequenceNumber: 0,
+                isFirst: true,
+                isLast: true
+            )
+        }
     }
 
     // MARK: - Properties
@@ -72,15 +87,22 @@ public actor CannedResponseBank {
                 do {
                     let stream = try await ttsService.synthesize(text: phrase)
                     var combinedData = Data()
+                    var clipFormat: TTSAudioFormat = .pcmFloat32(sampleRate: 24000, channels: 1)
+                    var capturedFormat = false
                     for await chunk in stream {
                         combinedData.append(chunk.audioData)
+                        if !capturedFormat {
+                            clipFormat = chunk.format
+                            capturedFormat = true
+                        }
                     }
                     guard !combinedData.isEmpty else { continue }
                     let clip = AudioClip(
                         text: phrase,
                         intent: intent,
                         audioData: combinedData,
-                        duration: estimateDuration(dataSize: combinedData.count)
+                        duration: estimateDuration(dataSize: combinedData.count),
+                        format: clipFormat
                     )
                     intentClips.append(clip)
                     totalClips += 1

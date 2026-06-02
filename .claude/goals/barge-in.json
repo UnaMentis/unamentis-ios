@@ -1,0 +1,116 @@
+{
+  "id": "single-reliable-barge-in-pipeline",
+  "title": "Single reliable barge-in + speech pipeline",
+  "statement": "A single reliable audio pipeline, used by every narrating surface, that reliably detects barge-in, distinguishes the user from background noise and the app's own voice, classifies the barge-in as a command or an engagement, and meets target latency, proven by a repeatable measurement.",
+  "tier": "target",
+  "authority": "device",
+  "authority_note": "The on-device real-acoustic run is the source of truth for whether the goal is met. The simulator-injection run is a fast, repeatable proxy for regression detection and CI; it cannot prove the goal because it does not exercise real microphone, speaker echo, or hardware latency.",
+  "measured_by": {
+    "skill": "measure-barge-in",
+    "script": "scripts/measure-barge-in.sh",
+    "harness": "UnaMentis/Testing/BargeInHarness/BargeInMeasurementHarness.swift",
+    "results_dir": "build/barge-in-results"
+  },
+  "criteria": [
+    {
+      "id": "barge_in_reaction_latency_ms_median",
+      "label": "Barge-in reaction latency (median)",
+      "definition": "User speech onset to AI playback paused (tentative).",
+      "metric": "reaction_latency_ms",
+      "aggregate": "median",
+      "comparison": "<=",
+      "target": 300,
+      "unit": "ms",
+      "min_samples": 20,
+      "gating": true
+    },
+    {
+      "id": "barge_in_reaction_latency_ms_p95",
+      "label": "Barge-in reaction latency (P95)",
+      "definition": "User speech onset to AI playback paused (tentative), 95th percentile.",
+      "metric": "reaction_latency_ms",
+      "aggregate": "p95",
+      "comparison": "<=",
+      "target": 500,
+      "unit": "ms",
+      "min_samples": 20,
+      "gating": true
+    },
+    {
+      "id": "stt_time_to_first_partial_ms_median",
+      "label": "STT time-to-first-partial (median)",
+      "definition": "User speech onset to first partial STT transcript.",
+      "metric": "stt_first_partial_ms",
+      "aggregate": "median",
+      "comparison": "<=",
+      "target": 500,
+      "unit": "ms",
+      "min_samples": 20,
+      "gating": true,
+      "requires": "device"
+    },
+    {
+      "id": "detection_recall",
+      "label": "Barge-in detection recall",
+      "definition": "Fraction of real barge-in utterances that are detected and confirmed.",
+      "metric": "detection_recall",
+      "aggregate": "rate",
+      "comparison": ">=",
+      "target": 0.95,
+      "unit": "fraction",
+      "min_samples": 30,
+      "gating": true
+    },
+    {
+      "id": "noise_echo_false_positive_rate",
+      "label": "Noise/echo false-positive rate",
+      "definition": "Fraction of non-barge-in audio (background-noise scenes and the app's own TTS) that wrongly triggers a confirmed barge-in.",
+      "metric": "false_positive_rate",
+      "aggregate": "rate",
+      "comparison": "<=",
+      "target": 0.02,
+      "unit": "fraction",
+      "min_samples": 30,
+      "gating": true
+    },
+    {
+      "id": "command_vs_engagement_macro_f1",
+      "label": "Command-vs-engagement accuracy",
+      "definition": "Macro F1 of the command/engagement label on the labeled corpus.",
+      "metric": "command_vs_engagement_macro_f1",
+      "aggregate": "macro_f1",
+      "comparison": ">=",
+      "target": 0.90,
+      "unit": "f1",
+      "min_samples": 20,
+      "gating": true
+    },
+    {
+      "id": "peak_memory_mb",
+      "label": "Peak memory during measurement",
+      "definition": "Peak resident memory while running the measurement suite. Advisory, reported not gated; true 90-minute memory-growth budget is a separate long-run check.",
+      "metric": "peak_memory_mb",
+      "aggregate": "max",
+      "comparison": "<=",
+      "target": 600,
+      "unit": "MB",
+      "gating": false
+    },
+    {
+      "id": "thermal_state",
+      "label": "Thermal state during measurement",
+      "definition": "Worst ProcessInfo thermal state observed. Advisory.",
+      "metric": "thermal_state",
+      "aggregate": "max",
+      "comparison": "<=",
+      "target": "fair",
+      "unit": "thermal",
+      "gating": false
+    }
+  ],
+  "notes": [
+    "A green run on too few samples is not proof. Every result reports sample counts; rate/F1 criteria below their min_samples are reported as INCONCLUSIVE, not PASS.",
+    "If the device run shows the fallback STT cannot hit the latency targets, revisit targets per device tier rather than silently failing.",
+    "Criteria target the Target tier chosen 2026-06-01. Changing the bar means editing this file; the skill and goal feature both read it."
+  ]
+}

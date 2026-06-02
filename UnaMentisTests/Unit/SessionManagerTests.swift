@@ -78,7 +78,7 @@ final class SessionManagerTests: XCTestCase {
         
         XCTAssertEqual(config.enableCostTracking, true)
         XCTAssertEqual(config.enableInterruptions, true)
-        XCTAssertEqual(config.maxDuration, 5400) // 90 minutes
+        XCTAssertEqual(config.maxDuration, 0) // 0 = unlimited; longevity governed by environmental monitoring
         XCTAssertFalse(config.systemPrompt.isEmpty)
     }
     

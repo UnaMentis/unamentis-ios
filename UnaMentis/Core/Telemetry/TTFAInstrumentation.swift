@@ -56,6 +56,16 @@ public enum TTFAEventType: String, Sendable {
     case cachedHit = "CACHED_HIT"
     /// Feature failed to produce audio
     case error = "ERROR"
+
+    // Barge-in detection timeline (measured from speech onset, T0).
+    /// VAD first detected user speech onset while the AI was speaking.
+    case bargeInOnset = "BARGEIN_ONSET"
+    /// AI playback paused on a tentative (not yet confirmed) barge-in.
+    case bargeInTentative = "BARGEIN_TENTATIVE"
+    /// Barge-in confirmed (continued speech); the user has the floor.
+    case bargeInConfirmed = "BARGEIN_CONFIRMED"
+    /// First partial STT transcript produced for the interrupting utterance.
+    case bargeInSttPartial = "BARGEIN_STT_PARTIAL"
 }
 
 // MARK: - Mach Time Utilities
@@ -101,6 +111,13 @@ public actor TTFAInstrumentation {
 
     /// Whether a measurement is currently in progress
     public var isActive: Bool { activeFeature != nil }
+
+    /// Independent timing slot for barge-in detection. This is separate from
+    /// `activationTime` so the detection timeline (onset to confirmed) never
+    /// collides with a feature-TTFA measurement (e.g. the filler clip's TTFA,
+    /// which uses markActivation/markAudioPlaying on the same feature id).
+    private var bargeInOnsetTime: UInt64 = 0
+    private var bargeInActive: Bool = false
 
     // MARK: - Activation
 
@@ -156,6 +173,43 @@ public actor TTFAInstrumentation {
         let elapsed = ttfaMachToMs(mach_absolute_time() - activationTime)
         emit(.error, feature: feature, elapsedMs: elapsed, metadata: description)
         activeFeature = nil
+    }
+
+    // MARK: - Barge-In Detection Timeline
+
+    /// Mark user speech onset during AI playback (T0 for barge-in latency).
+    /// Reaction and time-to-first-partial are all measured from this instant.
+    public func markBargeInOnset(metadata: String = "") {
+        bargeInOnsetTime = mach_absolute_time()
+        bargeInActive = true
+        emit(.bargeInOnset, feature: .sessionBargeIn, elapsedMs: 0, metadata: metadata)
+    }
+
+    /// Mark when AI playback paused on a tentative barge-in.
+    public func markBargeInTentative() {
+        guard bargeInActive else { return }
+        let elapsed = ttfaMachToMs(mach_absolute_time() - bargeInOnsetTime)
+        emit(.bargeInTentative, feature: .sessionBargeIn, elapsedMs: elapsed)
+    }
+
+    /// Mark when the barge-in is confirmed (this is the reaction-latency milestone).
+    public func markBargeInConfirmed() {
+        guard bargeInActive else { return }
+        let elapsed = ttfaMachToMs(mach_absolute_time() - bargeInOnsetTime)
+        emit(.bargeInConfirmed, feature: .sessionBargeIn, elapsedMs: elapsed)
+    }
+
+    /// Mark the first partial STT transcript for the interrupting utterance.
+    public func markBargeInSttFirstPartial() {
+        guard bargeInActive else { return }
+        let elapsed = ttfaMachToMs(mach_absolute_time() - bargeInOnsetTime)
+        emit(.bargeInSttPartial, feature: .sessionBargeIn, elapsedMs: elapsed)
+    }
+
+    /// Close the current barge-in measurement (confirmed-and-handled, or a
+    /// false positive that resumed). A subsequent onset starts a fresh one.
+    public func markBargeInResolved() {
+        bargeInActive = false
     }
 
     // MARK: - os_log Emission

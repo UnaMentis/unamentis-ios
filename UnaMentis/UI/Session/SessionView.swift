@@ -839,6 +839,11 @@ class SessionViewModel: ObservableObject {
     /// TTS service for speaking barge-in AI responses
     private var bargeInTTSService: (any TTSService)?
 
+    /// Pre-rendered instant-acknowledgment filler clips for barge-in, rendered with
+    /// bargeInTTSService so leading with a filler is indistinguishable from the
+    /// streamed model response that follows.
+    private var bargeInCannedBank: CannedResponseBank?
+
     /// Barge-in confirmation timer (600ms window to confirm real speech vs noise)
     private var bargeInConfirmationTask: Task<Void, Never>?
 
@@ -1587,31 +1592,51 @@ class SessionViewModel: ObservableObject {
             return nil
         }
 
+        // Helper to create a cloud LLM if an API key is configured (Anthropic preferred, then OpenAI).
+        // Lets the default localMLX provider "just work" once a key is added, without manual config.
+        func createCloudLLMIfAvailable() async -> (any LLMService)? {
+            if let apiKey = await appState.apiKeys.getKey(.anthropic) {
+                logger.info("Using AnthropicLLMService as fallback (API key present)")
+                return AnthropicLLMService(apiKey: apiKey)
+            }
+            if let apiKey = await appState.apiKeys.getKey(.openAI) {
+                logger.info("Using OpenAILLMService as fallback (API key present)")
+                return OpenAILLMService(apiKey: apiKey)
+            }
+            return nil
+        }
+
         switch llmProviderSetting {
         case .localMLX:
-            // Try on-device LLM first (the intended behavior for localMLX)
+            // Try on-device LLM first (the intended behavior for localMLX), then a cloud LLM if an
+            // API key is present (so the default provider just works on first run), then self-hosted.
             #if LLAMA_AVAILABLE
             if OnDeviceLLMService.isDeviceSupported && OnDeviceLLMService.areModelsAvailable {
                 logger.info("localMLX selected - using OnDeviceLLMService")
                 llmService = OnDeviceLLMService()
+            } else if let cloud = await createCloudLLMIfAvailable() {
+                logger.warning("On-device LLM not available, using cloud LLM (API key present)")
+                llmService = cloud
             } else if let selfHosted = createSelfHostedLLMIfAvailable() {
                 logger.warning("On-device LLM not available, falling back to self-hosted")
                 llmService = selfHosted
             } else {
-                logger.warning("No LLM available - on-device not supported and no server configured")
-                errorMessage = "On-device LLM requires model files. Please download models or configure a server."
+                logger.warning("No LLM available - on-device not supported, no API key, no server")
+                errorMessage = "No LLM available. Add an OpenAI or Anthropic API key in Settings, download an on-device model, or configure a server."
                 showError = true
                 state = .idle
                 return
             }
             #else
-            // LLAMA not available, try self-hosted
-            if let selfHosted = createSelfHostedLLMIfAvailable() {
+            if let cloud = await createCloudLLMIfAvailable() {
+                logger.warning("On-device LLM not in build, using cloud LLM (API key present)")
+                llmService = cloud
+            } else if let selfHosted = createSelfHostedLLMIfAvailable() {
                 logger.warning("LLAMA not available in build, falling back to self-hosted")
                 llmService = selfHosted
             } else {
-                logger.warning("No LLM available - LLAMA not in build and no server configured")
-                errorMessage = "On-device LLM not available in this build. Please configure a server."
+                logger.warning("No LLM available - LLAMA not in build, no API key, no server")
+                errorMessage = "No LLM available. Add an OpenAI or Anthropic API key in Settings, or configure a server."
                 showError = true
                 state = .idle
                 return
@@ -2494,6 +2519,15 @@ class SessionViewModel: ObservableObject {
             bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
         }
 
+        // Pre-render instant barge-in filler clips with the SAME TTS service the barge-in
+        // response uses, so leading with a filler is seamless. Renders in the background
+        // while the lecture plays, so it is ready well before the user interrupts.
+        if let fillerTTS = bargeInTTSService {
+            let bank = CannedResponseBank()
+            bargeInCannedBank = bank
+            Task { await bank.populate(using: fillerTTS) }
+        }
+
         do {
             // Configure and start audio engine
             try await audioEngine.configure(config: audioConfig)
@@ -2585,6 +2619,7 @@ class SessionViewModel: ObservableObject {
         bargeInSTTService = nil
         bargeInLLMService = nil
         bargeInTTSService = nil
+        bargeInCannedBank = nil
         bargeInAudioBuffers.removeAll()
         isTentativeBargeIn = false
     }
@@ -2851,6 +2886,14 @@ class SessionViewModel: ObservableObject {
         do {
             var response = ""
             let stream = try await llmService.streamCompletion(messages: messages, config: .default)
+
+            // Always lead with a brief pre-generated filler in the same voice, so the user
+            // never perceives a gap while the model produces its first tokens. The model is
+            // already working (stream created above) while the filler plays on the same engine.
+            if let clip = await bargeInCannedBank?.getResponse(forUtterance: question),
+               let audioEngine = bargeInAudioEngine {
+                try? await audioEngine.playAudio(clip.toTTSAudioChunk())
+            }
 
             state = .aiSpeaking
             for await token in stream {
