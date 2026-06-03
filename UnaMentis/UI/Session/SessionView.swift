@@ -844,8 +844,13 @@ class SessionViewModel: ObservableObject {
     /// streamed model response that follows.
     private var bargeInCannedBank: CannedResponseBank?
 
-    /// Barge-in confirmation timer (600ms window to confirm real speech vs noise)
-    private var bargeInConfirmationTask: Task<Void, Never>?
+    /// The single barge-in detection pipeline for direct-streaming playback.
+    /// Owns the tentative/confirm decision and the confirmation timer; this view
+    /// model performs the side effects (pause/stop/resume the AVAudioPlayer).
+    private var bargeInDetector: BargeInDetector?
+
+    /// Task consuming the detector's event stream.
+    private var bargeInEventTask: Task<Void, Never>?
 
     /// Whether we're in tentative barge-in state (paused, waiting for confirmation)
     @Published var isTentativeBargeIn: Bool = false
@@ -2456,6 +2461,21 @@ class SessionViewModel: ObservableObject {
         )
         self.bargeInAudioEngine = audioEngine
 
+        // Create the single barge-in detector and consume its events. It owns the
+        // tentative/confirm decision and the confirmation timer; the event handler
+        // performs this view model's side effects (pause/stop/resume playback).
+        let detector = BargeInDetector(config: BargeInDetectorConfig(
+            enabled: true,
+            confidenceThreshold: bargeInThreshold,
+            confirmationMs: Int(bargeInConfirmationWindow * 1000)
+        ))
+        self.bargeInDetector = detector
+        self.bargeInEventTask = Task { [weak self] in
+            for await event in detector.events {
+                await self?.handleBargeInEvent(event)
+            }
+        }
+
         // Configure STT service for transcribing barge-in speech
         let sttProviderSetting = UserDefaults.standard.string(forKey: "sttProvider")
             .flatMap { STTProvider(rawValue: $0) } ?? .appleSpeech
@@ -2608,8 +2628,10 @@ class SessionViewModel: ObservableObject {
     private func stopBargeInMonitoring() async {
         logger.info("Stopping barge-in monitoring")
 
-        bargeInConfirmationTask?.cancel()
-        bargeInConfirmationTask = nil
+        bargeInEventTask?.cancel()
+        bargeInEventTask = nil
+        await bargeInDetector?.finish()
+        bargeInDetector = nil
 
         if let audioEngine = bargeInAudioEngine {
             await audioEngine.stop()
@@ -2635,29 +2657,27 @@ class SessionViewModel: ObservableObject {
         // Handle different states
         switch state {
         case .aiSpeaking where isDirectStreamingMode:
-            // Check if this looks like user speech (above barge-in threshold)
+            // Arm the single detector (no-op unless idle) and feed it. It decides
+            // tentative/confirm/resume and emits events handled by handleBargeInEvent.
+            await bargeInDetector?.arm()
+            // Collect STT audio synchronously from the onset. The detector event
+            // is async, so we cannot rely on isTentativeBargeIn here: capture any
+            // likely-user-speech frame (this includes the trigger frame), and drop
+            // stray frames on silence so collection starts clean at the next onset.
+            // Buffers are NOT cleared by the async event handler, so this is the
+            // single owner of collection until confirm/resume.
             if vadResult.isSpeech && vadResult.confidence > bargeInThreshold {
-                if !isTentativeBargeIn {
-                    // Stage 1: Tentative barge-in - pause playback and wait for confirmation
-                    await handleTentativeBargeIn()
-                } else {
-                    // Stage 2: Continued speech during confirmation window - confirm barge-in
-                    bargeInAudioBuffers.append(buffer)
-                    await confirmBargeIn()
-                }
-            }
-
-            // Collect audio during tentative barge-in for STT
-            if isTentativeBargeIn {
                 bargeInAudioBuffers.append(buffer)
+            } else if !isTentativeBargeIn {
+                bargeInAudioBuffers.removeAll()
             }
+            await bargeInDetector?.process(vadResult)
 
         case .interrupted:
-            // During tentative barge-in, check for continued speech or silence
+            // Tentative pause: keep collecting audio; the detector confirms on
+            // continued speech or resumes on its confirmation-window timeout.
             bargeInAudioBuffers.append(buffer)
-            if vadResult.isSpeech && vadResult.confidence > bargeInThreshold {
-                await confirmBargeIn()
-            }
+            await bargeInDetector?.process(vadResult)
 
         case .userSpeaking:
             // User is speaking after confirmed barge-in - collect audio and detect end
@@ -2691,9 +2711,27 @@ class SessionViewModel: ObservableObject {
         }
     }
 
-    /// Stage 1: Tentative barge-in - pause playback, start confirmation timer
+    /// Stage 1: Tentative barge-in side effects (detector .tentative event).
+    /// The detector owns the confirmation timer, so this only pauses playback.
+    private func handleBargeInEvent(_ event: BargeInEvent) async {
+        switch event.kind {
+        case .tentative: await handleTentativeBargeIn()
+        case .confirmed: await confirmBargeIn()
+        case .resumed: await resumeFromTentativeBargeIn()
+        }
+    }
+
     private func handleTentativeBargeIn() async {
+        // Ignore a duplicate tentative (one is already in progress); do not abort,
+        // which would desync the flag from the detector's active tentative.
         guard !isTentativeBargeIn else { return }
+        // The detector emits events asynchronously, so the state may have moved on
+        // between detection and here. Only pause if still in direct-streaming
+        // playback; otherwise drop the stale event and reset the detector.
+        guard state == .aiSpeaking, isDirectStreamingMode else {
+            await bargeInDetector?.abortTentative()
+            return
+        }
 
         logger.info("Tentative barge-in detected - pausing playback for confirmation")
 
@@ -2704,21 +2742,9 @@ class SessionViewModel: ObservableObject {
         bargeInPauseSegmentIndex = currentSegmentIndex
         bargeInPauseTime = audioPlayer?.currentTime ?? 0
 
-        // Pause playback (don't stop - we might resume)
+        // Pause playback (don't stop - we might resume). STT audio collected from
+        // the onset in handleVADResult is preserved (not cleared here).
         audioPlayer?.pause()
-
-        // Clear audio buffer for fresh STT input
-        bargeInAudioBuffers.removeAll()
-
-        // Start confirmation timer - if no continued speech, resume playback
-        bargeInConfirmationTask = Task {
-            try? await Task.sleep(nanoseconds: UInt64(bargeInConfirmationWindow * 1_000_000_000))
-
-            // If we get here without being cancelled, no continued speech - resume
-            if !Task.isCancelled && isTentativeBargeIn {
-                await resumeFromTentativeBargeIn()
-            }
-        }
     }
 
     /// Stage 2: Confirmed barge-in - user is actually speaking
@@ -2726,10 +2752,6 @@ class SessionViewModel: ObservableObject {
         guard isTentativeBargeIn else { return }
 
         logger.info("Barge-in confirmed - stopping playback, listening to user")
-
-        // Cancel confirmation timer
-        bargeInConfirmationTask?.cancel()
-        bargeInConfirmationTask = nil
 
         // Stop playback completely (not just pause)
         stopAudioMeteringTimer()
@@ -3493,3 +3515,20 @@ private struct HelpItemRow: View {
 #Preview("Session Help") {
     SessionHelpSheet()
 }
+
+#if DEBUG
+// Test hook for validating the barge-in detector adoption without live audio.
+// Same-file extension so it can reach the private dispatch method.
+extension SessionViewModel {
+    /// Drive a detector event through the live side-effect dispatch path.
+    func _testDispatchBargeInEvent(_ kind: BargeInEvent.Kind) async {
+        await handleBargeInEvent(BargeInEvent(kind: kind, machTime: 0, confidence: 1))
+    }
+    /// Drive a VAD frame through the live handler (detector is nil here, so its
+    /// arm/process are no-ops; this exercises the synchronous STT-buffer collection).
+    func _testHandleVADResult(buffer: AVAudioPCMBuffer, vadResult: VADResult) async {
+        await handleVADResult(buffer: buffer, vadResult: vadResult)
+    }
+    var _testBargeInBufferCount: Int { bargeInAudioBuffers.count }
+}
+#endif
