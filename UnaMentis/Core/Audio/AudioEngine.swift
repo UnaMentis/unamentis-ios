@@ -57,9 +57,16 @@ public actor AudioEngine: ObservableObject {
     /// Whether TTS playback is currently active
     public private(set) var isPlaying = false
 
-    /// Latest STT transcript received from the speech-to-text pipeline.
-    /// Updated by the session layer when STT results arrive.
+    /// Latest STT transcript. Updated either by the session layer (which feeds
+    /// its own STT) or, for surfaces without their own STT loop (e.g. the reading
+    /// list), by an STT service attached via attachSTT(_:).
     public var lastTranscript: String = ""
+
+    /// Optional STT service this engine feeds captured audio to, updating
+    /// `lastTranscript`. Opt-in (nil by default) so the session's own STT path is
+    /// never doubled; only surfaces without their own STT attach one here.
+    private var attachedSTT: (any STTService)?
+    private var sttResultsTask: Task<Void, Never>?
 
     /// Queue of scheduled audio buffers for sequential playback
     private var pendingBuffers: [AVAudioPCMBuffer] = []
@@ -297,7 +304,10 @@ public actor AudioEngine: ObservableObject {
         }
         
         logger.info("Stopping AudioEngine")
-        
+
+        // Detach any STT so its stream/task is torn down with the engine.
+        await detachSTT()
+
         // Stop level monitoring
         await stopLevelMonitoring()
         
@@ -334,7 +344,13 @@ public actor AudioEngine: ObservableObject {
 
         // Emit to subscribers via Sendable holder
         audioStreamHolder.send(buffer, vadResult)
-        
+
+        // Feed an attached STT (opt-in; nil for the session). It updates
+        // lastTranscript via the results task started in attachSTT.
+        if let stt = attachedSTT, let copy = Self.copyBuffer(buffer) {
+            try? await stt.sendAudio(copy)
+        }
+
         // Update audio level if monitoring enabled
         if config.enableAudioLevelMonitoring {
             await updateAudioLevel(buffer: buffer)
@@ -349,7 +365,67 @@ public actor AudioEngine: ObservableObject {
         let processingTime = Date().timeIntervalSince(startTime)
         await telemetry.recordLatency(.audioProcessing, processingTime)
     }
-    
+
+    // MARK: - Attached STT (opt-in transcript feed)
+
+    /// Attach an STT service so this engine feeds it captured audio and surfaces
+    /// its transcripts on `lastTranscript`. For surfaces (e.g. the reading list)
+    /// that have no STT loop of their own. The session does NOT use this; it
+    /// feeds its own STT.
+    public func attachSTT(_ service: any STTService) async throws {
+        await detachSTT()
+        guard let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                      sampleRate: 16_000, channels: 1, interleaved: false) else { return }
+        let stream = try await service.startStreaming(audioFormat: fmt)
+        attachedSTT = service
+        sttResultsTask = Task { [weak self] in
+            for await result in stream {
+                await self?.updateTranscript(result.transcript)
+            }
+        }
+        logger.info("Attached STT (\(type(of: service))) for on-device transcription")
+    }
+
+    /// Detach the STT service and stop its stream.
+    public func detachSTT() async {
+        sttResultsTask?.cancel()
+        sttResultsTask = nil
+        if let stt = attachedSTT {
+            try? await stt.stopStreaming()
+        }
+        attachedSTT = nil
+    }
+
+    private func updateTranscript(_ transcript: String) {
+        guard !transcript.isEmpty else { return }
+        lastTranscript = transcript
+    }
+
+    /// Deep-copy a captured buffer into a disconnected buffer so it can be sent
+    /// to the STT actor without a data race. Handles the non-interleaved PCM
+    /// layouts the input tap produces; returns nil for unsupported layouts.
+    private static func copyBuffer(_ buffer: AVAudioPCMBuffer) -> sending AVAudioPCMBuffer? {
+        let src = buffer.format
+        guard !src.isInterleaved,
+              let fmt = AVAudioFormat(commonFormat: src.commonFormat, sampleRate: src.sampleRate,
+                                      channels: src.channelCount, interleaved: false),
+              let out = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: buffer.frameLength) else {
+            return nil
+        }
+        out.frameLength = buffer.frameLength
+        let frames = Int(buffer.frameLength)
+        let channels = Int(src.channelCount)
+        if let s = buffer.floatChannelData, let d = out.floatChannelData {
+            for ch in 0..<channels { d[ch].update(from: s[ch], count: frames) }
+            return out
+        }
+        if let s = buffer.int16ChannelData, let d = out.int16ChannelData {
+            for ch in 0..<channels { d[ch].update(from: s[ch], count: frames) }
+            return out
+        }
+        return nil
+    }
+
     /// Whether playback is currently paused (vs stopped)
     public private(set) var isPaused = false
 

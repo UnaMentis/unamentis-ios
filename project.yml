@@ -44,6 +44,12 @@ packages:
     url: https://github.com/lake-of-fire/swift-readability.git
     # Pinned to an exact revision for reproducible builds (was branch: main, a moving target).
     revision: d4f0824f5f4496791d01a83493ffccf3dd89c4cf
+  # FluidAudio: on-device streaming STT (Parakeet realtime EOU, CoreML/ANE, Apache-2.0).
+  # Models auto-download from HuggingFace at runtime; nothing fetched at build time.
+  # The adapter (FluidAudioSTTService) is gated on `#if canImport(FluidAudio)`.
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio.git
+    from: "0.14.8"
   # LlamaCpp SPM package removed - use local llama.xcframework for on-device LLM
   # See docs/plan for xcframework setup instructions
 
@@ -89,6 +95,7 @@ targets:
       - package: SwiftSoup
       - package: SwiftReadability
         product: SwiftReadability
+      - package: FluidAudio
       - framework: UnaMentis/Frameworks/PocketTTS.xcframework
         embed: false
       # LlamaCpp dependency removed - using server-hosted LLM via SelfHostedLLMService

@@ -511,6 +511,10 @@ public final class ReadingPlaybackViewModel: ObservableObject {
         guard let engine = storedAudioEngine else { return }
 
         voiceMonitoringTask = Task { [weak self] in
+            // Feed the on-device STT so the engine populates lastTranscript. Until
+            // an STT is attached (FluidAudio package present), lastTranscript stays
+            // empty and command recognition is inert - that is the current reality.
+            await self?.attachOnDeviceSTTIfAvailable()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(200))
                 guard !Task.isCancelled else { return }
@@ -539,6 +543,22 @@ public final class ReadingPlaybackViewModel: ObservableObject {
     public func stopVoiceCommandMonitoring() {
         voiceMonitoringTask?.cancel()
         voiceMonitoringTask = nil
+    }
+
+    /// Attach the on-device streaming STT (FluidAudio Parakeet EOU) to the engine
+    /// so it surfaces transcripts on `lastTranscript`, which the command loop
+    /// above polls. No-op unless the FluidAudio package is present (see
+    /// docs/ios/STT_STREAMING_INTEGRATION_2026-06.md). This is what unblocks the
+    /// reading-list voice path, which has been inert (lastTranscript never set).
+    private func attachOnDeviceSTTIfAvailable() async {
+        #if canImport(FluidAudio)
+        guard let engine = storedAudioEngine else { return }
+        do {
+            try await engine.attachSTT(FluidAudioSTTService())
+        } catch {
+            logger.error("Failed to attach on-device STT: \(error.localizedDescription)")
+        }
+        #endif
     }
 
     /// Handle a recognized voice command

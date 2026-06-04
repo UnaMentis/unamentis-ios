@@ -631,6 +631,13 @@ public actor LatencyTestCoordinator {
         case .glmASROnDevice:
             throw TestCoordinatorError.providerCreationFailed("GLM-ASR On-Device not yet available")
 
+        case .parakeetEOU:
+            #if canImport(FluidAudio)
+            return FluidAudioSTTService()
+            #else
+            throw TestCoordinatorError.providerCreationFailed("Parakeet EOU requires the FluidAudio package")
+            #endif
+
         case .openAIWhisper, .groqWhisper:
             throw TestCoordinatorError.providerCreationFailed("Provider \(config.provider) not yet supported in test harness")
         }

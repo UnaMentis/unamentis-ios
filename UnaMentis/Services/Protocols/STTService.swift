@@ -163,6 +163,8 @@ public enum STTProvider: String, Codable, Sendable, CaseIterable {
     case appleSpeech = "Apple Speech (On-Device)"
     case glmASRNano = "GLM-ASR-Nano (Self-Hosted)"
     case glmASROnDevice = "GLM-ASR-Nano (On-Device)"
+    /// On-device streaming via FluidAudio Parakeet realtime EOU (CoreML/ANE).
+    case parakeetEOU = "Parakeet EOU (On-Device)"
 
     /// Display name for UI
     public var displayName: String {
@@ -179,13 +181,14 @@ public enum STTProvider: String, Codable, Sendable, CaseIterable {
         case .appleSpeech: return "apple"
         case .glmASRNano: return "glm-asr"
         case .glmASROnDevice: return "glm-asr-ondevice"
+        case .parakeetEOU: return "parakeet-eou"
         }
     }
 
     /// Whether this provider requires network connectivity
     public var requiresNetwork: Bool {
         switch self {
-        case .appleSpeech, .glmASROnDevice:
+        case .appleSpeech, .glmASROnDevice, .parakeetEOU:
             return false
         default:
             return true
@@ -202,6 +205,7 @@ public enum STTProvider: String, Codable, Sendable, CaseIterable {
         case .appleSpeech: return 0                           // Free (on-device)
         case .glmASRNano: return 0                            // Self-hosted
         case .glmASROnDevice: return 0                        // On-device
+        case .parakeetEOU: return 0                           // On-device
         }
     }
 
@@ -213,7 +217,7 @@ public enum STTProvider: String, Codable, Sendable, CaseIterable {
     /// Whether this provider runs entirely on-device
     public var isOnDevice: Bool {
         switch self {
-        case .appleSpeech, .glmASROnDevice:
+        case .appleSpeech, .glmASROnDevice, .parakeetEOU:
             return true
         default:
             return false

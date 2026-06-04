@@ -48,6 +48,10 @@ struct UnaMentisApp: App {
         _ = PersistenceController.shared
         print("[Init] Core Data store initialized")
 
+        // Prefetch the on-device STT model in the background so the first voice
+        // session does not block on a cold download. No-op unless FluidAudio is present.
+        FluidAudioModelPrefetch.prefetchIfNeeded()
+
         // Activate Watch connectivity for companion app communication
         WatchConnectivityService.shared.activateSession()
         print("[Init] WatchConnectivity activated")
