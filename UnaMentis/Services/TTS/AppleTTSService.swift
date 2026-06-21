@@ -53,7 +53,8 @@ public actor AppleTTSService: TTSService {
     }
 
     public func synthesize(text: String) async throws -> AsyncStream<TTSAudioChunk> {
-        logger.info("Synthesizing text: \(text.prefix(50))...")
+        logger.info("Synthesizing (\(text.count) chars)")
+        logger.debug("Synthesizing text: \(text.prefix(50))...")
 
         let startTime = Date()
 

@@ -69,10 +69,48 @@ public actor MetricsUploadService {
 
     // MARK: - Configuration
 
-    /// Configure the server URL for uploads
-    public func configure(serverHost: String, port: Int = 8766) {
-        self.serverURL = URL(string: "http://\(serverHost):\(port)/api/metrics")
+    /// Configure the upload endpoint from a full base URL, including scheme.
+    /// Supports HTTPS cloud endpoints, for example "https://telemetry.example.org".
+    /// The "/api/metrics" path is appended to the base URL.
+    public func configure(baseURL: String) {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host, !host.isEmpty else {
+            logger.error("Invalid metrics base URL, uploads disabled: \(trimmed)")
+            self.serverURL = nil
+            return
+        }
+
+        // Normalize trailing slashes before appending the endpoint path
+        var path = components.path
+        while path.hasSuffix("/") { path.removeLast() }
+        components.path = path + "/api/metrics"
+
+        self.serverURL = components.url
         logger.info("Configured server URL: \(serverURL?.absoluteString ?? "nil")")
+    }
+
+    /// Configure the server URL for uploads from a LAN host and port (legacy self-hosted form)
+    public func configure(serverHost: String, port: Int = 8766) {
+        configure(baseURL: "http://\(serverHost):\(port)")
+    }
+
+    /// The currently configured upload endpoint, or nil when unconfigured
+    public var endpointURL: URL? {
+        serverURL
+    }
+
+    /// Number of snapshots waiting in the offline queue
+    public func pendingUploadCount() async -> Int {
+        await queue.count
+    }
+
+    /// Whether the user has granted telemetry upload consent (default false).
+    /// Defense in depth: SessionManager also checks this before configuring uploads.
+    private nonisolated var hasUploadConsent: Bool {
+        UserDefaults.standard.bool(forKey: "telemetryConsentGranted")
     }
 
     // MARK: - Upload Methods
@@ -82,6 +120,11 @@ public actor MetricsUploadService {
     ///   - snapshot: The metrics snapshot to upload
     ///   - sessionDuration: Duration of the session in seconds
     public func upload(_ snapshot: MetricsSnapshot, sessionDuration: TimeInterval) async {
+        guard hasUploadConsent else {
+            logger.debug("Telemetry consent not granted, dropping metrics snapshot")
+            return
+        }
+
         guard let serverURL = serverURL else {
             logger.warning("Server URL not configured, queuing metrics for later")
             await queue.enqueue(snapshot, sessionDuration: sessionDuration)
@@ -102,6 +145,11 @@ public actor MetricsUploadService {
 
     /// Attempt to drain the offline queue
     public func drainQueue() async {
+        guard hasUploadConsent else {
+            logger.debug("Telemetry consent not granted, skipping queue drain")
+            return
+        }
+
         guard let serverURL = serverURL else {
             logger.debug("Cannot drain queue: server URL not configured")
             return
@@ -135,7 +183,7 @@ public actor MetricsUploadService {
 
     private func transformToServerFormat(_ snapshot: MetricsSnapshot, sessionDuration: TimeInterval) -> [String: Any] {
         // Transform nested iOS format to flat server format
-        return [
+        var payload: [String: Any] = [
             "timestamp": ISO8601DateFormatter().string(from: Date()),
             "sessionDuration": sessionDuration,
             "turnsTotal": snapshot.quality.turnsTotal,
@@ -157,8 +205,21 @@ public actor MetricsUploadService {
             // Additional iOS-specific fields
             "llmInputTokens": snapshot.costs.llmInputTokens,
             "llmOutputTokens": snapshot.costs.llmOutputTokens,
-            "interruptionSuccessRate": snapshot.quality.interruptionSuccessRate
+            "interruptionSuccessRate": snapshot.quality.interruptionSuccessRate,
+            // Typed error counts
+            "error_count": snapshot.quality.errorsTotal ?? 0,
+            "errors_by_stage": snapshot.quality.errorsByStage ?? [:]
         ]
+
+        // Time To First Audio, included only when samples were recorded
+        if let ttfaMedian = snapshot.latencies.ttfaMedianMs {
+            payload["ttfaMedian"] = ttfaMedian
+        }
+        if let ttfaP99 = snapshot.latencies.ttfaP99Ms {
+            payload["ttfaP99"] = ttfaP99
+        }
+
+        return payload
     }
 
     private func sendToServer(_ payload: [String: Any], to url: URL) async throws {

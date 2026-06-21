@@ -119,6 +119,17 @@ public actor TTFAInstrumentation {
     private var bargeInOnsetTime: UInt64 = 0
     private var bargeInActive: Bool = false
 
+    /// Optional telemetry sink. When set, completed TTFA measurements are also
+    /// recorded into session metrics so they reach the metrics upload payload,
+    /// not just os_log. Weak to avoid retaining the engine across sessions.
+    private weak var telemetrySink: TelemetryEngine?
+
+    /// Register the telemetry engine that should receive completed TTFA
+    /// measurements. The most recently started session's engine wins.
+    public func setTelemetrySink(_ engine: TelemetryEngine?) {
+        telemetrySink = engine
+    }
+
     // MARK: - Activation
 
     /// Mark the start of a TTFA measurement for a feature.
@@ -156,6 +167,10 @@ public actor TTFAInstrumentation {
         guard let feature = activeFeature else { return }
         let elapsed = ttfaMachToMs(mach_absolute_time() - activationTime)
         emit(.audioPlaying, feature: feature, elapsedMs: elapsed)
+        // Mirror the completed measurement into session telemetry (in seconds)
+        if let sink = telemetrySink {
+            Task { await sink.recordLatency(.ttfa, elapsed / 1000.0) }
+        }
         // Measurement complete, clear active feature
         activeFeature = nil
     }

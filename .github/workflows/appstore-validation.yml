@@ -23,7 +23,7 @@ permissions:
 
 env:
   SCHEME: UnaMentis
-  DESTINATION: 'platform=iOS Simulator,name=iPhone 15 Pro'
+  DESTINATION: 'platform=iOS Simulator,name=iPhone 17 Pro'
 
 jobs:
   # ============================================
@@ -31,7 +31,7 @@ jobs:
   # ============================================
   preflight:
     name: Pre-flight Checks
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: read
     outputs:
@@ -170,7 +170,7 @@ jobs:
   # ============================================
   build-and-test:
     name: Build & Test
-    runs-on: macos-14
+    runs-on: macos-15
     needs: preflight
     permissions:
       contents: read
@@ -178,8 +178,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Select Xcode 16
-      run: sudo xcode-select -s /Applications/Xcode_16.app
+    - name: Select latest Xcode
+      run: |
+        XCODE_PATH="$(find /Applications -maxdepth 1 -name 'Xcode*.app' -type d | sort -V | tail -1)"
+        echo "Selected Xcode: $XCODE_PATH"
+        sudo xcode-select -s "$XCODE_PATH"
+        xcodebuild -version
 
     - name: Show Build Environment
       run: |
@@ -268,7 +272,7 @@ jobs:
   # ============================================
   static-analysis:
     name: Static Analysis
-    runs-on: macos-14
+    runs-on: macos-15
     needs: preflight
     permissions:
       contents: read
@@ -276,8 +280,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Select Xcode 16
-      run: sudo xcode-select -s /Applications/Xcode_16.app
+    - name: Select latest Xcode
+      run: |
+        XCODE_PATH="$(find /Applications -maxdepth 1 -name 'Xcode*.app' -type d | sort -V | tail -1)"
+        echo "Selected Xcode: $XCODE_PATH"
+        sudo xcode-select -s "$XCODE_PATH"
+        xcodebuild -version
 
     - name: Run Xcode Analyze
       run: |
@@ -357,7 +365,7 @@ jobs:
   # ============================================
   archive-validation:
     name: Archive Validation
-    runs-on: macos-14
+    runs-on: macos-15
     needs: [preflight, build-and-test]
     permissions:
       contents: read
@@ -365,8 +373,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Select Xcode 16
-      run: sudo xcode-select -s /Applications/Xcode_16.app
+    - name: Select latest Xcode
+      run: |
+        XCODE_PATH="$(find /Applications -maxdepth 1 -name 'Xcode*.app' -type d | sort -V | tail -1)"
+        echo "Selected Xcode: $XCODE_PATH"
+        sudo xcode-select -s "$XCODE_PATH"
+        xcodebuild -version
 
     - name: Install xcbeautify
       run: brew install xcbeautify

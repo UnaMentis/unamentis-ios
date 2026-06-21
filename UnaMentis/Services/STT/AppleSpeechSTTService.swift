@@ -227,7 +227,8 @@ public actor AppleSpeechSTTService: STTService {
         resultContinuation?.yield(sttResult)
 
         if isFinal {
-            logger.info("Final result: \(transcript.prefix(50))...")
+            logger.info("Final result (\(transcript.count) chars)")
+            logger.debug("Final transcript: \(transcript.prefix(50))...")
         }
     }
 

@@ -137,13 +137,14 @@ final class GLMASRUnifiedGGUFTests: XCTestCase {
 
     // MARK: - LLAMA_AVAILABLE Flag
 
-    func testLlamaAvailable_isNotDefined() {
-        // LLAMA_AVAILABLE is not defined in test builds because
-        // StanfordBDHG/llama.cpp v0.3.3 lacks audio model support
+    func testLlamaAvailable_isDefined() {
+        // LLAMA_AVAILABLE is defined in both Debug and Release since the
+        // llama.cpp b7263 xcframework landed for the on-device LLM path
+        // (2026-06). The GLM-ASR GGUF decoder path remains runtime-gated.
         #if LLAMA_AVAILABLE
-        XCTFail("LLAMA_AVAILABLE should not be defined in standard test builds")
+        // Expected: llama module is available to on-device services
         #else
-        // Expected: on-device decoder path is disabled
+        XCTFail("LLAMA_AVAILABLE should be defined in all build configs (llama.cpp b7263 xcframework)")
         #endif
     }
 

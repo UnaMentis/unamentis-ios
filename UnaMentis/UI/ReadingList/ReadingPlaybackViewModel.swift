@@ -84,11 +84,12 @@ public final class ReadingPlaybackViewModel: ObservableObject {
     private var storedTTSService: (any TTSService)?
 
     // Voice command support
-    private let voiceCommandRecognizer = VoiceCommandRecognizer()
     private let voiceBookmarkService = VoiceBookmarkService()
     private let voiceFeedback = VoiceActivityFeedback()
-    private var voiceMonitoringTask: Task<Void, Never>?
-    private var lastProcessedTranscript: String = ""
+
+    /// The shared barge-in pipeline for the reader (detect -> command vs
+    /// conversation -> execute or answer). Same pipeline every narrating surface uses.
+    private var bargeInCoordinator: BargeInCoordinator?
 
     // MARK: - Initialization
 
@@ -283,12 +284,16 @@ public final class ReadingPlaybackViewModel: ObservableObject {
                 showError = true
             }
         }
+
+        // Narration is live -> arm the barge-in pipeline (idempotent).
+        startVoiceCommandMonitoring()
     }
 
     /// Suspend playback preserving all cached state.
     /// Use when navigating away from the view (onDisappear).
     /// Cheaper than stopPlayback(); retains prefetch cache for instant resume.
     public func suspendPlayback() async {
+        stopVoiceCommandMonitoring()
         if let service = playbackService {
             await service.suspendPlayback()
         }
@@ -302,6 +307,7 @@ public final class ReadingPlaybackViewModel: ObservableObject {
 
     /// Stop playback and release audio resources (explicit "Done" action)
     public func stopPlayback() async {
+        stopVoiceCommandMonitoring()
         if let service = playbackService {
             await service.stopPlayback()
         }
@@ -367,6 +373,9 @@ public final class ReadingPlaybackViewModel: ObservableObject {
                 showError = true
             }
         }
+
+        // Narration is live -> arm the barge-in pipeline (idempotent).
+        startVoiceCommandMonitoring()
     }
 
     // MARK: - Bookmarks
@@ -493,56 +502,62 @@ public final class ReadingPlaybackViewModel: ObservableObject {
 
     // MARK: - Voice Command Monitoring
 
-    /// Valid voice commands for the current playback state
-    private func validCommandsForState() -> Set<VoiceCommand>? {
-        switch state {
-        case .playing:
-            return [.bookmark, .flag]
-        default:
-            return nil
-        }
-    }
-
-    /// Start monitoring for voice commands during playback.
-    /// Called when playback starts or resumes.
+    /// Start the full barge-in pipeline for the reader. This is the SAME pipeline
+    /// every narrating surface uses: detect sound (VAD) -> decide what it is -> a
+    /// known COMMAND executes (bookmark/flag), a CONVERSATIONAL barge-in (a
+    /// question, an instruction) is answered by interactive AI, then narration
+    /// resumes. Called when playback starts. Idempotent.
     public func startVoiceCommandMonitoring() {
-        stopVoiceCommandMonitoring()
-
-        guard let engine = storedAudioEngine else { return }
-
-        voiceMonitoringTask = Task { [weak self] in
-            // Feed the on-device STT so the engine populates lastTranscript. Until
-            // an STT is attached (FluidAudio package present), lastTranscript stays
-            // empty and command recognition is inert - that is the current reality.
-            await self?.attachOnDeviceSTTIfAvailable()
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(200))
-                guard !Task.isCancelled else { return }
-
-                guard let self else { return }
-                guard let validCommands = self.validCommandsForState() else { continue }
-
-                // Get the latest transcript from the audio engine
-                let transcript = await engine.lastTranscript
-                guard !transcript.isEmpty, transcript != self.lastProcessedTranscript else { continue }
-                self.lastProcessedTranscript = transcript
-
-                // Check for voice commands
-                if let result = await self.voiceCommandRecognizer.recognize(
-                    transcript: transcript,
-                    validCommands: validCommands
-                ), result.shouldExecute {
-                    await self.handleVoiceCommand(result.command)
-                    self.lastProcessedTranscript = ""
-                }
-            }
-        }
+        guard bargeInCoordinator == nil else { return }
+        Task { await startBargeInPipeline() }
     }
 
-    /// Stop voice command monitoring
+    private func startBargeInPipeline() async {
+        guard bargeInCoordinator == nil, let engine = storedAudioEngine else { return }
+        // Feed the on-device STT so the engine populates lastTranscript (the text
+        // the coordinator classifies). No-op unless FluidAudio is present.
+        await attachOnDeviceSTTIfAvailable()
+        guard let tts = await getTTSService() else { return }
+        let title = item.title ?? "this reading"
+        let coordinator = BargeInCoordinator(
+            audioEngine: engine,
+            llm: makeReaderLLM(),
+            tts: tts,
+            validCommands: [.bookmark, .flag],
+            systemPrompt: { _ in
+                "You are a helpful reading assistant. The user paused while listening to "
+                    + "\"\(title)\" to ask a question or give an instruction. Answer concisely "
+                    + "and conversationally - this is a short spoken exchange, then they resume listening."
+            },
+            surface: self
+        )
+        bargeInCoordinator = coordinator
+        await coordinator.start()
+        logger.info("Reader barge-in pipeline started")
+    }
+
+    /// Build the LLM that answers conversational barge-ins, from the same
+    /// self-hosted settings the learning session uses.
+    private func makeReaderLLM() -> any LLMService {
+        let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
+        let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
+        let model = RemoteLLMModel.current
+        if selfHostedEnabled, !serverIP.isEmpty {
+            return SelfHostedLLMService.ollama(host: serverIP, model: model)
+        }
+        return SelfHostedLLMService.ollama(model: model)
+    }
+
+    /// Stop the barge-in pipeline and detach STT. Called when playback stops or
+    /// the view is suspended.
     public func stopVoiceCommandMonitoring() {
-        voiceMonitoringTask?.cancel()
-        voiceMonitoringTask = nil
+        let coordinator = bargeInCoordinator
+        bargeInCoordinator = nil
+        let engine = storedAudioEngine
+        Task {
+            await coordinator?.stop()
+            await engine?.detachSTT()
+        }
     }
 
     /// Attach the on-device streaming STT (FluidAudio Parakeet EOU) to the engine
@@ -644,6 +659,30 @@ extension ReadingPlaybackViewModel: FlaggableActivity {
     public func resumePlayback() async {
         guard let service = playbackService, state == .paused else { return }
         await service.resume()
+    }
+}
+
+// MARK: - BargeInSurface (the reader as a barge-in target)
+
+extension ReadingPlaybackViewModel: BargeInSurface {
+    /// Pause narration when a barge-in starts.
+    public func bargeInPauseNarration() async {
+        await pausePlayback()
+    }
+
+    /// Resume narration after the barge-in is handled (or was a false positive).
+    public func bargeInResumeNarration() async {
+        await resumePlayback()
+    }
+
+    /// Execute a recognized reader command (bookmark/flag).
+    public func bargeInExecute(command: VoiceCommand) async {
+        await handleVoiceCommand(command)
+    }
+
+    /// Play one response audio chunk through the reader's audio output.
+    public func bargeInPlay(chunk: TTSAudioChunk) async {
+        try? await storedAudioEngine?.playAudio(chunk)
     }
 }
 

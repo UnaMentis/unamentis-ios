@@ -339,7 +339,7 @@ public final class CurriculumDownloadManager: ObservableObject {
     /// Request server-side TTS pre-generation for curriculum topics
     private static func triggerServerTTSPrefetch(curriculumId: String, topicIds: [String]) async {
         let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
-        let serverIP = UserDefaults.standard.string(forKey: "serverIP") ?? ""
+        let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
 
         guard selfHostedEnabled, !serverIP.isEmpty else {
             logger.debug("Server not configured, skipping TTS prefetch for curriculum \(curriculumId)")

@@ -151,19 +151,21 @@ try:
     data = json.load(sys.stdin)
     targets = data.get('targets', [])
 
-    # Find UnaMentis target (not Tests)
+    # Find the iOS app target. Match the bundle name exactly: the report's
+    # target order is not stable, and a substring match used to pick up
+    # 'UnaMentis Watch App.app' (always 0%, no tests run against it), which
+    # made the gate report 0.0% and silently skip enforcement.
     for target in targets:
-        name = target.get('name', '')
-        if 'UnaMentis' in name and 'Tests' not in name:
+        if target.get('name', '') == 'UnaMentis.app':
             coverage = target.get('lineCoverage', 0)
             print(f'{coverage * 100:.1f}')
             sys.exit(0)
 
-    # Fallback: average of non-test targets
+    # Fallback: average of non-test, non-watch targets
     app_coverages = []
     for target in targets:
         name = target.get('name', '')
-        if 'Tests' in name or name.startswith('_'):
+        if 'Tests' in name or 'Watch' in name or name.startswith('_'):
             continue
         cov = target.get('lineCoverage', 0)
         if cov > 0:
@@ -181,18 +183,19 @@ except Exception as e:
 " || echo "0"
 }
 
-# Check coverage against threshold
+# Check coverage against threshold. Only called when ENFORCE_COVERAGE=true,
+# so an indeterminate (0%) reading is a failure, not a skip. Treating 0% as
+# "could not determine, pass" previously made the gate non-functional.
 check_coverage() {
     local coverage="$1"
     local threshold="$2"
 
-    # Skip if coverage couldn't be determined
     local coverage_int
     coverage_int=$(echo "$coverage" | cut -d. -f1)
 
     if [ -z "$coverage_int" ] || [ "$coverage_int" -eq 0 ] 2>/dev/null; then
-        log_warning "Could not determine valid coverage (got ${coverage}%). Skipping threshold check."
-        return 0
+        log_error "Could not determine valid coverage (got ${coverage}%) while enforcement is on."
+        return 1
     fi
 
     # Compare coverage to threshold
@@ -227,14 +230,45 @@ main() {
         DESTINATION="platform=iOS Simulator,name=$SIMULATOR"
     fi
 
+    # Integration test classes. xcodebuild test identifiers are
+    # TestBundle/TestClass with no folder component, so
+    # "-only-testing:UnaMentisTests/Unit" matches nothing and silently runs
+    # ZERO tests. Unit runs therefore skip each integration class, and
+    # integration runs select each class explicitly. Keep this list in sync
+    # with the XCTestCase classes under UnaMentisTests/Integration/.
+    local integration_classes=(
+        AudioPipelineIntegrationTests
+        BargeInCoordinatorAudioPathTests
+        BargeInMeasurementTests
+        KBAudioTestHarnessTests
+        LiveInferenceFullPathTests
+        ThermalManagementIntegrationTests
+        VoiceSessionIntegrationTests
+    )
+    # These integration classes are excluded from the target in project.yml
+    # (stale APIs). Unit runs skip them defensively so they stay excluded the
+    # moment they are re-enabled, but integration runs do not request them
+    # while they are not compiled into the bundle. When re-enabling one in
+    # project.yml, move it to integration_classes above.
+    local excluded_integration_classes=(
+        GLMASRIntegrationTests
+        KBAnswerValidationIntegrationTests
+        KBSessionIntegrationTests
+    )
+
     # Determine test target(s)
     local test_targets=""
+    local test_class
     case "$TEST_TYPE" in
         unit)
-            test_targets="-only-testing:UnaMentisTests/Unit"
+            for test_class in "${integration_classes[@]}" "${excluded_integration_classes[@]}"; do
+                test_targets="$test_targets -skip-testing:UnaMentisTests/$test_class"
+            done
             ;;
         integration)
-            test_targets="-only-testing:UnaMentisTests/Integration"
+            for test_class in "${integration_classes[@]}"; do
+                test_targets="$test_targets -only-testing:UnaMentisTests/$test_class"
+            done
             ;;
         all)
             test_targets=""  # Run all tests

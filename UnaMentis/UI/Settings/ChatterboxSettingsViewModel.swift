@@ -240,8 +240,9 @@ final class ChatterboxSettingsViewModel: ObservableObject {
 
     /// Check if Chatterbox server is reachable
     func checkServerHealth() async {
-        // Get server IP from settings
-        let serverIP = UserDefaults.standard.string(forKey: "selfHostedServerIP") ?? "localhost"
+        // Get server IP from settings (localhost fallback for simulator use)
+        let storedServerIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
+        let serverIP = storedServerIP.isEmpty ? "localhost" : storedServerIP
         let port = TTSProvider.chatterbox.defaultPort
 
         // Use /api/model-info instead of /health since ChatterBox server doesn't have a /health endpoint
@@ -300,7 +301,8 @@ final class ChatterboxSettingsViewModel: ObservableObject {
         audioPlayer?.stop()
         audioPlayer = nil
 
-        let serverIP = UserDefaults.standard.string(forKey: "selfHostedServerIP") ?? "localhost"
+        let storedServerIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
+        let serverIP = storedServerIP.isEmpty ? "localhost" : storedServerIP
         let service = ChatterboxTTSService.chatterbox(
             host: serverIP,
             config: currentConfig

@@ -1245,7 +1245,7 @@ class SessionViewModel: ObservableObject {
         // Use configured server IP or fall back to localhost
         let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
         let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
-        let llmModelSetting = UserDefaults.standard.string(forKey: "llmModel") ?? "llama3.2:3b"
+        let llmModelSetting = RemoteLLMModel.current
 
         let llmService: SelfHostedLLMService
         if selfHostedEnabled && !serverIP.isEmpty {
@@ -1386,7 +1386,8 @@ class SessionViewModel: ObservableObject {
                         // This ensures text and audio stay synchronized
                         self.pendingTextSegments[index] = text
                         self.totalSegments = max(self.totalSegments, index + 1)
-                        self.logger.info("Buffered segment \(index) text: \(type) - \(text.prefix(50))...")
+                        // Privacy: segment content only at .debug; release builds ship the console log
+                        self.logger.debug("Buffered segment \(index) text: \(type) - \(text.prefix(50))...")
                     }
                 },
                 onSegmentAudio: { [weak self] index, audioData in
@@ -1507,6 +1508,14 @@ class SessionViewModel: ObservableObject {
                 logger.warning("GLM-ASR-Nano selected but no server IP configured, falling back to Apple Speech")
                 sttService = AppleSpeechSTTService()
             }
+        case .parakeetEOU:
+            #if canImport(FluidAudio)
+            logger.info("Using FluidAudioSTTService (Parakeet EOU, on-device streaming)")
+            sttService = FluidAudioSTTService()
+            #else
+            logger.warning("Parakeet EOU selected but FluidAudio not in build, falling back to Apple Speech")
+            sttService = AppleSpeechSTTService()
+            #endif
         default:
             // Default fallback to Apple Speech (always available)
             logger.info("Using Apple Speech as default STT provider")
@@ -1590,7 +1599,7 @@ class SessionViewModel: ObservableObject {
         // Helper to create self-hosted LLM if available
         func createSelfHostedLLMIfAvailable() -> (any LLMService)? {
             if selfHostedEnabled && !serverIP.isEmpty {
-                let llmModelSetting = UserDefaults.standard.string(forKey: "llmModel") ?? "llama3.2:3b"
+                let llmModelSetting = RemoteLLMModel.current
                 logger.info("Using SelfHostedLLMService as fallback (host: \(serverIP), model: \(llmModelSetting))")
                 return SelfHostedLLMService.ollama(host: serverIP, model: llmModelSetting)
             }
@@ -1682,7 +1691,7 @@ class SessionViewModel: ObservableObject {
 
         case .selfHosted:
             // Use SelfHostedLLMService to connect to Ollama server
-            var llmModelSetting = UserDefaults.standard.string(forKey: "llmModel") ?? "llama3.2:3b"
+            var llmModelSetting = RemoteLLMModel.current
             logger.info("selfHosted selected - initial llmModel from UserDefaults: '\(llmModelSetting)'")
 
             // If the model setting looks like an OpenAI model, use discovered models or fallback
@@ -1695,7 +1704,7 @@ class SessionViewModel: ObservableObject {
                     llmModelSetting = discoveredModels.first!
                     logger.info("Overriding OpenAI model with discovered server model: \(llmModelSetting)")
                 } else {
-                    llmModelSetting = "llama3.2:3b" // Safe fallback
+                    llmModelSetting = RemoteLLMModel.defaultModel // Safe fallback
                     logger.warning("No discovered models, using fallback: \(llmModelSetting)")
                 }
             }
@@ -2489,6 +2498,12 @@ class SessionViewModel: ObservableObject {
             }
         case .appleSpeech:
             bargeInSTTService = AppleSpeechSTTService()
+        case .parakeetEOU:
+            #if canImport(FluidAudio)
+            bargeInSTTService = FluidAudioSTTService()
+            #else
+            bargeInSTTService = AppleSpeechSTTService()
+            #endif
         default:
             bargeInSTTService = AppleSpeechSTTService()
         }
@@ -2496,7 +2511,7 @@ class SessionViewModel: ObservableObject {
         // Configure LLM service for responding to barge-in questions
         let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
         let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
-        let llmModelSetting = UserDefaults.standard.string(forKey: "llmModel") ?? "llama3.2:3b"
+        let llmModelSetting = RemoteLLMModel.current
 
         if selfHostedEnabled && !serverIP.isEmpty {
             bargeInLLMService = SelfHostedLLMService.ollama(host: serverIP, model: llmModelSetting)
@@ -2958,7 +2973,8 @@ class SessionViewModel: ObservableObject {
             return
         }
 
-        logger.info("Speaking barge-in response: '\(text.prefix(50))...'")
+        // Privacy: response content only at .debug; release builds ship the console log
+        logger.debug("Speaking barge-in response: '\(text.prefix(50))...'")
 
         do {
             let audioStream = try await ttsService.synthesize(text: text)

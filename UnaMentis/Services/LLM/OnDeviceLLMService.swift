@@ -77,32 +77,37 @@ public actor OnDeviceLLMService: LLMService, LLMLoadableService {
         }
 
         public static var `default`: Configuration {
-            // Primary: Check Documents/models/LLM/ for downloaded Ministral 3 3B (Dec 2025)
-            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let downloadedModelPath = documentsPath
+            let documentsLLM = FileManager.default
+                .urls(for: .documentDirectory, in: .userDomainMask).first!
                 .appendingPathComponent("models/LLM")
-                .appendingPathComponent(OnDeviceLLMModel.ministral3_3B.config.filename)
 
-            if FileManager.default.fileExists(atPath: downloadedModelPath.path) {
-                return Configuration(modelPath: downloadedModelPath, contextSize: 4096)
+            // Tiered selection: load the best downloaded model the device can run
+            // (Gemma 4 E2B on 12 GB, Qwen3-1.7B on 8 GB, Qwen3-0.6B on 6 GB, with
+            // fall-through). Context size comes from the chosen model's config.
+            if let model = OnDeviceLLMService.bestAvailableModel() {
+                let path = documentsLLM.appendingPathComponent(model.config.filename)
+                return Configuration(modelPath: path, contextSize: model.config.contextSize)
             }
 
-            // Fallback: Check bundle for older bundled model (legacy support)
+            // Legacy bundle / dev-path Ministral, retained for older installs
             if let bundleMinistralPath = Bundle.main.url(
                 forResource: "ministral-3b-instruct-q4_k_m",
                 withExtension: "gguf"
             ) {
                 return Configuration(modelPath: bundleMinistralPath, contextSize: 4096)
             }
-
-            // Development fallback: filesystem path
             let devPath = "models/ministral-3b-instruct-q4_k_m.gguf"
             if FileManager.default.fileExists(atPath: devPath) {
                 return Configuration(modelPath: URL(fileURLWithPath: devPath), contextSize: 4096)
             }
 
-            // Last resort: Return path to downloaded model location (will fail if not downloaded)
-            return Configuration(modelPath: downloadedModelPath, contextSize: 4096)
+            // Last resort: the device-recommended model's expected path (will fail
+            // to load until it is downloaded, surfacing a clear modelNotFound).
+            let fallback = OnDeviceLLMModel.recommendedForDevice() ?? .qwen3_1_7B
+            return Configuration(
+                modelPath: documentsLLM.appendingPathComponent(fallback.config.filename),
+                contextSize: fallback.config.contextSize
+            )
         }
     }
 
@@ -272,8 +277,16 @@ public actor OnDeviceLLMService: LLMService, LLMLoadableService {
                     self.totalInputTokens += tokens.count
                     self.logger.debug("Tokenized to \(tokens.count) tokens")
 
-                    // Create batch for processing
-                    var batch = llama_batch_init(512, 0, 1)
+                    // Guard the context window before decoding
+                    let contextSize = Int(llama_n_ctx(ctx))
+                    guard tokens.count < contextSize else {
+                        self.logger.error("Prompt (\(tokens.count) tokens) exceeds context window (\(contextSize))")
+                        throw OnDeviceLLMError.inferenceError("Prompt exceeds context window")
+                    }
+
+                    // Size the batch from the prompt; a fixed 512 overflows the buffers
+                    // llama_batch_add writes into once a conversation grows past 512 tokens
+                    var batch = llama_batch_init(Int32(max(512, tokens.count)), 0, 1)
                     defer { llama_batch_free(batch) }
 
                     // Add prompt tokens to batch
@@ -297,6 +310,11 @@ public actor OnDeviceLLMService: LLMService, LLMLoadableService {
                     var generatedCount = 0
                     var firstTokenEmitted = false
                     var temporaryInvalidCChars: [CChar] = []
+
+                    // Stop sequences: small instruct models can run past the answer
+                    // and emit raw chat-template markers as a fake next turn
+                    let stopSequences = ["[INST]", "[/INST]", "<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]
+                    var emittedTail = ""
 
                     // Create a greedy sampler once for the generation loop (new llama.cpp b7263+ API)
                     let sampler = llama_sampler_init_greedy()
@@ -344,6 +362,24 @@ public actor OnDeviceLLMService: LLMService, LLMLoadableService {
                         }
 
                         if !tokenText.isEmpty {
+                            // Check for stop sequences spanning token boundaries
+                            let candidate = emittedTail + tokenText
+                            if let markerRange = stopSequences.lazy.compactMap({ candidate.range(of: $0) }).first {
+                                let beforeMarker = candidate.distance(from: candidate.startIndex, to: markerRange.lowerBound)
+                                let keepCount = beforeMarker - emittedTail.count
+                                if keepCount > 0 {
+                                    generatedCount += 1
+                                    continuation.yield(LLMToken(
+                                        content: String(tokenText.prefix(keepCount)),
+                                        isDone: false,
+                                        stopReason: nil,
+                                        tokenCount: generatedCount
+                                    ))
+                                }
+                                self.logger.debug("Stop sequence reached, ending generation")
+                                break
+                            }
+
                             generatedCount += 1
 
                             // Emit token
@@ -353,6 +389,7 @@ public actor OnDeviceLLMService: LLMService, LLMLoadableService {
                                 stopReason: nil,
                                 tokenCount: generatedCount
                             ))
+                            emittedTail = String(candidate.suffix(12))
                         }
 
                         // Prepare next batch
@@ -392,11 +429,70 @@ public actor OnDeviceLLMService: LLMService, LLMLoadableService {
         // Detect model type from configuration path
         let modelName = configuration.modelPath.lastPathComponent.lowercased()
 
-        if modelName.contains("ministral") || modelName.contains("mistral") {
+        if modelName.contains("gemma") {
+            return formatGemmaPrompt(messages: messages, systemPrompt: systemPrompt)
+        } else if modelName.contains("qwen") {
+            return formatQwen3Prompt(messages: messages, systemPrompt: systemPrompt)
+        } else if modelName.contains("ministral") || modelName.contains("mistral") {
             return formatMistralPrompt(messages: messages, systemPrompt: systemPrompt)
         } else {
             return formatTinyLlamaPrompt(messages: messages, systemPrompt: systemPrompt)
         }
+    }
+
+    /// Format prompt for Qwen3 in NON-THINKING mode.
+    /// Qwen3 is a hybrid-reasoning model that defaults to emitting a hidden
+    /// reasoning chain, which destroys time-to-first-token and breaks barge-in.
+    /// Priming the assistant turn with an empty think block forces no-think mode
+    /// so the first useful token streams immediately.
+    private func formatQwen3Prompt(messages: [LLMMessage], systemPrompt: String?) -> String {
+        var prompt = ""
+
+        let system = systemPrompt ?? messages.first(where: { $0.role == .system })?.content
+        if let system = system {
+            prompt += "<|im_start|>system\n\(system)<|im_end|>\n"
+        }
+
+        for message in messages where message.role != .system {
+            if message.role == .user {
+                prompt += "<|im_start|>user\n\(message.content)<|im_end|>\n"
+            } else {
+                prompt += "<|im_start|>assistant\n\(message.content)<|im_end|>\n"
+            }
+        }
+
+        // Prime the assistant turn with an empty think block (no-think mode)
+        prompt += "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+
+        return prompt
+    }
+
+    /// Format prompt for Gemma (2/3/4 share the turn format).
+    /// Gemma has no separate system role, so the system prompt is folded into
+    /// the first user turn.
+    private func formatGemmaPrompt(messages: [LLMMessage], systemPrompt: String?) -> String {
+        var prompt = ""
+
+        let system = systemPrompt ?? messages.first(where: { $0.role == .system })?.content
+
+        var isFirstUserMessage = true
+        for message in messages where message.role != .system {
+            if message.role == .user {
+                prompt += "<start_of_turn>user\n"
+                if isFirstUserMessage, let system = system {
+                    prompt += "\(system)\n\n"
+                    isFirstUserMessage = false
+                }
+                prompt += "\(message.content)<end_of_turn>\n"
+            } else {
+                prompt += "<start_of_turn>model\n\(message.content)<end_of_turn>\n"
+            }
+        }
+
+        // Open the model turn for generation
+        prompt += "<start_of_turn>model\n"
+
+        return prompt
     }
 
     /// Format prompt for Mistral/Ministral models
@@ -524,34 +620,46 @@ extension OnDeviceLLMService {
         #endif
     }
 
-    /// Check if on-device models are available
+    /// Check if any on-device model is available to load.
     public static var areModelsAvailable: Bool {
-        // Primary: Check Documents/models/LLM/ for downloaded Ministral 3 3B (Dec 2025)
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let downloadedModelPath = documentsPath
-            .appendingPathComponent("models/LLM")
-            .appendingPathComponent(OnDeviceLLMModel.ministral3_3B.config.filename)
+        return bestAvailableModel() != nil || legacyBundledModelAvailable()
+    }
 
-        if FileManager.default.fileExists(atPath: downloadedModelPath.path) {
-            staticLogger.debug("Downloaded Ministral 3 3B found at: \(downloadedModelPath.path)")
+    /// The highest-tier on-device model whose file is actually present, capped at
+    /// the device's RAM tier. Returns the model to load, or nil if none is
+    /// downloaded for this device. A 12 GB device prefers Gemma 4 E2B but falls
+    /// through to Qwen3-1.7B, then Qwen3-0.6B, then Ministral, so the app always
+    /// loads the best model it has, never one too heavy for the device.
+    public static func bestAvailableModel(
+        physicalMemoryGB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
+    ) -> OnDeviceLLMModel? {
+        let documentsLLM = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("models/LLM")
+
+        // Tier ladder from most to least capable. Skip tiers too heavy for the device.
+        let ladder: [OnDeviceLLMModel] = [.gemma4_e2b, .qwen3_1_7B, .qwen3_0_6B, .ministral3_3B]
+        for model in ladder where model.config.minimumRAMGB <= physicalMemoryGB {
+            let path = documentsLLM.appendingPathComponent(model.config.filename)
+            if FileManager.default.fileExists(atPath: path.path) {
+                staticLogger.debug("Selected on-device model \(model.config.displayName) at \(path.path)")
+                return model
+            }
+        }
+        return nil
+    }
+
+    /// Legacy bundled / dev-path Ministral check, retained for older installs.
+    private static func legacyBundledModelAvailable() -> Bool {
+        if let bundleURL = Bundle.main.url(forResource: "ministral-3b-instruct-q4_k_m", withExtension: "gguf"),
+           FileManager.default.fileExists(atPath: bundleURL.path) {
             return true
         }
-
-        // Legacy: Check for older bundled Ministral 3B
-        if let bundleURL = Bundle.main.url(forResource: "ministral-3b-instruct-q4_k_m", withExtension: "gguf") {
-            let exists = FileManager.default.fileExists(atPath: bundleURL.path)
-            staticLogger.debug("Ministral 3B bundle URL: \(bundleURL.path), exists: \(exists)")
-            if exists { return true }
-        }
-
-        // Development fallback
         let devPath = "models/ministral-3b-instruct-q4_k_m.gguf"
         if FileManager.default.fileExists(atPath: devPath) {
-            staticLogger.debug("Ministral 3B dev path exists: \(devPath)")
             return true
         }
-
-        staticLogger.debug("No models available - download required")
+        staticLogger.debug("No on-device models available - download required")
         return false
     }
 }

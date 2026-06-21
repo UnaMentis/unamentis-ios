@@ -71,6 +71,16 @@ public enum LatencyType: String, Sendable {
     case ttsTTFB = "tts_ttfb"
     case ttsTimeToFirstByte = "tts_time_to_first_byte"
     case endToEndTurn = "e2e_turn"
+    case ttfa = "ttfa"
+}
+
+/// Pipeline stages for typed error counting.
+/// Used to attribute caught errors to the part of the voice pipeline that failed.
+public enum TelemetryErrorStage: String, Sendable, CaseIterable {
+    case stt
+    case llm
+    case tts
+    case network
 }
 
 /// Categories for cost tracking
@@ -147,6 +157,7 @@ public struct SessionMetrics: Sendable {
     public var llmLatencies: BoundedLatencyBuffer
     public var ttsLatencies: BoundedLatencyBuffer
     public var e2eLatencies: BoundedLatencyBuffer
+    public var ttfaLatencies: BoundedLatencyBuffer
 
     // Costs
     public var sttCost: Decimal
@@ -158,6 +169,10 @@ public struct SessionMetrics: Sendable {
     public var interruptions: Int
     public var thermalThrottleEvents: Int
     public var networkDegradations: Int
+
+    // Typed error counts (keyed by TelemetryErrorStage rawValue)
+    public var errorsTotal: Int
+    public var errorsByStage: [String: Int]
 
     /// Total cost across all categories
     public var totalCost: Decimal {
@@ -177,6 +192,7 @@ public struct SessionMetrics: Sendable {
         llmLatencies = BoundedLatencyBuffer()
         ttsLatencies = BoundedLatencyBuffer()
         e2eLatencies = BoundedLatencyBuffer()
+        ttfaLatencies = BoundedLatencyBuffer()
         sttCost = 0
         ttsCost = 0
         llmCost = 0
@@ -184,6 +200,8 @@ public struct SessionMetrics: Sendable {
         interruptions = 0
         thermalThrottleEvents = 0
         networkDegradations = 0
+        errorsTotal = 0
+        errorsByStage = [:]
     }
 }
 
@@ -324,6 +342,10 @@ public actor TelemetryEngine {
 
         logger.info("Session started")
         recordEvent(.sessionStarted)
+
+        // Mirror completed TTFA measurements into session metrics so they
+        // reach the metrics upload payload, not just os_log.
+        Task { await TTFAInstrumentation.shared.setTelemetrySink(self) }
     }
 
     /// End the current session
@@ -340,6 +362,19 @@ public actor TelemetryEngine {
     /// Record a telemetry event
     public func recordEvent(_ event: TelemetryEvent) {
         let now = Date()
+
+        // Count typed stream failures before any rate limiting so error
+        // totals stay accurate even when the event buffer is throttled.
+        switch event {
+        case .sttStreamFailed:
+            incrementErrorCounter(.stt)
+        case .llmStreamFailed:
+            incrementErrorCounter(.llm)
+        case .ttsStreamFailed:
+            incrementErrorCounter(.tts)
+        default:
+            break
+        }
 
         // Check global rate limit (reset window if needed)
         if now.timeIntervalSince(minuteWindowStart) > 60 {
@@ -433,6 +468,19 @@ public actor TelemetryEngine {
         logger.error("Error: \(error.localizedDescription)")
     }
 
+    /// Record an error attributed to a specific pipeline stage.
+    /// Increments the session error counters that are included in uploaded metrics.
+    public func recordError(_ error: Error, stage: TelemetryErrorStage) {
+        incrementErrorCounter(stage)
+        logger.error("Error [\(stage.rawValue)]: \(error.localizedDescription)")
+    }
+
+    /// Increment the typed error counters for a pipeline stage
+    private func incrementErrorCounter(_ stage: TelemetryErrorStage) {
+        metrics.errorsTotal += 1
+        metrics.errorsByStage[stage.rawValue, default: 0] += 1
+    }
+
     /// Last time a latency of each type was recorded (for rate limiting)
     private var lastLatencyTimes: [LatencyType: Date] = [:]
 
@@ -471,6 +519,8 @@ public actor TelemetryEngine {
             metrics.ttsLatencies.append(value)
         case .endToEndTurn:
             metrics.e2eLatencies.append(value)
+        case .ttfa:
+            metrics.ttfaLatencies.append(value)
         case .audioProcessing:
             // Not stored in session metrics, just sampled for logging
             break
@@ -610,7 +660,9 @@ public actor TelemetryEngine {
             ttsMedianMs: Int(metrics.ttsLatencies.median * 1000),
             ttsP99Ms: Int(metrics.ttsLatencies.percentile(99) * 1000),
             e2eMedianMs: Int(metrics.e2eLatencies.median * 1000),
-            e2eP99Ms: Int(metrics.e2eLatencies.percentile(99) * 1000)
+            e2eP99Ms: Int(metrics.e2eLatencies.percentile(99) * 1000),
+            ttfaMedianMs: metrics.ttfaLatencies.isEmpty ? nil : Int(metrics.ttfaLatencies.median * 1000),
+            ttfaP99Ms: metrics.ttfaLatencies.isEmpty ? nil : Int(metrics.ttfaLatencies.percentile(99) * 1000)
         )
 
         let costs = CostMetrics(
@@ -627,7 +679,9 @@ public actor TelemetryEngine {
             interruptions: metrics.interruptions,
             interruptionSuccessRate: metrics.turnsTotal > 0 ? Float(metrics.interruptions) / Float(metrics.turnsTotal) : 0,
             thermalThrottleEvents: metrics.thermalThrottleEvents,
-            networkDegradations: metrics.networkDegradations
+            networkDegradations: metrics.networkDegradations,
+            errorsTotal: metrics.errorsTotal,
+            errorsByStage: metrics.errorsByStage
         )
 
         return MetricsSnapshot(
@@ -655,6 +709,10 @@ public struct LatencyMetrics: Codable, Sendable {
     public let ttsP99Ms: Int
     public let e2eMedianMs: Int
     public let e2eP99Ms: Int
+    // Time To First Audio. Optional so snapshots persisted before this field
+    // existed still decode, and nil when no TTFA samples were recorded.
+    public let ttfaMedianMs: Int?
+    public let ttfaP99Ms: Int?
 }
 
 public struct CostMetrics: Codable, Sendable {
@@ -672,6 +730,10 @@ public struct QualityMetrics: Codable, Sendable {
     public let interruptionSuccessRate: Float
     public let thermalThrottleEvents: Int
     public let networkDegradations: Int
+    // Typed error counts. Optional so snapshots persisted before these fields
+    // existed still decode.
+    public let errorsTotal: Int?
+    public let errorsByStage: [String: Int]?
 }
 
 // MARK: - Device Metrics

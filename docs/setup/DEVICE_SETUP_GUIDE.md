@@ -315,10 +315,10 @@ xcrun xctrace list devices
 
 ## Related Documentation
 
-- [GLM_ASR_ON_DEVICE_GUIDE.md](GLM_ASR_ON_DEVICE_GUIDE.md) - Detailed on-device implementation
-- [QUICKSTART.md](QUICKSTART.md) - Quick start guide
-- [SETUP.md](SETUP.md) - Development environment setup
-- [AI_SIMULATOR_TESTING.md](AI_SIMULATOR_TESTING.md) - AI-driven testing
+- [GLM_ASR_ON_DEVICE_GUIDE.md](https://github.com/UnaMentis/unamentis/blob/main/docs/ai-ml/GLM_ASR_ON_DEVICE_GUIDE.md) - Detailed on-device implementation
+- [QUICKSTART.md](https://github.com/UnaMentis/unamentis/blob/main/docs/QUICKSTART.md) - Quick start guide
+- [SETUP.md](https://github.com/UnaMentis/unamentis/blob/main/docs/setup/SETUP.md) - Development environment setup
+- [AI_SIMULATOR_TESTING.md](../testing/AI_SIMULATOR_TESTING.md) - AI-driven testing
 
 ---
 

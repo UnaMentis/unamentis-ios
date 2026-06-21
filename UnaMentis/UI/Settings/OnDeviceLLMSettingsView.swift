@@ -98,10 +98,29 @@ struct OnDeviceLLMSettingsView: View {
         } header: {
             Text("Model Status")
         } footer: {
+            #if LLAMA_AVAILABLE
             if viewModel.isDownloaded {
                 Text("Model is stored locally and works offline. No internet required for inference.")
             } else {
                 Text("Download requires ~2.2 GB. The model will be stored on your device for offline use.")
+            }
+            #else
+            Text("This build does not include the on-device LLM runtime, so the 2.2 GB download is disabled. Self-hosted and cloud AI are unaffected.")
+            #endif
+        }
+    }
+
+    /// Shown in place of download/load actions when the build lacks the LLM runtime
+    private var runtimeUnavailableNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(.blue)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Requires an on-device build")
+                    .font(.subheadline.weight(.medium))
+                Text("The on-device LLM runtime is not included in this build. The model cannot be downloaded or loaded here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -110,6 +129,10 @@ struct OnDeviceLLMSettingsView: View {
     private var actionButtons: some View {
         switch viewModel.modelState {
         case .notDownloaded:
+            // Only offer the download when the build includes the LLM runtime.
+            // Without LLAMA_AVAILABLE no code path can load the model, so the
+            // 2.2 GB download would waste storage and bandwidth.
+            #if LLAMA_AVAILABLE
             Button {
                 Task {
                     await viewModel.downloadModel()
@@ -134,6 +157,9 @@ struct OnDeviceLLMSettingsView: View {
                         .foregroundStyle(.orange)
                 }
             }
+            #else
+            runtimeUnavailableNote
+            #endif
 
         case .downloading:
             Button(role: .destructive) {
@@ -145,6 +171,10 @@ struct OnDeviceLLMSettingsView: View {
             }
 
         case .available:
+            // A model downloaded by an earlier build may exist on disk.
+            // Loading still requires the runtime; deletion stays available
+            // through the storage section so testers can reclaim space.
+            #if LLAMA_AVAILABLE
             Button {
                 Task {
                     await viewModel.loadModel()
@@ -153,6 +183,9 @@ struct OnDeviceLLMSettingsView: View {
                 Label("Load Model", systemImage: "cpu")
             }
             .disabled(viewModel.isLoading)
+            #else
+            runtimeUnavailableNote
+            #endif
 
         case .loaded:
             Button {

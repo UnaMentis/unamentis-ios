@@ -32,7 +32,7 @@ export SHOTSTACK_ENV="stage"            # "stage" = watermark, "v1" = production
 
 ### 3. Simulator
 ```bash
-xcrun simctl list devices | grep "iPhone 16 Pro"
+xcrun simctl list devices | grep "iPhone 17 Pro"
 ```
 
 ## Available Configs
@@ -205,7 +205,7 @@ Can span multiple lines.
 ### "Simulator not found"
 ```bash
 xcrun simctl list devices
-xcrun simctl create "iPhone 16 Pro" "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro"
+xcrun simctl create "iPhone 17 Pro" "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"
 ```
 
 ### "Shotstack API key invalid"
@@ -220,6 +220,8 @@ export SHOTSTACK_ENV=v1
 
 ## Related Documentation
 
-- [demo/CLAUDE.md](../../../demo/CLAUDE.md) - Comprehensive Claude Code guide
-- [demo/README.md](../../../demo/README.md) - Quick start
-- [demo/IOS_DEMO_VIDEO_AUTOMATION.md](../../../demo/IOS_DEMO_VIDEO_AUTOMATION.md) - Deep technical docs
+The demo video generator lives in the main repo at `/Users/ramerman/dev/unamentis/demo/`:
+
+- `demo/CLAUDE.md` - Comprehensive Claude Code guide
+- `demo/README.md` - Quick start
+- `demo/IOS_DEMO_VIDEO_AUTOMATION.md` - Deep technical docs

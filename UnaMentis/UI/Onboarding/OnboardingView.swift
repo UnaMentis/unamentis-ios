@@ -11,6 +11,9 @@ struct OnboardingView: View {
     @Binding var hasCompletedOnboarding: Bool
     @State private var currentPage = 0
 
+    /// Age attestation collected on the final consent page (required to finish onboarding)
+    @AppStorage("ageAttestation13Plus") private var ageAttestation13Plus = false
+
     private let pages: [OnboardingPage] = [
         OnboardingPage(
             customImage: "Logo",
@@ -69,19 +72,27 @@ struct OnboardingView: View {
                 BrandLogo(size: .large)
                     .padding(.leading)
                 Spacer()
-                Button("Skip") {
-                    completeOnboarding()
+                if currentPage < consentPageIndex {
+                    Button("Skip") {
+                        // Skip jumps to the consent page; it cannot bypass the age gate
+                        withAnimation {
+                            currentPage = consentPageIndex
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding()
                 }
-                .foregroundStyle(.secondary)
-                .padding()
             }
 
-            // Page content
+            // Page content (info pages plus the final consent page)
             TabView(selection: $currentPage) {
                 ForEach(0..<pages.count, id: \.self) { index in
                     OnboardingPageView(page: pages[index])
                         .tag(index)
                 }
+
+                OnboardingConsentPageView()
+                    .tag(consentPageIndex)
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .indexViewStyle(.page(backgroundDisplayMode: .always))
@@ -108,7 +119,7 @@ struct OnboardingView: View {
                 }
 
                 Button {
-                    if currentPage < pages.count - 1 {
+                    if currentPage < consentPageIndex {
                         withAnimation {
                             currentPage += 1
                         }
@@ -117,18 +128,20 @@ struct OnboardingView: View {
                     }
                 } label: {
                     HStack {
-                        Text(currentPage < pages.count - 1 ? "Next" : "Get Started")
-                        if currentPage < pages.count - 1 {
+                        Text(currentPage < consentPageIndex ? "Next" : "Get Started")
+                        if currentPage < consentPageIndex {
                             Image(systemName: "chevron.right")
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.blue)
+                    .background(isGetStartedDisabled ? Color.gray : Color.blue)
                     .foregroundStyle(.white)
                     .cornerRadius(12)
                 }
-                .accessibilityLabel(currentPage < pages.count - 1 ? "Next page" : "Complete onboarding and get started")
+                .disabled(isGetStartedDisabled)
+                .accessibilityLabel(currentPage < consentPageIndex ? "Next page" : "Complete onboarding and get started")
+                .accessibilityHint(isGetStartedDisabled ? "Confirm the age requirement first" : "")
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 40)
@@ -136,7 +149,25 @@ struct OnboardingView: View {
         .background(Color(.systemBackground))
     }
 
+    /// Index of the consent page, which follows the informational pages
+    private var consentPageIndex: Int {
+        pages.count
+    }
+
+    /// The final button is disabled on the consent page until the age attestation is granted
+    private var isGetStartedDisabled: Bool {
+        currentPage == consentPageIndex && !ageAttestation13Plus
+    }
+
     private func completeOnboarding() {
+        // The age attestation is required before onboarding can complete.
+        // Defense in depth: route back to the consent page if it is missing.
+        guard ageAttestation13Plus else {
+            withAnimation {
+                currentPage = consentPageIndex
+            }
+            return
+        }
         hasCompletedOnboarding = true
         dismiss()
     }

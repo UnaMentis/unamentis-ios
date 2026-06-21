@@ -25,7 +25,7 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
         XCTAssertEqual(config.filename, "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf")
         XCTAssertEqual(config.quantization, "Q4_K_M")
         XCTAssertEqual(config.contextSize, 4096)
-        XCTAssertEqual(config.minimumRAMGB, 4)
+        XCTAssertEqual(config.minimumRAMGB, 8)
         XCTAssertGreaterThan(config.expectedSizeBytes, 2_000_000_000) // > 2GB
     }
 
@@ -312,8 +312,20 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
     func testAllModelsAvailable() {
         let allModels = OnDeviceLLMModel.allCases
 
-        XCTAssertEqual(allModels.count, 1, "Currently only Ministral 3 3B is supported")
+        XCTAssertEqual(allModels.count, 4, "Tiered ladder: Gemma 4 E2B, Qwen3-1.7B, Qwen3-0.6B, Ministral")
+        XCTAssertTrue(allModels.contains(.gemma4_e2b))
+        XCTAssertTrue(allModels.contains(.qwen3_1_7B))
+        XCTAssertTrue(allModels.contains(.qwen3_0_6B))
         XCTAssertTrue(allModels.contains(.ministral3_3B))
+    }
+
+    func testRecommendedForDeviceTiering() {
+        // RAM-gated capability ceiling: showcase on 12GB, fallbacks below.
+        XCTAssertEqual(OnDeviceLLMModel.recommendedForDevice(physicalMemoryGB: 16), .gemma4_e2b)
+        XCTAssertEqual(OnDeviceLLMModel.recommendedForDevice(physicalMemoryGB: 12), .gemma4_e2b)
+        XCTAssertEqual(OnDeviceLLMModel.recommendedForDevice(physicalMemoryGB: 8), .qwen3_1_7B)
+        XCTAssertEqual(OnDeviceLLMModel.recommendedForDevice(physicalMemoryGB: 6), .qwen3_0_6B)
+        XCTAssertNil(OnDeviceLLMModel.recommendedForDevice(physicalMemoryGB: 4))
     }
 
     func testModelRawValues() {

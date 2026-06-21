@@ -42,9 +42,9 @@ UnaMentis/
 │   ├── Session/    # Session management
 │   └── Telemetry/  # Metrics, cost tracking
 ├── Services/       # Provider integrations
-│   ├── STT/        # Speech-to-text (7 providers)
-│   ├── TTS/        # Text-to-speech (9 providers)
-│   ├── LLM/        # Language models (4 providers)
+│   ├── STT/        # Speech-to-text (6 wired providers)
+│   ├── TTS/        # Text-to-speech (7 wired providers)
+│   ├── LLM/        # Language models (4 providers, incl. on-device llama.cpp)
 │   └── Protocols/  # Service protocol definitions
 ├── Intents/        # Siri & App Intents
 └── UI/             # SwiftUI views

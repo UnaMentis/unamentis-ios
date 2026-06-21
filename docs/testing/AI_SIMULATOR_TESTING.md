@@ -437,9 +437,9 @@ xcrun simctl io booted screenshot ~/Desktop/screenshot.png
 
 ## Related Documentation
 
-- [TESTING.md](TESTING.md) - General testing guide
+- [TESTING.md](https://github.com/UnaMentis/unamentis/blob/main/docs/testing/TESTING.md) - General testing guide
 - [DEBUG_TESTING_UI.md](DEBUG_TESTING_UI.md) - Built-in debug tools
-- [SETUP.md](SETUP.md) - Development setup
+- [SETUP.md](https://github.com/UnaMentis/unamentis/blob/main/docs/setup/SETUP.md) - Development setup
 
 ---
 

@@ -30,8 +30,8 @@ This document provides a comprehensive review of the UnaMentis iOS app from the 
 **Impact:** App runs in iPhone compatibility mode on iPad (small window with black letterboxing), resulting in poor UX.
 
 **Files Affected:**
-- [Info.plist](UnaMentis/Info.plist) - Missing iPad orientations and capabilities
-- All UI files in [UnaMentis/UI/](UnaMentis/UI/) - No size class detection
+- [Info.plist](../../UnaMentis/Info.plist) - Missing iPad orientations and capabilities
+- All UI files in [UnaMentis/UI/](../../UnaMentis/UI/) - No size class detection
 
 **Recommended Fix:**
 

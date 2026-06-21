@@ -420,15 +420,27 @@ public final class SessionManager: ObservableObject {
         await telemetry.startDeviceMetricsSampling()
         sessionStartTime = Date()
 
-        // Configure and start metrics upload service
-        let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
-        let serverIP = UserDefaults.standard.string(forKey: "serverIP") ?? ""
-        if selfHostedEnabled && !serverIP.isEmpty {
-            await metricsUploadService.configure(serverHost: serverIP)
-            // Drain any queued metrics from previous sessions
-            await metricsUploadService.drainQueue()
+        // Configure and start the metrics upload service.
+        // Uploads require explicit user consent (telemetryConsentGranted, default false).
+        // A full telemetry endpoint URL (telemetryEndpointURL, supports https) takes
+        // precedence over the legacy self-hosted host on port 8766. Endpoint
+        // configuration is independent of self-hosted mode so cloud telemetry
+        // works without a self-hosted server.
+        let telemetryConsentGranted = UserDefaults.standard.bool(forKey: "telemetryConsentGranted")
+        if telemetryConsentGranted {
+            let telemetryEndpointURL = UserDefaults.standard.string(forKey: "telemetryEndpointURL") ?? ""
+            let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
+            if !telemetryEndpointURL.isEmpty {
+                await metricsUploadService.configure(baseURL: telemetryEndpointURL)
+                // Drain any queued metrics from previous sessions
+                await metricsUploadService.drainQueue()
+            } else if !serverIP.isEmpty {
+                await metricsUploadService.configure(serverHost: serverIP)
+                // Drain any queued metrics from previous sessions
+                await metricsUploadService.drainQueue()
+            }
+            startMetricsUploadTimer()
         }
-        startMetricsUploadTimer()
 
         // Initialize silence tracking
         hasDetectedSpeech = false
@@ -795,6 +807,7 @@ public final class SessionManager: ObservableObject {
                 try await sttService?.sendAudio(buffer)
             } catch {
                 logger.error("Failed to send audio to STT: \(error.localizedDescription)")
+                await telemetry.recordError(error, stage: .stt)
             }
 
             // Track speech/silence for utterance detection
@@ -1085,7 +1098,10 @@ public final class SessionManager: ObservableObject {
                     return
                 }
 
-                logger.info("LLM response complete: \(fullResponse.prefix(50))...")
+                // Privacy: no content at .info, release builds ship the console log.
+                // Content is available at .debug for development builds.
+                logger.info("LLM response complete (\(fullResponse.count) chars)")
+                logger.debug("LLM response complete: \(fullResponse.prefix(50))...")
 
                 // Add AI response to history
                 self.conversationHistory.append(LLMMessage(role: .assistant, content: fullResponse))
@@ -1132,6 +1148,7 @@ public final class SessionManager: ObservableObject {
 
         } catch {
             logger.error("LLM generation failed: \(error.localizedDescription)")
+            await telemetry.recordError(error, stage: .llm)
             await handleProcessingError("AI response failed: \(error.localizedDescription)")
         }
     }
@@ -1207,7 +1224,8 @@ public final class SessionManager: ObservableObject {
                     // Append to orchestrator as a dynamic segment
                     let segment = SessionSentenceSegment(index: sentenceIndex, text: sentence)
                     sentenceIndex += 1
-                    logger.info("🔊 Queued sentence for TTS (index \(segment.segmentIndex)): \"\(sentence.prefix(50))...\"")
+                    // Privacy: sentence content only at .debug; release logs length only
+                    logger.debug("🔊 Queued sentence for TTS (index \(segment.segmentIndex)): \"\(sentence.prefix(50))...\"")
 
                     if let orch = ttsOrchestrator {
                         Task { await orch.appendSegments([segment]) }
@@ -1388,6 +1406,7 @@ public final class SessionManager: ObservableObject {
 
         } catch {
             logger.error("TTS synthesis failed: \(error.localizedDescription), full error: \(error)")
+            await telemetry.recordError(error, stage: .tts)
             await setState(.error)
         }
     }

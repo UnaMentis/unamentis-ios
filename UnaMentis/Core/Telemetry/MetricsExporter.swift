@@ -48,6 +48,14 @@
 // - MetricsUploadService.swift: Session metrics upload
 // - TestResult.swift: Test result data model
 // - server/management/latency_harness_api.py: Server endpoints
+//
+// DEBUG ONLY
+// ----------
+// This exporter is used exclusively by the debug latency harness hooks and
+// reads device-identifying values (IDFV, device name). The entire file is
+// compiled out of release builds so that code can never ship.
+
+#if DEBUG
 
 import Foundation
 import Logging
@@ -545,3 +553,5 @@ public enum MetricsExporterError: Error, LocalizedError {
 // Note: STTProvider.identifier is defined in STTService.swift
 // Note: LLMProvider.identifier is defined in LLMService.swift
 // Note: TTSProvider.identifier is defined in TTSService.swift
+
+#endif

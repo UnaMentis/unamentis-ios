@@ -12,6 +12,11 @@ public struct SettingsView: View {
     @State private var showingSettingsHelp = false
     @State private var showingOnboarding = false
 
+    /// Consent state collected during onboarding, revocable here.
+    /// Keys are the shared contract with telemetry consent enforcement.
+    @AppStorage("ageAttestation13Plus") private var ageAttestation13Plus = false
+    @AppStorage("telemetryConsentGranted") private var telemetryConsentGranted = false
+
     public init() { }
 
     public var body: some View {
@@ -291,6 +296,37 @@ public struct SettingsView: View {
                     Text("Learn how to use the app with Siri voice commands and the welcome tour.")
                 }
 
+                // Privacy Section
+                Section {
+                    Toggle(isOn: $ageAttestation13Plus) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("I am 13 years of age or older")
+                            Text("Required to use UnaMentis")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .onChange(of: ageAttestation13Plus) { _, granted in
+                        ConsentRecords.recordAgeAttestation(granted: granted)
+                    }
+
+                    Toggle(isOn: $telemetryConsentGranted) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Share anonymous usage data")
+                            Text("Latency and reliability metrics only, never conversation content")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Link("Privacy Policy", destination: URL(string: "https://unamentis.org/privacy.html")!)
+                    Link("Terms of Use", destination: URL(string: "https://unamentis.org/terms.html")!)
+                } header: {
+                    Text("Privacy")
+                } footer: {
+                    Text("You can change these choices anytime. Anonymous usage data never includes conversation content.")
+                }
+
                 // About Section
                 Section("About") {
                     HStack {
@@ -477,7 +513,7 @@ class SettingsViewModel: ObservableObject {
             UserDefaults.standard.set(llmProvider.rawValue, forKey: "llmProvider")
         }
     }
-    @AppStorage("llmModel") var llmModel = "llama3.2:3b"
+    @AppStorage(RemoteLLMModel.defaultsKey) var llmModel = RemoteLLMModel.defaultModel
     @AppStorage("temperature") var temperature: Double = 0.7
     @AppStorage("maxTokens") var maxTokens = 1024
 
@@ -658,7 +694,7 @@ class SettingsViewModel: ObservableObject {
             if !discoveredModels.isEmpty {
                 return discoveredModels
             }
-            return ["qwen2.5:32b", "qwen2.5:7b", "llama3.2:3b", "mistral:7b"]
+            return RemoteLLMModel.selfHostedFallbackModels
         case .localMLX:
             return ["ministral-3b (on-device)"]
         }

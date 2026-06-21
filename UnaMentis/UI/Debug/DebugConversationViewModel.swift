@@ -119,7 +119,7 @@ class DebugConversationViewModel: ObservableObject {
         // Default to .localMLX to match SettingsView default
         let llmProviderSetting = UserDefaults.standard.string(forKey: "llmProvider")
             .flatMap { LLMProvider(rawValue: $0) } ?? .localMLX
-        let modelSetting = UserDefaults.standard.string(forKey: "llmModel") ?? "llama3.2:3b"
+        let modelSetting = RemoteLLMModel.current
 
         selectedLLMProvider = llmProviderSetting
         selectedModel = modelSetting
@@ -171,7 +171,7 @@ class DebugConversationViewModel: ObservableObject {
             // Default to .localMLX to match SettingsView default
             provider = UserDefaults.standard.string(forKey: "llmProvider")
                 .flatMap { LLMProvider(rawValue: $0) } ?? .localMLX
-            model = UserDefaults.standard.string(forKey: "llmModel") ?? "llama3.2:3b"
+            model = RemoteLLMModel.current
         } else {
             provider = selectedLLMProvider
             model = selectedModel

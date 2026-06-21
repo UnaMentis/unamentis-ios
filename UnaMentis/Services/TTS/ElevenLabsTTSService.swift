@@ -54,7 +54,8 @@ public actor ElevenLabsTTSService: TTSService {
     }
     
     public func synthesize(text: String) async throws -> AsyncStream<TTSAudioChunk> {
-        logger.info("Starting synthesis for text: \(text.prefix(20))...")
+        logger.info("Starting synthesis (\(text.count) chars)")
+        logger.debug("Starting synthesis for text: \(text.prefix(20))...")
         
         // If we are not already connected/streaming, we need to establish connection or just do a single-shot streaming request (HTTP also supports streaming, but WS is lower latency for continuous flow).
         // For simple synthesis(text:), standard HTTP streaming might be easier, but WS allows input streaming. 

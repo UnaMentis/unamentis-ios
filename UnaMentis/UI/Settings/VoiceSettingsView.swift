@@ -40,6 +40,9 @@ public struct VoiceSettingsView: View {
             // STT Settings
             sttSection
 
+            // On-device speech model status (initiated / progress / result)
+            OnDeviceSpeechStatusView()
+
             // LLM Settings
             llmSection
 
@@ -174,6 +177,7 @@ public struct VoiceSettingsView: View {
     private var sttSection: some View {
         Section {
             Picker("Provider", selection: $viewModel.sttProvider) {
+                Text("Parakeet EOU (On-Device)").tag(STTProvider.parakeetEOU)
                 Text("GLM-ASR (On-Device)").tag(STTProvider.glmASROnDevice)
                 Text("GLM-ASR-Nano (Server)").tag(STTProvider.glmASRNano)
                 Text("Groq Whisper (Free)").tag(STTProvider.groqWhisper)
@@ -484,7 +488,7 @@ class VoiceSettingsViewModel: ObservableObject {
             defaults.set(llmProvider.rawValue, forKey: "llmProvider")
         }
     }
-    @AppStorage("llmModel") var llmModel = "llama3.2:3b"
+    @AppStorage(RemoteLLMModel.defaultsKey) var llmModel = RemoteLLMModel.defaultModel
     @AppStorage("temperature") var temperature: Double = 0.7
     @AppStorage("maxTokens") var maxTokens = 1024
 
@@ -584,7 +588,7 @@ class VoiceSettingsViewModel: ObservableObject {
             if !discoveredModels.isEmpty {
                 return discoveredModels
             }
-            return ["qwen2.5:32b", "qwen2.5:7b", "llama3.2:3b", "mistral:7b"]
+            return RemoteLLMModel.selfHostedFallbackModels
         case .localMLX:
             return ["ministral-3b (on-device)"]
         }

@@ -4,7 +4,7 @@ options:
   deploymentTarget:
     iOS: "18.0"
     watchOS: "26.0"
-  xcodeVersion: "15.2"
+  xcodeVersion: "26.0"
   minimumXcodeGenVersion: "2.40"
   createIntermediateGroups: true
   generateEmptyDirectories: true
@@ -21,10 +21,10 @@ settings:
     CODE_SIGN_STYLE: Automatic
   configs:
     Debug:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG LLAMA_AVAILABLE
       CODE_SIGN_IDENTITY: "Apple Development"
     Release:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: LLAMA_AVAILABLE
       CODE_SIGN_IDENTITY: "Apple Distribution"
 
 packages:
@@ -50,8 +50,10 @@ packages:
   FluidAudio:
     url: https://github.com/FluidInference/FluidAudio.git
     from: "0.14.8"
-  # LlamaCpp SPM package removed - use local llama.xcframework for on-device LLM
-  # See docs/plan for xcframework setup instructions
+  # LlamaCpp SPM package removed (StanfordBDHG 0.3.3 wraps an early-2024 llama.cpp whose API
+  # predates llama_sampler_init_greedy and friends). The app links the official prebuilt
+  # llama.cpp b7263 xcframework at UnaMentis/Frameworks/llama.xcframework instead, the exact
+  # build OnDeviceLLMService targets.
 
 targets:
   UnaMentis:
@@ -66,7 +68,6 @@ targets:
           - "**/Testing/LatencyHarness/TestHooks.swift"  # Has duplicate provider extensions
           # ManagedObjects included now - using manual classes with no auto-generation
           - "**/SelfHostedSTTService.swift"  # Has duplicate STTMetrics/STTError types
-          - "**/OnDeviceLLMService.swift"  # Uses incompatible llama.cpp API, use SelfHostedLLMService instead
           # Modules/KnowledgeBowl - exclude entire substructure, keep only KnowledgeBowlModule.swift
           # The module facade references Core/ and UI/ versions for actual implementation
           - "Modules/KnowledgeBowl/Models/**"    # Duplicates of Core/KnowledgeBowl/
@@ -76,9 +77,6 @@ targets:
       - path: Shared
         excludes:
           - "**/.DS_Store"
-      - path: models/llama-3.2-3b-instruct-q4_k_m.gguf
-        buildPhase: resources
-        type: file
       - path: models/Models
         buildPhase: resources
         type: folder
@@ -98,7 +96,10 @@ targets:
       - package: FluidAudio
       - framework: UnaMentis/Frameworks/PocketTTS.xcframework
         embed: false
-      # LlamaCpp dependency removed - using server-hosted LLM via SelfHostedLLMService
+      # llama.cpp b7263 official xcframework (dynamic, must embed). Enables the
+      # LLAMA_AVAILABLE on-device LLM path (OnDeviceLLMService).
+      - framework: UnaMentis/Frameworks/llama.xcframework
+        embed: true
     settings:
       base:
         INFOPLIST_FILE: UnaMentis/Info.plist

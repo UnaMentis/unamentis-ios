@@ -228,7 +228,8 @@ final class KBVoiceCoordinator: ObservableObject {
         }
 
         isSpeaking = true
-        Self.logger.info("Speaking: \"\(text.prefix(50))...\"")
+        Self.logger.info("Speaking segment (\(text.count) chars)")
+        Self.logger.debug("Speaking: \"\(text.prefix(50))...\"")
 
         let segment = KBTextSegment(text: text, cachedAudio: cachedAudio)
         let orch = AudioPlaybackOrchestrator(
@@ -429,7 +430,8 @@ final class KBVoiceCoordinator: ObservableObject {
         guard !currentTranscript.isEmpty else { return }
 
         let transcript = currentTranscript
-        Self.logger.info("Utterance complete: \"\(transcript)\"")
+        Self.logger.info("Utterance complete (\(transcript.count) chars)")
+        Self.logger.debug("Utterance transcript: \"\(transcript)\"")
 
         // Reset state
         hasDetectedSpeech = false

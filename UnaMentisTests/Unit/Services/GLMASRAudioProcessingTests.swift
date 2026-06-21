@@ -302,17 +302,15 @@ final class GLMASRAudioProcessingTests: XCTestCase {
 
     // MARK: - llamaAvailable Flag
 
-    func testLlamaAvailable_isDisabled() {
-        // The global `llamaAvailable` flag is false, meaning on-device decoder is disabled.
-        // This is correct given StanfordBDHG/llama.cpp v0.3.3 lacks audio support.
-        // We can't directly test the private global, but we can verify the service
-        // doesn't crash when trying to use the decoder path.
-
-        // Verify LLAMA_AVAILABLE is not defined in test builds
+    func testLlamaAvailable_isEnabled() {
+        // LLAMA_AVAILABLE is defined in both Debug and Release since the
+        // llama.cpp b7263 xcframework landed for the on-device LLM path
+        // (2026-06). Whether the GLM-ASR GGUF decoder actually uses it is
+        // gated separately at runtime; this only asserts the build flag.
         #if LLAMA_AVAILABLE
-        XCTFail("LLAMA_AVAILABLE should not be defined in test builds")
+        // Expected: llama module is available to on-device services
         #else
-        // Expected: llama module is not available
+        XCTFail("LLAMA_AVAILABLE should be defined in all build configs (llama.cpp b7263 xcframework)")
         #endif
     }
 }

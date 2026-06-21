@@ -1,6 +1,6 @@
 # UnaMentis iOS App
 
-Swift 6.0/SwiftUI iOS application for voice-first AI tutoring.
+Swift 6.0/SwiftUI iOS client for the UnaMentis voice AI learning platform.
 
 ## Build Commands
 

@@ -81,3 +81,24 @@ This is exactly the engaging, responsive experience the beta wants, and the on-d
 - This is web-sourced as of 2026-05-31, past the assistant's training cutoff. The verification pass cross-checked dated primary sources, but confirm exact model availability, the precise license text, and a quick real-device latency measurement before locking the final pick.
 - Most iPhone numbers are iPhone 17 Pro (A19 Pro). Expect somewhat lower throughput on A18 (iPhone 16), still real-time at these sizes; measure on the oldest supported device.
 - The Apple Foundation Models Acceptable Use Requirements and the courseware restriction need a real legal read before any reliance for tutoring content.
+
+## Implementation status (2026-06-10): on-device LLM is enabled and generating
+
+The path that actually landed differs from the MLX-Swift recommendation above: the integration uses llama.cpp with a GGUF model, because the prebuilt official xcframework provided the fastest verified route to a working pipeline. What landed, all verified in the tree and in the simulator:
+
+- **llama.cpp b7263 official prebuilt xcframework** at `UnaMentis/Frameworks/llama.xcframework`, linked and embedded via `project.yml`. The earlier StanfordBDHG SPM wrapper (llama.cpp from early 2024, predating `llama_sampler_init_greedy`) was removed.
+- **`LLAMA_AVAILABLE` is defined in both Debug and Release** `SWIFT_ACTIVE_COMPILATION_CONDITIONS` (`project.yml`), so the on-device path compiles into release builds, not just dev builds.
+- **`OnDeviceLLMService` is no longer excluded** from the target and conforms to the existing `LLMService` protocol.
+- **Batch-overflow fix**: `llama_batch_init` is now sized from the prompt (`max(512, tokens.count)`) instead of a fixed 512, which overflowed the batch buffers once a conversation grew past 512 tokens (`OnDeviceLLMService.swift`).
+- **Dead bundle resource removed**: the unusable 1.9 GB Llama 3.2 GGUF that was previously bundled is gone (item 5 of the integration path above).
+- **Model: Ministral 3 3B** (`Ministral-3-3B-Instruct-2512-Q4_K_M.gguf`, ~2.15 GB, Apache 2.0), loaded from `Documents/models/LLM/` with bundle and dev-path fallbacks. **Verified generating end to end in the iPhone 17 Pro simulator via `OnDeviceLLMService`.**
+
+The unit tests that asserted `LLAMA_AVAILABLE` is undefined (`GLMASRAudioProcessingTests`, `GLMASRUnifiedGGUFTests`) were updated on 2026-06-11 to assert the new reality.
+
+### Known issues (open as of 2026-06-10)
+
+1. **Load Model button is a stub.** `OnDeviceLLMSettingsView`'s Load Model action fakes the Loaded state; it does not actually load the model into memory.
+2. **Conversation Test header shows the wrong model name.** It displays the settings model name (for example `qwen2.5:14b-instruct`) instead of the on-device model actually running.
+3. **No shared service instance.** Each call site constructs a fresh `OnDeviceLLMService`, which means a roughly 2 GB model reload per construction. Needs a shared instance.
+4. **No SHA256 verification on model downloads.** The audit's integration path called for hash verification (security finding SEC-5); it is not implemented yet.
+5. **Onboarding age toggle unresponsive to synthetic taps.** During simulator verification the 13+ age attestation toggle did not respond to synthetic idb taps while the adjacent telemetry toggle did. Verify by hand on a real device; if it reproduces with a real finger it blocks onboarding.

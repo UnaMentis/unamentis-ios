@@ -6,6 +6,15 @@
 !*.xcworkspace/contents.xcworkspacedata
 *.xcworkspace/*
 !*.xcworkspace/xcshareddata/
+# Track the SwiftPM pin file inside the generated project so dependency
+# resolution is reproducible across machines and CI. Each parent level must
+# be re-included because an excluded directory cannot have tracked children.
+!*.xcodeproj/project.xcworkspace/
+*.xcodeproj/project.xcworkspace/*
+!*.xcodeproj/project.xcworkspace/xcshareddata/
+*.xcodeproj/project.xcworkspace/xcshareddata/*
+!*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+!*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 xcuserdata/
 DerivedData/
 build/
@@ -16,7 +25,6 @@ build/
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
 
 # CocoaPods
 Pods/

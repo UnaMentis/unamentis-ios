@@ -91,6 +91,17 @@
                 <string>85F4.1</string>
             </array>
         </dict>
+
+        <!-- System boot time API - mach_absolute_time used by TTFA latency instrumentation -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <!-- 35F9.1: Measure the amount of time elapsed between events within the app -->
+                <string>35F9.1</string>
+            </array>
+        </dict>
     </array>
 </dict>
 </plist>

@@ -113,7 +113,7 @@ public actor MetricsUploadQueue {
     // MARK: - Helpers
 
     private func transformToPayload(_ snapshot: MetricsSnapshot, sessionDuration: TimeInterval) -> [String: Any] {
-        return [
+        var payload: [String: Any] = [
             "timestamp": ISO8601DateFormatter().string(from: Date()),
             "sessionDuration": sessionDuration,
             "turnsTotal": snapshot.quality.turnsTotal,
@@ -134,8 +134,19 @@ public actor MetricsUploadQueue {
             "networkDegradations": snapshot.quality.networkDegradations,
             "llmInputTokens": snapshot.costs.llmInputTokens,
             "llmOutputTokens": snapshot.costs.llmOutputTokens,
-            "interruptionSuccessRate": snapshot.quality.interruptionSuccessRate
+            "interruptionSuccessRate": snapshot.quality.interruptionSuccessRate,
+            "error_count": snapshot.quality.errorsTotal ?? 0,
+            "errors_by_stage": snapshot.quality.errorsByStage ?? [:]
         ]
+
+        if let ttfaMedian = snapshot.latencies.ttfaMedianMs {
+            payload["ttfaMedian"] = ttfaMedian
+        }
+        if let ttfaP99 = snapshot.latencies.ttfaP99Ms {
+            payload["ttfaP99"] = ttfaP99
+        }
+
+        return payload
     }
 }
 

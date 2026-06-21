@@ -42,13 +42,66 @@ public struct OnDeviceLLMModelConfig: Sendable {
 
 // MARK: - Available Models
 
-/// Available on-device LLM models
+/// Available on-device LLM models, ordered as a device-capability tier ladder.
+///
+/// The beta ships a tiered on-device strategy so every supported device gets the
+/// most capable model it can run without risking an out-of-memory session kill:
+/// - `gemma4_e2b`: showcase model for 12 GB devices (iPhone 17 Pro class). Newest
+///   architecture (April 2026), Apache 2.0, the quality-for-size leader.
+/// - `qwen3_1_7B`: fallback for 8 GB devices (iPhone 15 Pro / 16 / 16 Pro). Apache 2.0.
+/// - `qwen3_0_6B`: low-RAM fallback for 6 GB devices (iPhone 14 / 14 Pro / 15). Apache 2.0,
+///   ~163 ms TTFT, the fastest first-responder.
+/// - `ministral3_3B`: legacy/general model retained for compatibility.
+///
+/// All four run on the same llama.cpp runtime. Gemma 4 requires a llama.cpp build
+/// from April 2026 or later (the `gemma4` architecture); the Qwen3 and Ministral
+/// models run on the build already integrated. See
+/// `docs/ios/ON_DEVICE_LLM_MODEL_RECONSIDERATION_2026-06-20.md`.
 public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
+    case gemma4_e2b = "gemma-4-e2b"
+    case qwen3_1_7B = "qwen3-1.7b"
+    case qwen3_0_6B = "qwen3-0.6b"
     case ministral3_3B = "ministral-3-3b"
 
     /// Model configuration
     public var config: OnDeviceLLMModelConfig {
         switch self {
+        case .gemma4_e2b:
+            return OnDeviceLLMModelConfig(
+                id: "gemma-4-e2b-it",
+                displayName: "Gemma 4 E2B",
+                huggingFaceRepo: "unsloth/gemma-4-E2B-it-GGUF",
+                filename: "gemma-4-E2B-it-Q4_K_M.gguf",
+                expectedSizeBytes: 2_000_000_000, // ~2 GB on disk (verify at download)
+                quantization: "Q4_K_M",
+                contextSize: 8192,
+                minimumRAMGB: 12,
+                description: "April 2026 release from Google. Apache 2.0. Quality-for-size leader; showcase model for high-end devices. Requires a llama.cpp build with gemma4 support."
+            )
+        case .qwen3_1_7B:
+            return OnDeviceLLMModelConfig(
+                id: "qwen3-1.7b",
+                displayName: "Qwen3 1.7B",
+                huggingFaceRepo: "unsloth/Qwen3-1.7B-GGUF",
+                filename: "Qwen3-1.7B-Q4_K_M.gguf",
+                expectedSizeBytes: 1_050_000_000, // ~1.05 GB (verify at download)
+                quantization: "Q4_K_M",
+                contextSize: 8192,
+                minimumRAMGB: 8,
+                description: "May 2025 release from Alibaba. Apache 2.0. Fast, capable fallback for 8 GB devices. Thinking mode is disabled for low-latency conversation."
+            )
+        case .qwen3_0_6B:
+            return OnDeviceLLMModelConfig(
+                id: "qwen3-0.6b",
+                displayName: "Qwen3 0.6B",
+                huggingFaceRepo: "unsloth/Qwen3-0.6B-GGUF",
+                filename: "Qwen3-0.6B-Q4_K_M.gguf",
+                expectedSizeBytes: 400_000_000, // ~400 MB (verify at download)
+                quantization: "Q4_K_M",
+                contextSize: 8192,
+                minimumRAMGB: 6,
+                description: "May 2025 release from Alibaba. Apache 2.0. Low-RAM, low-latency first-responder for 6 GB devices. Thinking mode disabled."
+            )
         case .ministral3_3B:
             return OnDeviceLLMModelConfig(
                 id: "ministral-3-3b-instruct-2512",
@@ -58,9 +111,24 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 expectedSizeBytes: 2_150_000_000, // ~2.15 GB
                 quantization: "Q4_K_M",
                 contextSize: 4096,
-                minimumRAMGB: 4,
-                description: "December 2025 release from Mistral AI. Excellent instruction following and reasoning capabilities."
+                minimumRAMGB: 8,
+                description: "December 2025 release from Mistral AI. Apache 2.0. Retained for compatibility."
             )
+        }
+    }
+
+    /// The most capable model the device's RAM can safely run alongside the
+    /// voice stack (Pocket TTS, VAD, STT) during a long session. This is the
+    /// capability ceiling, not necessarily what is downloaded; use
+    /// `bestAvailableModel(...)` for the model to actually load.
+    public static func recommendedForDevice(
+        physicalMemoryGB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
+    ) -> OnDeviceLLMModel? {
+        switch physicalMemoryGB {
+        case 12...: return .gemma4_e2b
+        case 8...: return .qwen3_1_7B
+        case 6...: return .qwen3_0_6B
+        default: return nil // below 6 GB: use the server LLM + Apple TTS fallback
         }
     }
 }

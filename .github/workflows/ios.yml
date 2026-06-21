@@ -150,6 +150,11 @@ jobs:
           CODE_SIGNING_ALLOWED=NO \
           | xcbeautify --renderer github-actions
 
+    # COVERAGE_THRESHOLD is a ratchet, not the goal. The extraction bug that
+    # read the Watch App target (always 0%) and skipped enforcement is fixed,
+    # so this gate is now real. Measured UnaMentis.app line coverage is ~2.3%
+    # as of 2026-06; raise the threshold as coverage grows toward the 80%
+    # target instead of leaving a gate that never enforces.
     - name: Run Unit Tests
       id: coverage
       run: |
@@ -158,7 +163,7 @@ jobs:
         SIMULATOR="${{ steps.sim.outputs.simulator }}" \
         ENABLE_COVERAGE=true \
         ENFORCE_COVERAGE=true \
-        COVERAGE_THRESHOLD=80 \
+        COVERAGE_THRESHOLD=2 \
         RESULT_BUNDLE_PATH=UnitTestResults.xcresult \
         XCBEAUTIFY_RENDERER=github-actions \
         ./scripts/test-ci.sh

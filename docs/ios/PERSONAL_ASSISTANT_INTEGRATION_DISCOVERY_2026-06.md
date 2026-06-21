@@ -4,6 +4,7 @@
 **Status:** Discovery only. This document is about understanding what is and is not possible. It is not an architecture or a build plan.
 **Target OS:** iOS 26 (the WWDC 2025 cycle, currently shipping). Notes flag iOS 17 and iOS 18 baselines where relevant.
 **Author:** Research synthesis from five parallel investigations (codebase, email/messaging, calendar/tasks/ecosystem, health/notifications, on-device LLM/privacy).
+**Updated 2026-06-06:** Added Addendum A, a service-specific deep dive on Gmail (the chosen email source), Slack, and Discord.
 
 ---
 
@@ -52,6 +53,14 @@ Every capability below is tagged with one of:
 | Messaging | Read/send via SiriKit for the app's OWN service | [CONSTRAINED] | SiriKit | Only the app's own message store |
 | Messaging | Read third-party messengers (WhatsApp, Signal, etc.) | [BLOCKED] | all | Personal accounts have no API |
 | Messaging | Read other apps' notifications | [BLOCKED] | all | Extensions see own app only |
+| **Gmail** (svc, see A1) | Read + triage mailbox, on-device REST | [CONSTRAINED] | OAuth restricted scope | Verification + likely CASA |
+| Gmail (svc) | Send / draft only | [CONSTRAINED] | OAuth `gmail.send` | Verification, no CASA |
+| Gmail (svc) | Real-time push of new mail | [CONSTRAINED] | `users.watch` + Pub/Sub | Requires a backend server |
+| **Slack** (svc, see A2) | Read user DMs/channels, no backend | [BLOCKED] in practice | user token + polling | 2025 limit: 1 req/min, 15 msgs |
+| Slack (svc) | Send as the user | [SUPPORTED] | user token `chat:write` | Device-direct, per-workspace auth |
+| Slack (svc) | Real-time read at normal rate limits | [CONSTRAINED] | Events API + Marketplace listing | Server + Slack review |
+| **Discord** (svc, see A3) | Read user's messages/DMs, act as user | [BLOCKED] | none (self-bot ToS ban) | Bannable; bot-only model |
+| Discord (svc) | User-invited bot in chosen channels | [CONSTRAINED] | bot + Message Content intent | Requires server; not the user |
 | **Calendar** | Full CRUD on events | [SUPPORTED] | EventKit, iOS 17 perms | Full-access prompt |
 | Calendar | Confirmation-gated event creation, no prompt | [SUPPORTED] | EventKitUI iOS 17+ | User taps Add |
 | **Tasks** | Full CRUD on system Reminders | [SUPPORTED] | EventKit, iOS 17 perms | Full-access prompt |
@@ -109,7 +118,7 @@ Composing and sending email is **[SUPPORTED]** via `MFMailComposeViewController`
 
 Actually reading email is **[CONSTRAINED]**: the only route is per-provider, per-account OAuth integration that bypasses Apple's apps entirely.
 
-- **Gmail API.** Reading message bodies uses Google's *restricted scopes*. Any production app beyond roughly 100 users must pass Google's OAuth verification plus an annual CASA (Cloud Application Security Assessment) by a Google-empanelled assessor, which can cost hundreds to thousands of dollars per year and must be renewed. One genuinely open question: a purely on-device client that talks device-to-Gmail with no backend server may face a lighter path, because Google's stricter rules key on data routed "from or through a third-party server." This boundary is ambiguous in 2026 and needs direct confirmation against Google's live User Data Policy.
+- **Gmail API.** Reading message bodies uses Google's *restricted scopes*. Any production app beyond roughly 100 users must pass Google's OAuth verification plus an annual CASA (Cloud Application Security Assessment) by a Google-empanelled assessor, which can cost hundreds to thousands of dollars per year and must be renewed. One genuinely open question: a purely on-device client that talks device-to-Gmail with no backend server may face a lighter path, because Google's stricter rules key on data routed "from or through a third-party server." This boundary is ambiguous in 2026 and needs direct confirmation against Google's live User Data Policy. **Gmail is our chosen email source and is treated in full in [Addendum A1](#a1-gmail-as-the-email-source).**
 - **Microsoft Graph (Outlook).** Use MSAL for iOS with the `Mail.Read` delegated permission. For consumer accounts, on-device user consent generally suffices and admin consent is usually not required. Tokens are cached on-device with silent refresh.
 - **Generic IMAP/SMTP.** Fully possible with the user's credentials or an app-specific password (this includes iCloud Mail via IMAP, ironically, just not via any Apple framework). No entitlement. This is the most on-device-friendly route because we implement IMAP directly and the data can stay local, but the UX is poor (manual app-specific-password creation) and we own all the sync, MIME parsing, and auth infrastructure.
 
@@ -293,9 +302,9 @@ This is the heart of the product's privacy requirement, so it gets the most care
 
 The dominant limitation is the **4,096-token window**. A long email thread plus a tool schema plus history overflows quickly; the framework throws `.exceededContextWindowSize`. iOS 26.4 added `contextSize` and `tokenCount(for:)` for dynamic budgeting. A 3B 2-bit model is also weak at math, broad world knowledge, and long-form reasoning, and is gated on the user having Apple Intelligence enabled, so we must handle the unavailable case.
 
-**Our own model (MLX-Swift, the path the repo already chose): [SUPPORTED].** The project already targets Qwen3-1.7B via MLX-Swift. The advantages over Apple's framework: we control the model, we can use a much larger context window (MLC can reach 64K–128K), we control the tool-calling format, and we are not gated on Apple Intelligence availability. The costs: we own model packaging, the iPhone memory ceiling (a ~1.5–1.7B 4-bit model is the safe universal choice; pushing larger needs the `increased-memory-limit` entitlement, which Apple must approve and which iOS can still jetsam under pressure), thermal/battery management (short bursts, not continuous inference), and our own constrained decoding for structured output.
+**Our own model (MLX-Swift, the path the repo already chose): [SUPPORTED].** The project already targets Qwen3-1.7B via MLX-Swift. The advantages over Apple's framework: we control the model, we can use a much larger context window (MLC can reach 64K to 128K), we control the tool-calling format, and we are not gated on Apple Intelligence availability. The costs: we own model packaging, the iPhone memory ceiling (a ~1.5 to 1.7B 4-bit model is the safe universal choice; pushing larger needs the `increased-memory-limit` entitlement, which Apple must approve and which iOS can still jetsam under pressure), thermal/battery management (short bursts, not continuous inference), and our own constrained decoding for structured output.
 
-**Can a small on-device model handle most assistant tasks? Mostly yes, with a reliability tail that needs care.** A ~1.5–3B model handles intent routing, single-document entity and event extraction, bounded summarization, and short drafting well, especially with constrained decoding. Where it falls short: tool/function-calling *semantic* reliability (constrained decoding fixes the format, not choosing the right tool with the right arguments; 3B-class models have documented low reliable-structured-output rates), long-context synthesis beyond the window, and multi-step planning or deep reasoning. The design implication for discovery: most sensitive tasks can run on-device, while a minority (long-thread synthesis, complex multi-tool planning) are where a larger remote model would add value, and those are exactly the tasks the privacy gate must govern.
+**Can a small on-device model handle most assistant tasks? Mostly yes, with a reliability tail that needs care.** A ~1.5 to 3B model handles intent routing, single-document entity and event extraction, bounded summarization, and short drafting well, especially with constrained decoding. Where it falls short: tool/function-calling *semantic* reliability (constrained decoding fixes the format, not choosing the right tool with the right arguments; 3B-class models have documented low reliable-structured-output rates), long-context synthesis beyond the window, and multi-step planning or deep reasoning. The design implication for discovery: most sensitive tasks can run on-device, while a minority (long-thread synthesis, complex multi-tool planning) are where a larger remote model would add value, and those are exactly the tasks the privacy gate must govern.
 
 ### 11.2 The privacy gate: what is technically true
 
@@ -329,6 +338,8 @@ A consolidated list of the walls, so expectations are set:
 
 - **Reading Apple Mail:** impossible. Email reading requires per-provider OAuth, which makes us the data custodian and may trigger Google's paid CASA assessment at scale.
 - **Reading iMessage, SMS, or any third-party chat:** impossible. The assistant can only help compose a message for the user to send.
+- **Reading the user's Discord messages or DMs, or acting as the user on Discord:** impossible in a Terms-compliant way. Discord prohibits user-account automation (self-bots) as a bannable offense, and its API is bot-only. The only compliant Discord capability is a server-backed bot the user explicitly invites into chosen channels, which never sees the user's DMs and always posts as the bot, not the user. See [Addendum A3](#a3-discord).
+- **Reading the user's Slack at scale with no backend:** not viable. Slack's 2025 rate-limit change throttles non-Marketplace apps to roughly one `conversations.history` request per minute returning 15 messages, real-time reading needs a public server endpoint, and many workspaces require admin approval to install any app. See [Addendum A2](#a2-slack).
 - **Reading other apps' notifications:** impossible. No notification-listener equivalent exists.
 - **Writing medications or logging doses into Apple Health:** impossible. Health is read-only for medications; we own scheduling.
 - **Having Apple Intelligence or the new Siri autonomously operate our calendar/tasks:** not available. No assistant schema for those domains, and the personal-context Siri is delayed.
@@ -359,13 +370,15 @@ The shape this suggests, without architecting: an on-device assistant whose stro
 These came up across the research as genuinely uncertain in mid-2026 and should be confirmed against live sources or in-Xcode before any are treated as load-bearing:
 
 1. **Exact iOS availability badge for the Medications API** (`HKUserAnnotatedMedication`, `HKMedicationDoseEvent`). Confirmed as the iOS 26 cycle; verify the precise `@available` annotation in the Xcode SDK headers.
-2. **Google CASA obligations for a no-backend, on-device-only Gmail client.** The boundary that triggers the paid annual assessment keys on data routed through a third-party server; whether a purely on-device client reduces or removes the burden is ambiguous and needs confirmation against Google's current User Data Policy.
+2. **Google CASA obligations for a no-backend, on-device-only Gmail client.** This is the single most important roadmap question and it is genuinely contested in 2026. A "local client" exemption exists in Google's User Data Policy, but the live policy framing has drifted toward user-count and server-capability triggers, and at least one current source states local-only does not waive CASA for Gmail's restricted scopes. Do not self-assert the exemption; get a written determination from Google during verification, and budget for CASA Tier 2 (a few hundred to ~$2k per year plus annual renewal) as the baseline. See [Addendum A1](#a1-gmail-as-the-email-source).
 3. **Whether any iOS 26 point release added a write/log path for medication dose events.** Currently none is accessible.
 4. **The Foundation Models context window on releases past 26.4.** It is 4,096 tokens today; Apple has signaled active management, so confirm if targeting a later point release.
 5. **`increased-memory-limit` entitlement approval** for our app profile, if we ever push the local model past ~1.7B.
 6. **Ship date and developer availability of the personal-context Siri** that would run third-party App Intents. Apple says "2026"; no third-party in-app-action execution was confirmed live as of 2026-06-04.
 7. **Core Spotlight semantic-search quality on shipping iOS 26 devices**, which beta reports suggest is still maturing.
 8. **Current App Review Guideline text (4.8, 5.1.x, 5.1.2(i))** at submission time, since these have moved recently.
+9. **Slack's exact 2026 rate limits for non-Marketplace apps**, and whether a consumer assistant reading user messages can realistically be accepted into the Slack Marketplace (which is the only path back to usable limits). Confirm the current `conversations.history` numbers and the Marketplace review stance on broad `*:history` user-token scopes.
+10. **Discord's current Message Content privileged-intent threshold (75 vs 100 servers)** and the unofficial DM-scope names, neither of which changes the conclusion that the user's DMs are off-limits, but both of which should be confirmed if any Discord work is scoped.
 
 ---
 
@@ -383,3 +396,183 @@ Primary Apple documentation and sessions that anchor the load-bearing claims:
 - Email and messaging walls: MessageUI (`MFMailComposeViewController`, `MFMessageComposeViewController`), MailKit (macOS-only), the Messages framework, and SiriKit messaging intents.
 
 Full URLs for each are preserved in the underlying research notes for this document and can be expanded into a formal bibliography if this moves past discovery.
+
+---
+
+# Addendum A (2026-06-06): Service deep dives, Gmail, Slack, Discord
+
+This addendum extends the discovery with a focused look at three specific services the product wants the assistant to integrate with: Gmail as the email source, plus Slack and Discord for messaging. It uses the same classification legend as the main document, and for every capability it also states whether the work can be done **device-direct with no backend server** or whether it **requires a server**.
+
+### Shared themes before the details
+
+Three patterns repeat across all three services, and they matter more than any single API detail:
+
+1. **All three are generic third-party cloud APIs.** Reaching any of them sends the user's data to Google, Slack, or Discord servers, and our processing of what comes back is exactly the "generic cloud" tier from Section 11.3. So even the parts that work are in the hardest privacy-gate tier, not the on-device default.
+2. **Reading the user's messages is the hard part everywhere. Sending is comparatively easy.** Each service makes "compose and send on the user's behalf" relatively tractable, and "read the user's existing messages" either heavily gated (Gmail, Slack) or outright prohibited (Discord).
+3. **Real-time delivery universally requires a server.** Push and event streams (Gmail Pub/Sub, the Slack Events API, the Discord Gateway) all need a backend with a public endpoint or a persistent socket. The only no-backend option is polling, and polling is sometimes throttled to the point of uselessness (Slack) or simply not viable for the target data (Discord).
+
+The net effect: of the three, **only Gmail is a real candidate for a privacy-first, on-device integration**, and even that carries a contested compliance cost. Slack is reduced to "send only" without a backend, and Discord cannot do the requested job at all within its Terms.
+
+---
+
+## A1. Gmail as the email source
+
+**Headline: Gmail read access is technically clean and fully device-direct over REST, but every meaningful read capability needs a Google *restricted scope*, which triggers OAuth verification plus a CASA security assessment. Whether a no-backend on-device client is exempt from CASA is the single most important and genuinely contested question, so plan for the cost and confirm with Google. Send-only avoids CASA entirely.**
+
+### Capability to scope mapping
+
+Every operation below is device-direct over HTTPS to `gmail.googleapis.com`. None requires a backend at the API level. The gating is OAuth scope and verification, not infrastructure.
+
+| Capability | Method | Minimal scope | Scope class | Verdict |
+|---|---|---|---|---|
+| Read message body (full/raw) | `users.messages.get` | `gmail.readonly` | RESTRICTED | [CONSTRAINED] |
+| Read metadata only (headers/labels, no body) | `users.messages.get` (metadata) | `gmail.metadata` | RESTRICTED | [CONSTRAINED] |
+| List / search (`q` syntax) | `users.messages.list` | `gmail.readonly` | RESTRICTED | [CONSTRAINED] |
+| Read/create/modify labels | `users.labels.*` | `gmail.labels` | NON-SENSITIVE | [SUPPORTED] |
+| Modify (archive, trash, mark read, relabel) | `users.messages.modify` | `gmail.modify` | RESTRICTED | [CONSTRAINED] |
+| Send | `users.messages.send` | `gmail.send` | SENSITIVE | [CONSTRAINED], no CASA |
+| Drafts | `users.drafts.*` | `gmail.compose` or `gmail.modify` | RESTRICTED | [CONSTRAINED] |
+| Incremental sync | `users.history.list` | `gmail.readonly` / `gmail.metadata` | RESTRICTED | [CONSTRAINED] |
+| Real-time push of new mail | `users.watch` + Pub/Sub | (read scope) plus a webhook | RESTRICTED + infra | [CONSTRAINED], **needs server** |
+
+Two traps worth flagging. First, **`gmail.metadata` is still a restricted scope even though it cannot read bodies**, so restricting to metadata does not buy you out of CASA. Second, the minimal single scope that covers full triage (read, label, archive, trash, mark read, draft, send, no permanent delete) is **`gmail.modify`**, one restricted scope rather than several.
+
+### The classification tiers and the one architectural lever
+
+Google classifies scopes as NON-SENSITIVE, SENSITIVE, or RESTRICTED. Sensitive scopes require OAuth app verification. Restricted scopes require verification **plus** a CASA security assessment. The lever this creates: **`gmail.send` is only sensitive, not restricted**, so a send-only or draft-only feature needs verification but **no CASA**. A read and triage feature is inherently a restricted-scope, CASA-bearing product. A phased v1 that only sends or drafts stays CASA-free.
+
+### OAuth on iOS, concretely
+
+Use the GoogleSignIn-iOS SDK (built on AppAuth, which uses `ASWebAuthenticationSession`). An embedded `WKWebView` is rejected by Google with `disallowed_useragent`, so the system browser flow is mandatory. Installed apps are public clients: a static client ID, no client secret, and PKCE. The full token exchange is **device-direct with no backend**, refresh tokens are returned for installed apps requesting offline access, and tokens belong in the iOS Keychain.
+
+Two refresh-token traps to expect during development: while the OAuth app is in "Testing" publishing status, refresh tokens for test users **expire after 7 days**, forcing weekly re-auth until the app is verified and "In Production," and there is a per-user live-refresh-token cap. Plan one durable token per device.
+
+### CASA, and the on-device exemption question
+
+CASA (Cloud Application Security Assessment), run under the App Defense Alliance and mapped to OWASP ASVS, is triggered when a production app requests restricted scopes beyond the 100-user testing cap. Tiers: Tier 1 self-scan, Tier 2 authorized-lab DAST plus review (where most restricted-scope apps land), Tier 3 full manual audit. Google does not charge, the empanelled lab does: reported figures are roughly **$540 to $1,800 for Tier 2** and around **$4,500 for Tier 3**, renewed annually.
+
+The crux for this product: Google's API Services User Data Policy has historically carried a **local-client exemption**, stating that "local client applications that only allow user-configured transmissions of Restricted Scope data from the device may be exempt." A privacy-first iOS app that fetches Gmail device-direct and processes entirely on-device is the strongest possible candidate for it. But the exemption is uncertain in 2026 for three reasons: it is discretionary ("may be exempt"), decided by a Google reviewer, not self-asserted; the live policy text now leans on user count and "ability to access data from or through a third-party server" rather than a clean local-client carve-out, and at least one current source states local-only does not waive CASA for Gmail; and the exemption evaporates the instant any email content is sent to a cloud LLM or our own backend, which would also trip Apple's Guideline 5.1.2(i).
+
+| Architecture | Restricted scope? | CASA likely? | Confidence |
+|---|---|---|---|
+| Send-only (`gmail.send`) | No (sensitive) | No | High |
+| Read/triage, 100% on-device, email never leaves device | Yes | Possibly exempt as local client, but discretionary and contested | Low, must verify with Google |
+| Read/triage, email content sent to a cloud LLM | Yes | Yes, and not a "local client" | High |
+| Read/triage routed through our own backend | Yes | Yes, definitively | High |
+
+**Recommendation for discovery:** architect for the exemption (device-direct fetch, on-device inference, zero server touch of email content), because it is both the best shot at avoiding CASA and the correct privacy posture, but budget for CASA Tier 2 as the baseline and get a written determination from Google during verification rather than self-certifying. The safest zero-CASA launch is a send/draft-only v1.
+
+### Push vs polling, and IMAP
+
+Real-time push (`users.watch`) delivers to a Cloud Pub/Sub topic that pushes to an HTTPS webhook, so it **requires a backend**. The no-backend alternative is **polling the History API** (`users.history.list` from a stored `historyId`), which is fully device-direct, cheap on quota, and limited only by your poll cadence and iOS background-execution limits. This is the right design for a no-backend assistant.
+
+IMAP is not an escape hatch. In 2026 Gmail IMAP/SMTP require OAuth XOAUTH2 with the **full `mail.google.com/` restricted scope** (the broadest of all), so IMAP triggers the same verification and CASA as the REST API while giving a coarser scope and worse sync ergonomics. App passwords still exist but require the user to enable 2FA and paste a generated password, a poor consumer flow Google keeps narrowing. **Use the REST API, not IMAP.**
+
+### App Store and privacy
+
+Offering Google sign-in as the primary login triggers Guideline 4.8, so plan to also offer Sign in with Apple or another privacy-respecting option for app account setup. The decisive privacy point: if email is fetched device-direct, processed on-device, and nothing is sent off-device, then under Apple's definition the email content is **not "collected,"** we can honestly declare "Data Not Collected," and Guideline 5.1.2(i) third-party-AI consent does not apply to that flow. The moment email content goes to a cloud LLM or our backend, both the CASA local-client exemption and the "not collected" declaration are lost and 5.1.2(i) consent becomes mandatory. Keeping Gmail processing on-device is what simultaneously protects the compliance posture, the privacy label, and the trust story.
+
+---
+
+## A2. Slack
+
+**Headline: a no-backend, privacy-first iOS app can send messages as the user, but it cannot meaningfully read the user's Slack at scale. A 2025 rate-limit change throttles non-Marketplace apps to roughly one history request per minute, real-time reading needs a server, and many workspaces gate app installation behind admin approval.**
+
+### Auth model
+
+Slack apps are workspace-scoped. A user in N workspaces requires N separate authorizations. There are two token types: a **bot token** (`xoxb`) acting as a bot identity, and a **user token** (`xoxp`) acting as the user with the user's own visibility. For a personal assistant that reads and acts as the user, the **user token is mandatory**, because only it inherits the user's access to their DMs and private channels and can post as the user.
+
+### Reading the user's messages: [BLOCKED] in practice without a backend
+
+With a user token and the right scopes (`im:history` for DMs, `groups:history` for private channels, `channels:history` for public, `mpim:history` for group DMs, `search:read` for search), the API surface to read the user's messages **exists** and `conversations.history` / `conversations.replies` return the content. Device-direct in principle.
+
+The wall is the **2025 rate-limit change**. Since mid-2025, and now fully in effect for essentially all existing installs, Slack throttles **non-Marketplace apps** on `conversations.history` and `conversations.replies` to approximately **one request per minute returning about 15 messages**, down from the old tier of dozens of requests per minute returning up to a thousand objects. A polling assistant cannot meaningfully keep up with a user's Slack at that rate. This effectively makes no-backend reading non-viable. [VERIFY the exact current numbers, but the direction and severity are confirmed across Slack's changelog, FAQ, and developer reports.]
+
+### Real-time and the server question
+
+The **Events API requires a public HTTPS endpoint** (a server) to receive event callbacks. **Socket Mode** uses an outbound WebSocket and so needs no public URL, but Socket Mode apps **cannot be distributed on the public Slack Marketplace**, which limits them to internal or single-workspace use. The legacy RTM API is deprecated for modern scoped apps. So real-time reading requires a server, and the no-backend path is limited to polling, which is exactly what the rate limit strangles.
+
+### Marketplace listing
+
+Normal (higher) rate limits are reserved for apps listed in the **Slack Marketplace**. Listing requires passing Slack's review, which tests endpoints for TLS and request signing (implying a backend), scrutinizes broad `*:history` user-token scopes and expects a narrow justified use case, and prohibits training LLMs on Slack data. A consumer assistant that reads a user's full Slack history is a hard sell for Marketplace approval.
+
+### Sending: [SUPPORTED], device-direct
+
+`chat.postMessage` with a user token posts as the user, is device-direct, and is not subject to the punishing history rate limits. This is the one clean Slack capability for a no-backend app.
+
+### The admin gate
+
+Many Slack workspaces, especially corporate ones, require **admin approval** to install any third-party app, or restrict installation entirely. A consumer assistant cannot assume it can be installed into an arbitrary user's workspace.
+
+### Bottom line
+
+A no-backend, privacy-first iOS assistant can **send as the user** but cannot **read the user's Slack at any useful scale**. The three compounding walls are the 2025 non-Marketplace rate limit, the server requirement for real-time, and per-workspace admin approval. Meaningful reading would require building a backend and getting into the Slack Marketplace, which contradicts both the on-device and the privacy-strict pillars and faces a skeptical review for this use case.
+
+---
+
+## A3. Discord
+
+**Headline: a consumer, on-device, privacy-first assistant cannot read the user's Discord messages or DMs, and cannot send as the user, in a Terms-compliant way. Discord's API is bot-only, and automating a user account (a "self-bot") is a bannable Terms violation. The only compliant capability is a server-backed bot the user explicitly invites into chosen channels, which never sees the user's DMs and always posts as the bot.**
+
+### The central wall: self-bots are prohibited
+
+Reading a user's full message history and DMs, or sending as the user, technically requires driving the client API with the user's own account token. Discord explicitly prohibits this: "Automating normal user accounts (generally called 'self-bots') outside of the OAuth2/bot API is forbidden, and can result in an account termination." The Developer Policy separately bars obtaining user login credentials or tokens. There is no compliant variant, regardless of how benign, local, or user-consented the automation is. **[BLOCKED], applies whether device-direct or server-backed.**
+
+### The bot-only model and what it cannot see
+
+Discord's API is designed around **bot accounts**, a separate automation identity. A bot can only see messages where it is a member of the server **and** has channel read permission, and to receive message text it needs the **Message Content privileged intent**. A bot fundamentally **cannot** read servers it is not in, channels it lacks permission for, or **the user's DMs with other people** (a bot only sees DMs between the bot itself and a user). So even at its best, a bot is not the user and cannot reach the user's real conversations.
+
+### The OAuth scopes that sound useful but are not
+
+The `messages.read` scope is **not** a general "read the user's messages over REST" grant. It is tied to the **local RPC server** (the desktop overlay path on `127.0.0.1`), is whitelist-gated, and is desktop-only, so it is unavailable to a third-party iOS app. The scopes that would actually read a user's DMs (`dm_channels.read`, `dm_channels.messages.read`) are marked non-public and reserved for Discord's own first-party client. Third-party apps cannot request them. **[BLOCKED].**
+
+### DMs and sending
+
+Reading the user's DMs with other people is impossible by any compliant route (self-bot is banned, bots cannot see them, the relevant scopes are first-party-only). Sending **as the user** is likewise impossible, there is no scope or API for it. What sending **is** possible: a bot posting to channels it is in, webhooks posting to a server channel under a custom name (still a webhook identity, not the user, and not to DMs), and a user-installed app replying to its own interactions. None of these is "the assistant sends a message as me."
+
+### Server requirement
+
+Real-time message reception requires a **persistent Gateway WebSocket**, which a backgrounded iOS app cannot hold, so it needs an always-on backend. The HTTP Interactions endpoint alternative also needs a public HTTPS server and is only reactive to interactions the user explicitly triggers. An on-device-only, no-backend Discord assistant cannot do real-time reading. **[BLOCKED] by architecture.**
+
+### Verification and privacy
+
+Past roughly 100 servers a bot must be verified and approved for the Message Content intent, and Discord scrutinizes invasive use cases (ingesting message text into a third-party AI cloud is exactly the profile reviewers question). The Developer Policy also requires a clear privacy policy, limits data use to stated functionality, and restricts sharing with third parties, all of which cut against a "send the user's messages to our AI" design.
+
+### Bottom line
+
+For the stated goal ("read my Discord and reply as me"), the honest conclusion is **not possible within Discord's Terms**. The only compliant slice is a clearly disclosed, **server-backed, user-invited bot** scoped to specific channels the user opts into, which never touches the user's DMs, always posts as the bot, requires a backend, and is not privacy-pure (message text leaves to our server and to any AI provider). That contradicts both the on-device and the privacy-strict pillars. A trivial no-backend slice exists (outbound webhook posts, and reading the user's profile and server list via `identify` / `guilds`), but it reads no conversations and does not act as the user.
+
+---
+
+## A4. Cross-service comparison and synthesis
+
+| Question | Gmail | Slack | Discord |
+|---|---|---|---|
+| Read the user's messages? | Yes, but restricted scope plus likely CASA | Yes via API, but 2025 rate limit makes no-backend reading non-viable | No, ToS-prohibited for the user's own messages/DMs |
+| Send as the user? | Yes (`gmail.send`, sensitive, no CASA) | Yes (`chat.postMessage`, user token) | No, impossible by design |
+| No-backend, device-direct possible? | Yes for fetch (poll History API) and send | Send yes, meaningful read no | No for any real-time reading |
+| Real-time push without a server? | No (Pub/Sub needs a webhook) | No (Events API needs a server) | No (Gateway needs a persistent socket) |
+| Biggest wall | CASA cost plus the contested on-device exemption | 2025 non-Marketplace rate limit | Self-bot prohibition plus bot-only model |
+| Admin/account gate | Per-account OAuth, user-consented | Per-workspace, often admin-approved | Per-server bot invite, not the user |
+| Privacy-gate tier | Generic cloud, but can stay on-device after fetch | Generic cloud | Generic cloud, server required |
+
+The synthesis for discovery:
+
+1. **Gmail is the only one of the three that fits the product's on-device, privacy-first thesis.** Fetch device-direct, process on-device, never send content off-device, and the privacy story holds. The open risk is purely the CASA exemption, which is a compliance and cost question, not a technical blocker. A send/draft-only phase avoids CASA entirely while the read path's exemption is confirmed with Google.
+2. **Slack collapses to "send only" for a no-backend app.** Reading is gated by a rate limit that is hostile to polling, and fixing that means a backend plus Marketplace approval, which breaks the privacy posture and is unlikely to be granted for a broad-history consumer assistant. A useful "tell Slack X" send capability is achievable today, device-direct.
+3. **Discord cannot do the requested job at all.** The self-bot prohibition and the bot-only model mean there is no compliant path to read the user's Discord or act as the user. The only compliant integration is a separate product shape (a user-invited server bot) that is neither on-device nor what was asked for. Recommend treating Discord as out of scope for a personal assistant unless the goal is reframed.
+
+A useful framing for prioritization: these integrations form a clear gradient. Gmail is a real on-device candidate with a known compliance cost, Slack is a send-only convenience, and Discord is effectively closed. This mirrors the main document's finding for Apple's own apps, where reading is the universally hard capability and composing is the universally available one.
+
+---
+
+## A5. Addendum sources
+
+Primary sources anchoring the addendum claims (full URLs are preserved in the research notes):
+
+- **Gmail:** Google "Choose Gmail API scopes," the `users.messages` and `users.watch` REST references, the Gmail API quota page, "OAuth 2.0 for iOS and Desktop Apps," AppAuth-iOS, the restricted-scope and brand verification guides, the API Services User Data Policy (local-client exemption), the CASA security-assessment FAQ and annual recertification pages, and the "transition from less secure apps to OAuth" guidance.
+- **Slack:** the Slack API scopes and OAuth v2 docs, `conversations.history` and `chat.postMessage` references, the 2025 rate-limit changelog and FAQ for non-Marketplace apps, the Events API and Socket Mode docs (including the Marketplace distribution restriction), and the Slack Marketplace review policy.
+- **Discord:** the Discord Developer Portal OAuth2 and Gateway docs, the Interactions overview, the self-bot prohibition and Platform Manipulation policy, the Developer Policy and Developer Terms of Service, the Message Content privileged-intent review policy, and the user-installable-apps limitations.
+- **Apple cross-cutting:** Guideline 4.8 (sign-in alternatives), Guideline 5.1.2(i) (third-party-AI consent), and Apple's "Collect" definition for the privacy nutrition label, all as cited in the main document.
+
+Several items are flagged in-text as [VERIFY], most importantly the Gmail CASA on-device exemption (confirm directly with Google), Slack's exact current non-Marketplace rate-limit numbers, and Discord's current privileged-intent server threshold.

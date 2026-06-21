@@ -214,7 +214,7 @@ if $USE_XCBEAUTIFY; then
   set +e
   xcodebuild build \
     -scheme "$SCHEME" \
-    -destination 'platform=iOS Simulator,name=iPhone 15 Pro' \
+    -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
     -configuration Release \
     -skipPackagePluginValidation \
     CODE_SIGNING_ALLOWED=NO 2>&1 | xcbeautify
@@ -224,7 +224,7 @@ else
   set +e
   xcodebuild build \
     -scheme "$SCHEME" \
-    -destination 'platform=iOS Simulator,name=iPhone 15 Pro' \
+    -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
     -configuration Release \
     -skipPackagePluginValidation \
     CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E '(error:|warning:|Build Succeeded|BUILD SUCCEEDED)' || true
@@ -252,7 +252,7 @@ if [ "$SKIP_TESTS" = false ]; then
     set +e
     xcodebuild test \
       -scheme "$SCHEME" \
-      -destination 'platform=iOS Simulator,name=iPhone 15 Pro' \
+      -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
       -enableCodeCoverage YES \
       CODE_SIGNING_ALLOWED=NO 2>&1 | xcbeautify
     TEST_EXIT_CODE=${PIPESTATUS[0]}
@@ -261,7 +261,7 @@ if [ "$SKIP_TESTS" = false ]; then
     set +e
     xcodebuild test \
       -scheme "$SCHEME" \
-      -destination 'platform=iOS Simulator,name=iPhone 15 Pro' \
+      -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
       -enableCodeCoverage YES \
       CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E '(Test Suite|Test Case|Executed|passed|failed)' || true
     TEST_EXIT_CODE=${PIPESTATUS[0]}

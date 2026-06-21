@@ -8,6 +8,7 @@
 // - Use PersistenceController(inMemory: true) for Core Data tests
 
 import Foundation
+import AVFoundation
 import CoreData
 @testable import UnaMentis
 
@@ -535,6 +536,49 @@ actor MockTTSService: TTSService { // ALLOWED: paid external API mock (TTS provi
         simulateLatency = true
         chunkLatencyMs = tokenDelayMs
     }
+}
+
+// MARK: - Mock STT Service
+
+/// Deterministic STT mock that emits a fixed transcript at stream start.
+///
+/// Real STT (on-device Parakeet or a cloud provider) cannot run deterministically
+/// offline in a unit test: on-device needs a downloaded model and real acoustics,
+/// cloud needs network + an API key and costs per minute. This mock lets the
+/// barge-in audio-path test drive `AudioEngine.lastTranscript` to a known value so
+/// the coordinator's command-vs-engagement routing is exercised end to end without
+/// depending on recognition. Detection itself (VAD -> pause) needs no transcript.
+actor MockTranscriptSTTService: STTService { // ALLOWED: paid external API mock (STT providers cost per minute or require hardware/model)
+    public private(set) var metrics = STTMetrics(medianLatency: 0.05, p99Latency: 0.15, wordEmissionRate: 3.0)
+    public var costPerHour: Decimal = 0
+    public private(set) var isStreaming = false
+
+    /// Transcript emitted once when streaming starts.
+    var fixedTranscript: String
+
+    init(fixedTranscript: String = "") {
+        self.fixedTranscript = fixedTranscript
+    }
+
+    func startStreaming(audioFormat: sending AVAudioFormat) async throws -> AsyncStream<STTResult> {
+        isStreaming = true
+        let transcript = fixedTranscript
+        return AsyncStream { continuation in
+            if !transcript.isEmpty {
+                continuation.yield(STTResult(
+                    transcript: transcript,
+                    isFinal: true,
+                    isEndOfUtterance: true,
+                    confidence: 1.0
+                ))
+            }
+            continuation.finish()
+        }
+    }
+
+    func sendAudio(_ buffer: sending AVAudioPCMBuffer) async throws {}
+    func stopStreaming() async throws { isStreaming = false }
+    func cancelStreaming() async { isStreaming = false }
 }
 
 // MARK: - NSManagedObjectContext Test Extension

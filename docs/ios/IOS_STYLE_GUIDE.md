@@ -124,7 +124,7 @@ UnaMentis implements a **two-tier voice interaction model** to support hands-fre
 - VoiceOver compatibility required
 - Audio feedback has visual equivalents
 
-See [HANDS_FREE_FIRST_DESIGN.md](../design/HANDS_FREE_FIRST_DESIGN.md) for complete specification.
+See [HANDS_FREE_FIRST_DESIGN.md](https://github.com/UnaMentis/unamentis/blob/main/docs/design/HANDS_FREE_FIRST_DESIGN.md) for complete specification.
 
 ---
 
@@ -569,6 +569,6 @@ Exceptions require explicit approval and documentation explaining why the standa
 ## Related Documents
 
 - [iOS Best Practices Review](IOS_BEST_PRACTICES_REVIEW.md) - Original audit findings
-- [AGENTS.md](../AGENTS.md) - AI development guidelines
+- [AGENTS.md](../../AGENTS.md) - AI development guidelines
 - [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)
 - [Apple Accessibility Guidelines](https://developer.apple.com/accessibility/)

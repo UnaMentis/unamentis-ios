@@ -32,6 +32,10 @@ let package = Package(
         // SwiftMath for native LaTeX formula rendering
         .package(url: "https://github.com/mgriebling/SwiftMath.git", from: "3.4.0"),
 
+        // SwiftReadability for article content extraction (Reading List)
+        // Pinned to an exact revision for reproducible builds, mirroring project.yml
+        .package(url: "https://github.com/lake-of-fire/swift-readability.git", revision: "d4f0824f5f4496791d01a83493ffccf3dd89c4cf"),
+
         // Komondor for Git hooks management (dev dependency)
         .package(url: "https://github.com/shibapm/Komondor.git", from: "1.1.0"),
     ],
@@ -45,6 +49,7 @@ let package = Package(
                 .product(name: "Collections", package: "swift-collections"),
                 .product(name: "llama", package: "llama.cpp"),
                 .product(name: "SwiftMath", package: "SwiftMath"),
+                .product(name: "SwiftReadability", package: "swift-readability"),
             ],
             path: "UnaMentis",
             resources: [

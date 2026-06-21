@@ -305,6 +305,6 @@ Self-hosted Piper TTS has limited SSML support. Test pronunciation hints and fal
 
 ## Related Documentation
 
-- [UMCF Specification](../curriculum/spec/UMCF_SPECIFICATION.md) - Full curriculum format specification
-- [TTS Services](./PROJECT_OVERVIEW.md#voice-pipeline) - TTS provider integrations
-- [Curriculum System](../curriculum/README.md) - Curriculum format overview
+- [UMCF Specification](https://github.com/UnaMentis/unamentis/blob/main/curriculum/spec/UMCF_SPECIFICATION.md) - Full curriculum format specification
+- [TTS Services](https://github.com/UnaMentis/unamentis/blob/main/docs/architecture/PROJECT_OVERVIEW.md#text-to-speech-tts-models) - TTS provider integrations
+- [Curriculum System](https://github.com/UnaMentis/unamentis/blob/main/curriculum/README.md) - Curriculum format overview

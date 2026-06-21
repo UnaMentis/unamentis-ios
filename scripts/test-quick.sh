@@ -34,13 +34,39 @@ else
     SIM_DEST="platform=iOS Simulator,name=$SIM_NAME"
 fi
 
+# Integration test classes to skip so this run covers unit tests only.
+# xcodebuild test identifiers are TestBundle/TestClass with no folder
+# component, so "-only-testing:UnaMentisTests/Unit" matches nothing and
+# silently runs ZERO tests. Skipping each integration class is the reliable
+# way to run the unit suite. Keep this list in sync with the XCTestCase
+# classes under UnaMentisTests/Integration/ (some are currently excluded
+# from the target in project.yml; listing them here is harmless and keeps
+# the list valid when they are re-enabled).
+INTEGRATION_TEST_CLASSES=(
+    AudioPipelineIntegrationTests
+    BargeInCoordinatorAudioPathTests
+    BargeInMeasurementTests
+    GLMASRIntegrationTests
+    KBAnswerValidationIntegrationTests
+    KBAudioTestHarnessTests
+    KBSessionIntegrationTests
+    LiveInferenceFullPathTests
+    ThermalManagementIntegrationTests
+    VoiceSessionIntegrationTests
+)
+
+SKIP_ARGS=()
+for test_class in "${INTEGRATION_TEST_CLASSES[@]}"; do
+    SKIP_ARGS+=("-skip-testing:UnaMentisTests/$test_class")
+done
+
 # Common xcodebuild arguments
 XCODEBUILD_ARGS=(
     test
     -project UnaMentis.xcodeproj
     -scheme UnaMentis
     -destination "$SIM_DEST"
-    -only-testing:UnaMentisTests/Unit
+    "${SKIP_ARGS[@]}"
     CODE_SIGNING_ALLOWED=NO
 )
 

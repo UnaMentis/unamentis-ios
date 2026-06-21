@@ -498,6 +498,6 @@ cd /Users/ramerman/dev/unamentis-android
 
 ## See Also
 
-- [Answer Validation API Documentation](../modules/KNOWLEDGE_BOWL_ANSWER_VALIDATION.md)
-- [Knowledge Bowl Module Documentation](../modules/KNOWLEDGE_BOWL_MODULE.md)
-- [Enhanced Validation User Guide](../user-guides/KNOWLEDGE_BOWL_ENHANCED_VALIDATION.md)
+- [Answer Validation API Documentation](https://github.com/UnaMentis/unamentis/blob/main/docs/modules/KNOWLEDGE_BOWL_ANSWER_VALIDATION.md)
+- [Knowledge Bowl Module Documentation](https://github.com/UnaMentis/unamentis/blob/main/docs/modules/KNOWLEDGE_BOWL_MODULE.md)
+- [Enhanced Validation User Guide](https://github.com/UnaMentis/unamentis/blob/main/docs/user-guides/KNOWLEDGE_BOWL_ENHANCED_VALIDATION.md)
