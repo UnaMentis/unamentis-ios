@@ -11,10 +11,19 @@ import Logging
 /// model that is not downloaded or a key that is missing, simply gets skipped).
 public struct LLMFallbackTier: Sendable {
     public let label: String
+    /// Model id valid for this tier's provider. When set, it overrides the
+    /// config model for this tier only, so a fallback to a different provider
+    /// never sends a model string meant for another one.
+    public let model: String?
     public let make: @Sendable () async throws -> any LLMService
 
-    public init(label: String, make: @escaping @Sendable () async throws -> any LLMService) {
+    public init(
+        label: String,
+        model: String? = nil,
+        make: @escaping @Sendable () async throws -> any LLMService
+    ) {
         self.label = label
+        self.model = model
         self.make = make
     }
 }
@@ -78,9 +87,12 @@ public actor FallbackLLMService: LLMService {
                         continue
                     }
 
+                    var tierConfig = config
+                    if let tierModel = tier.model { tierConfig.model = tierModel }
+
                     let inner: AsyncStream<LLMToken>
                     do {
-                        inner = try await service.streamCompletion(messages: messages, config: config)
+                        inner = try await service.streamCompletion(messages: messages, config: tierConfig)
                     } catch {
                         logger.warning("Tier '\(tier.label)' failed to start: \(error.localizedDescription); trying next")
                         continue

@@ -1,5 +1,8 @@
 # QA Test Coverage Audit Report
 
+> **CORRECTION (2026-06-21): The iOS "80% enforced / EXEMPLARY / LOW risk" claim below is FALSE and was never true.**
+> The iOS coverage gate never enforced anything: the CI test runner used `-only-testing:UnaMentisTests/Unit`, which matches a folder, not a test class, so it ran zero tests, and coverage extraction read the wrong target (the Watch app, always 0%, treated as "skip"). `COVERAGE_THRESHOLD=80` was a configured number, never an achieved measurement. Codecov never tracked iOS at all (no iOS flag in `codecov.yml`; the 80% target there is for the Python `management` server). When the runner was repaired on 2026-06-20, real iOS coverage was revealed at ~12% overall / ~28% logic. This document is retained for the audit trail; treat its iOS section as a case study in an unverified, AI-authored claim that a vacuous gate failed to catch. See `QA_PIPELINE_FIX_2026-06-21.md` and `COVERAGE_CAMPAIGN.md`.
+
 **Date:** 2026-01-26
 **Auditor:** QA Lead (20 years agile experience)
 **Scope:** UnaMentis monorepo unit testing coverage

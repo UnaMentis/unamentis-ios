@@ -1,0 +1,47 @@
+# Coverage Campaign: the official cadence
+
+**Date:** 2026-06-21
+**Goal:** Logic-layer (Core / Services / ViewModels) line coverage **>= 80%**, with REAL tests (Real Over Mock), and the suite **green in CI**. Not a checkbox 80%, a healthy 80%.
+
+SwiftUI View bodies are excluded from the logic-layer denominator (they are ~60% of the app's lines and are covered separately by XCUITest of critical flows, see the final phase). The 80% bar is on testable logic.
+
+---
+
+## The cadence (mandatory, per wave)
+
+Each wave is a measured batch (a handful of modules), and we do NOT start the next wave until the current one is fully landed and green:
+
+1. **Author** real tests for the wave's modules (Real Over Mock: real internal implementations; only paid external APIs mocked via `MockServices.swift`).
+2. **Integrate + fix up locally** until the unit suite **builds and is green** and the coverage gate passes. Nothing broken, nothing bent to pass. If a test cannot be made real and passing, drop it and note it.
+3. **Measure** the new coverage and the delta.
+4. **Commit** the wave (Claude commits on the standing go for this campaign; see below).
+5. **Push** (human) and **confirm CI is green on GitHub**. The repo is public, so CI runs on free runners.
+6. **Raise the coverage ratchet** (`COVERAGE_THRESHOLD` in `.github/workflows/ios.yml` and `.hooks/pre-commit`) to just below the new measured coverage, locking in the gain.
+7. **Only then** start the next wave.
+
+**The rule:** a wave is not done until it is committed, pushed, and green in CI. Healthy progress over raw percentage. This keeps each step digestible and prevents arriving at a high number sitting on a pile of failures.
+
+### Commit mechanics for the campaign
+Per the repo git policy (CLAUDE.md), Claude commits only on an explicit, real-time command and never pushes. There is no standing or blanket permission: each wave's commit needs its own go-ahead. Claude's role per wave is to drive the wave to local green, stage it, and present it ready; the human gives the commit word, then pushes and confirms CI. If a wave does not reach local green, it is not staged for commit, it is fixed or shrunk first.
+
+### Wave sizing
+Keep waves digestible so a failure is contained and CI verification is quick. Adapt: if a wave integrates cleanly, the next can be similar size; if it is messy, shrink it. The local green-gate (step 2) is the real protection against a mess, wave size is the secondary control.
+
+---
+
+## Progress
+
+| Date | Overall | Logic-only | Ratchet | Notes |
+|------|---------|------------|---------|-------|
+| 2026-06-21 (start) | 12.0% | ~28% | 10 | QA pipeline repaired; gate honest |
+| 2026-06-21 (wave 1) | 17.6% | 45% (Core 56% / Services 33%) | 10, bump to 15 after CI green | +5.6 overall / +17 logic; 36 real-test files; 5 real bugs fixed |
+
+Target: logic-only >= 80%.
+
+## Wave plan (logic modules, highest ROI first)
+
+- **Wave 1 (DONE, green):** Core/Config, Core/Tools, Core/Telemetry, Core/Session, Core/Curriculum, Core/ReadingList, Core/Context, Core/Discovery; Services/KnowledgeBowl, Services/Curriculum, Services/LLM, Services/ReadingPlayback.
+- **Wave 2+:** Services/TTS and Services/STT (test request building, response parsing, cost, error mapping, routing/health, with the paid-API boundary mocked), Core/Audio remainder, Core/Persistence, the UI ViewModels (DebugConversationViewModel, ChatterboxSettingsViewModel, SessionViewModel, ReadingPlaybackViewModel, KB view models, settings view models), Intents, remaining Core/Services.
+- **Final phase (after logic >= 80%):** XCUITest for critical user flows (onboarding/consent gate, start a session, reading playback, a Knowledge Bowl round) so the UI layer has behavioral coverage without brittle View-body unit tests.
+
+Each wave updates this doc's "Starting point" numbers as the ratchet climbs.

@@ -193,16 +193,27 @@ public actor VoiceCommandRecognizer {
             return nil
         }
 
-        // Filter commands if context provided
-        let commandsToCheck = validCommands ?? Set(VoiceCommand.allCases)
+        // Filter commands if context provided. Iterate in a deterministic order
+        // so tie-breaking is stable (Set iteration order is not).
+        let commandsToCheck = (validCommands ?? Set(VoiceCommand.allCases))
+            .sorted { $0.rawValue < $1.rawValue }
 
         var bestResult: VoiceCommandResult?
 
         for command in commandsToCheck {
             if let result = matchCommand(command, against: normalized) {
-                if bestResult == nil || result.confidence > bestResult!.confidence {
-                    bestResult = result
+                // Prefer higher confidence; on a tie prefer the longer matched
+                // phrase (more specific), so a meaningful command like "ready"
+                // wins over a short filler like "ok" in "ok i'm ready now".
+                let better: Bool
+                if let current = bestResult {
+                    better = result.confidence > current.confidence
+                        || (result.confidence == current.confidence
+                            && result.matchedPhrase.count > current.matchedPhrase.count)
+                } else {
+                    better = true
                 }
+                if better { bestResult = result }
             }
         }
 

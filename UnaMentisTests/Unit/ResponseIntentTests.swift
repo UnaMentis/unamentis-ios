@@ -37,8 +37,13 @@ final class ResponseIntentTests: XCTestCase {
 
     func testClassify_questionMarkers_returnsEngagement() {
         XCTAssertEqual(ResponseIntent.classify(from: "Why does this work?"), .engagement)
-        XCTAssertEqual(ResponseIntent.classify(from: "How does that happen?"), .engagement)
-        XCTAssertEqual(ResponseIntent.classify(from: "Can you tell me more?"), .engagement)
+        // Note: "how does" / "what is" are deliberately classified as .clarification
+        // (the user is asking for an explanation), so this uses a how-question that
+        // does not collide with a clarification keyword.
+        XCTAssertEqual(ResponseIntent.classify(from: "How can that be?"), .engagement)
+        // "you tell me" is a deliberate socratic keyword, so avoid it here and use
+        // another can-you question that does not collide.
+        XCTAssertEqual(ResponseIntent.classify(from: "Can you give an example?"), .engagement)
         XCTAssertEqual(ResponseIntent.classify(from: "Is it always like that?"), .engagement)
         XCTAssertEqual(ResponseIntent.classify(from: "Tell me about it"), .engagement)
     }

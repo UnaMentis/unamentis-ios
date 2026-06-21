@@ -122,13 +122,20 @@ if [ -n "$IOS_NON_TEST_FILES" ]; then
 
     if command -v xcodebuild &> /dev/null; then
         if [ -f "scripts/test-ci.sh" ]; then
-            echo "Running iOS unit tests with coverage enforcement (80% minimum)..."
-            if ! ENFORCE_COVERAGE=true TEST_TYPE=unit ./scripts/test-ci.sh 2>&1 | tail -20; then
-                echo -e "${RED}iOS coverage check failed! Coverage must be at least 80%.${NC}"
-                echo -e "${YELLOW}Run './scripts/test-quick.sh' to see full test output.${NC}"
-                FAILED=1
+            echo "Running iOS unit tests + coverage gate (must pass; coverage ratchet matches CI)..."
+            # IMPORTANT: do not pipe test-ci.sh to tail. A pipe makes the if see
+            # tail's exit code (always 0), which silently swallows test/coverage
+            # failures. Redirect to a log and check the real exit code. The
+            # COVERAGE_THRESHOLD must match the CI ratchet in .github/workflows/ios.yml.
+            PRECOMMIT_TEST_LOG="${TMPDIR:-/tmp}/unamentis-precommit-tests.log"
+            if ENFORCE_COVERAGE=true TEST_TYPE=unit COVERAGE_THRESHOLD=10 ./scripts/test-ci.sh > "$PRECOMMIT_TEST_LOG" 2>&1; then
+                tail -6 "$PRECOMMIT_TEST_LOG"
+                echo -e "${GREEN}iOS unit tests passed and coverage gate met.${NC}"
             else
-                echo -e "${GREEN}iOS coverage check passed (80%+ achieved).${NC}"
+                tail -30 "$PRECOMMIT_TEST_LOG"
+                echo -e "${RED}iOS unit tests or coverage gate FAILED. Full log: $PRECOMMIT_TEST_LOG${NC}"
+                echo -e "${YELLOW}Run './scripts/test-quick.sh' to reproduce.${NC}"
+                FAILED=1
             fi
         else
             echo -e "${YELLOW}test-ci.sh not found, skipping iOS coverage check.${NC}"

@@ -59,7 +59,7 @@ Match user input to channels/boards using aliases. Examples:
 | "create card on ios list: Fix crash bug" | Create card on Tech Work -> IOS App list |
 | "add comment to card X: resolved" | Add "From Claude Code: resolved" to card |
 | "tell server channel build is ready" | Post to tech-server channel |
-| "create website card: update pricing" | Create card on Org-Business Work -> Website list |
+| "create website card: refresh the docs page" | Create card on Org-Business Work -> Website list |
 
 ## Resources
 

@@ -263,8 +263,11 @@ public actor OnDeviceLLMModelManager {
                     state = .available
                 }
                 // Keep .loaded state if we were loaded
+            } else if case .loaded = state {
+                // The model is loaded in memory; a failing file probe must not
+                // report it as not-downloaded. Keep the in-memory loaded state.
             } else {
-                // File doesn't exist - reset to notDownloaded unless we're downloading
+                // File doesn't exist - reset to notDownloaded.
                 state = .notDownloaded
             }
         }
@@ -444,13 +447,12 @@ public actor OnDeviceLLMModelManager {
     // MARK: - Private Helpers
 
     private func checkModelAvailability() {
-        if isModelAvailable() {
-            state = .available
-            logger.info("Model found at: \(self.modelPath.path)")
-        } else {
-            state = .notDownloaded
-            logger.info("Model not found, needs to be downloaded")
-        }
+        // Route through refreshStateFromFilesystem so this init-time probe never
+        // clobbers a transient/runtime state (.loaded, .loading, .downloading).
+        // Setting state directly here raced with markLoaded() and reset a
+        // loaded-in-memory model back to .available/.notDownloaded.
+        refreshStateFromFilesystem()
+        logger.info("Model availability checked; state=\(String(describing: self.state))")
     }
 
     private func updateDownloadProgress(_ progress: Float) {
