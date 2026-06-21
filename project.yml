@@ -161,7 +161,6 @@ targets:
           - "Unit/KnowledgeBowl/KBQuestionTests.swift"
           - "Unit/KnowledgeBowl/KBQuestionEngineTests.swift"
           - "Unit/KnowledgeBowl/KBTransformerTests.swift"
-          - "Unit/KnowledgeBowl/KBAnswerValidatorTests.swift"  # validate() now async
           - "Unit/KnowledgeBowl/KBReboundSimulatorTests.swift"  # stale KBQuestion API
           - "Unit/KnowledgeBowl/KBRegionalConfigTests.swift"  # stale KBQuestion/KBDifficulty API
           - "Unit/KnowledgeBowl/KBMatchEngineTests.swift"  # stale KBQuestion API, actor isolation

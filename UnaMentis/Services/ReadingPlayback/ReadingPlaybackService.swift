@@ -139,6 +139,12 @@ public actor ReadingPlaybackService {
     /// The orchestrator that handles the actual playback loop
     private var orchestrator: AudioPlaybackOrchestrator?
 
+    /// Strong reference to the orchestrator delegate. The orchestrator holds the
+    /// delegate weakly, so the service must retain it for the lifetime of the
+    /// playback session. Without this, the delegate would deallocate as soon as
+    /// startPlayback returns and completion/segment callbacks would never fire.
+    private var orchestratorDelegate: ReadingPlaybackOrchestratorDelegate?
+
     /// Reading list manager for position updates
     private var readingListManager: ReadingListManager?
 
@@ -202,9 +208,11 @@ public actor ReadingPlaybackService {
         self.chunks = chunks
         self.currentChunkIndex = min(startIndex, Int32(chunks.count - 1))
 
-        // Configure orchestrator delegate and load segments
+        // Configure orchestrator delegate and load segments. Retain the delegate
+        // strongly because the orchestrator only holds it weakly.
         await orchestrator.loadSegments(chunks)
         let delegate = ReadingPlaybackOrchestratorDelegate(service: self)
+        self.orchestratorDelegate = delegate
         await orchestrator.setDelegate(delegate)
 
         // Start playback

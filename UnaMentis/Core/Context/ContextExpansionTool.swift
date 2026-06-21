@@ -319,7 +319,11 @@ public struct ExpansionRequest: Sendable, Codable {
         self.query = query
 
         if let scopeStr = json["scope"] as? String {
-            self.scope = ExpansionScope(rawValue: scopeStr) ?? .currentTopic
+            // The tool definition advertises snake_case scope strings to the LLM
+            // (for example "current_unit"), so the tool-call JSON arrives in
+            // snake_case. ExpansionScope.rawValue is camelCase, so parse with the
+            // snake_case-aware mapping instead of the raw-value initializer.
+            self.scope = ExpansionScope(toolString: scopeStr)
         } else {
             self.scope = .currentTopic
         }
@@ -356,13 +360,13 @@ public struct ExpansionToolResult: Sendable {
 
 // MARK: - Expansion Scope Codable
 
-extension ExpansionScope: Codable {
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let rawValue = try container.decode(String.self)
-
-        // Handle both snake_case (from JSON) and camelCase
-        switch rawValue {
+extension ExpansionScope {
+    /// Map a scope string from a tool call or decoded payload to a scope value.
+    /// Accepts both the snake_case form advertised to the LLM (for example
+    /// "current_unit") and the camelCase rawValue form. Unknown strings fall back
+    /// to currentTopic, the safest narrowest scope.
+    public init(toolString: String) {
+        switch toolString {
         case "current_topic", "currentTopic":
             self = .currentTopic
         case "current_unit", "currentUnit":
@@ -374,6 +378,15 @@ extension ExpansionScope: Codable {
         default:
             self = .currentTopic
         }
+    }
+}
+
+extension ExpansionScope: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        // Handle both snake_case (from JSON) and camelCase.
+        self = ExpansionScope(toolString: rawValue)
     }
 
     public func encode(to encoder: Encoder) throws {

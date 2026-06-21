@@ -2,402 +2,349 @@
 //  KBAnswerValidatorTests.swift
 //  UnaMentisTests
 //
-//  Tests for KBAnswerValidator answer matching logic
+//  Real tests for KBAnswerValidator with the current async validate() API.
+//
+//  These exercise the real validation pipeline end to end: exact match,
+//  acceptable alternatives, Levenshtein fuzzy matching, and the standard
+//  tier algorithms (synonym, phonetic, n-gram, token, linguistic). All
+//  matchers are real implementations. The embeddings and LLM tiers are not
+//  configured (nil), so no paid external APIs are touched.
 //
 
 import XCTest
 @testable import UnaMentis
 
+@available(iOS 18.0, *)
 final class KBAnswerValidatorTests: XCTestCase {
 
-    // MARK: - Test Helpers
+    // MARK: - Question Builders
 
-    private func makeQuestion(
+    private func textQuestion(
         primary: String,
         acceptable: [String]? = nil,
-        answerType: KBAnswerType = .text
+        answerType: KBAnswerType = .text,
+        mcqOptions: [String]? = nil
     ) -> KBQuestion {
         KBQuestion(
-            text: "Test question",
+            text: "Sample question?",
             answer: KBAnswer(primary: primary, acceptable: acceptable, answerType: answerType),
-            domain: .science
+            domain: .science,
+            mcqOptions: mcqOptions
         )
     }
 
-    // MARK: - Initialization Tests
+    // MARK: - Exact Match
 
-    func testInit_withDefaultConfig_usesStandardSettings() {
+    func testValidate_exactMatch_isCorrectWithFullConfidence() async {
         let validator = KBAnswerValidator()
-        // Default config allows fuzzy matching
-        let question = makeQuestion(primary: "Paris")
-        let result = validator.validate(userAnswer: "Pars", question: question)  // 1 char off
-        XCTAssertTrue(result.isCorrect)  // Should match with fuzzy
-    }
+        let question = textQuestion(primary: "Paris")
 
-    func testInit_withStrictConfig_disablesFuzzyMatching() {
-        let validator = KBAnswerValidator(config: .strict)
-        let question = makeQuestion(primary: "Paris")
-        let result = validator.validate(userAnswer: "Pars", question: question)
-        XCTAssertFalse(result.isCorrect)  // Strict mode requires exact
-    }
-
-    func testInit_withLenientConfig_allowsMoreErrors() {
-        let validator = KBAnswerValidator(config: .lenient)
-        let question = makeQuestion(primary: "Mississippi")
-        let result = validator.validate(userAnswer: "Missisipi", question: question)  // 2 chars off
-        XCTAssertTrue(result.isCorrect)
-    }
-
-    // MARK: - Exact Match Tests
-
-    func testValidate_exactMatch_returnsCorrectWithFullConfidence() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Paris")
-
-        let result = validator.validate(userAnswer: "Paris", question: question)
+        let result = await validator.validate(userAnswer: "Paris", question: question)
 
         XCTAssertTrue(result.isCorrect)
-        XCTAssertEqual(result.confidence, 1.0)
+        XCTAssertEqual(result.confidence, 1.0, accuracy: 0.0001)
         XCTAssertEqual(result.matchType, .exact)
         XCTAssertEqual(result.matchedAnswer, "Paris")
     }
 
-    func testValidate_caseInsensitive_matchesExactly() {
+    func testValidate_exactMatch_isCaseInsensitive() async {
         let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Paris")
+        let question = textQuestion(primary: "Paris")
 
-        XCTAssertTrue(validator.validate(userAnswer: "paris", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "PARIS", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "PaRiS", question: question).isCorrect)
+        let result = await validator.validate(userAnswer: "  paris  ", question: question)
+
+        XCTAssertTrue(result.isCorrect)
+        XCTAssertEqual(result.matchType, .exact)
     }
 
-    func testValidate_withWhitespace_trimsAndMatches() {
+    func testValidate_exactMatch_ignoresArticles() async {
+        // normalizeText removes leading articles, so "the moon" == "moon".
         let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Paris")
+        let question = textQuestion(primary: "the Moon")
 
-        XCTAssertTrue(validator.validate(userAnswer: "  Paris  ", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "\nParis\n", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "Paris ", question: question).isCorrect)
+        let result = await validator.validate(userAnswer: "Moon", question: question)
+
+        XCTAssertTrue(result.isCorrect)
+        XCTAssertEqual(result.matchType, .exact)
     }
 
-    // MARK: - Acceptable Alternatives Tests
+    // MARK: - Acceptable Alternatives
 
-    func testValidate_acceptableAlternative_returnsCorrect() {
+    func testValidate_acceptableAlternative_isCorrect() async {
         let validator = KBAnswerValidator()
-        let question = makeQuestion(
-            primary: "George Washington",
-            acceptable: ["Washington", "G. Washington"]
-        )
+        let question = textQuestion(primary: "carbon dioxide", acceptable: ["CO2"])
 
-        let result = validator.validate(userAnswer: "Washington", question: question)
+        let result = await validator.validate(userAnswer: "CO2", question: question)
 
         XCTAssertTrue(result.isCorrect)
         XCTAssertEqual(result.matchType, .acceptable)
-        XCTAssertEqual(result.matchedAnswer, "Washington")
+        XCTAssertEqual(result.matchedAnswer, "CO2")
     }
 
-    func testValidate_multipleAcceptable_matchesAny() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(
-            primary: "United States",
-            acceptable: ["USA", "US", "United States of America", "America"]
-        )
+    // MARK: - No Match
 
-        XCTAssertTrue(validator.validate(userAnswer: "USA", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "US", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "America", question: question).isCorrect)
+    func testValidate_completelyWrongAnswer_isIncorrect() async {
+        let validator = KBAnswerValidator()
+        let question = textQuestion(primary: "Photosynthesis")
+
+        let result = await validator.validate(userAnswer: "Volcano", question: question)
+
+        XCTAssertFalse(result.isCorrect)
+        XCTAssertEqual(result.matchType, KBMatchType.none)
+        XCTAssertEqual(result.confidence, 0)
+        XCTAssertNil(result.matchedAnswer)
     }
 
-    // MARK: - Fuzzy Match Tests
-
-    func testValidate_fuzzyMatch_acceptsSmallTypos() {
+    func testValidate_emptyAnswer_isIncorrect() async {
         let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Mississippi")
+        let question = textQuestion(primary: "Photosynthesis")
 
-        let result = validator.validate(userAnswer: "Mississipi", question: question)
+        let result = await validator.validate(userAnswer: "", question: question)
+
+        XCTAssertFalse(result.isCorrect)
+    }
+
+    // MARK: - Fuzzy (Levenshtein) Matching
+
+    func testValidate_singleTypo_isAcceptedAsFuzzy() async {
+        // "Mississipi" vs "Mississippi" is one deletion; within the default
+        // 20% fuzzy threshold of an 11-character word.
+        let validator = KBAnswerValidator()
+        let question = textQuestion(primary: "Mississippi")
+
+        let result = await validator.validate(userAnswer: "Mississipi", question: question)
 
         XCTAssertTrue(result.isCorrect)
-        XCTAssertEqual(result.matchType, .fuzzy)
-        XCTAssertLessThan(result.confidence, 1.0)
         XCTAssertGreaterThan(result.confidence, 0.6)
     }
 
-    func testValidate_fuzzyMatch_rejectsLargeErrors() {
+    func testValidate_tooManyDifferences_isRejected() async {
+        // A short word with a large relative edit distance should not fuzzy-match.
         let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Paris")
+        let question = textQuestion(primary: "cat")
 
-        let result = validator.validate(userAnswer: "London", question: question)
+        let result = await validator.validate(userAnswer: "dog", question: question)
 
         XCTAssertFalse(result.isCorrect)
-        XCTAssertEqual(result.matchType, .none)
     }
 
-    func testValidate_fuzzyMatch_confidenceDecreasesWithErrors() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "California")
+    // MARK: - Strict Mode
 
-        let exactResult = validator.validate(userAnswer: "California", question: question)
-        let fuzzyResult = validator.validate(userAnswer: "Californa", question: question)
+    func testValidate_strictMode_rejectsTypos() async {
+        // In strict mode, only exact and acceptable matches count: fuzzy is skipped.
+        let validator = KBAnswerValidator(config: .strict)
+        let question = textQuestion(primary: "Mississippi")
 
-        XCTAssertGreaterThan(exactResult.confidence, fuzzyResult.confidence)
+        let result = await validator.validate(userAnswer: "Mississipi", question: question)
+
+        XCTAssertFalse(result.isCorrect)
     }
 
-    // MARK: - Text Normalization Tests
+    func testValidate_strictMode_stillAcceptsExact() async {
+        let validator = KBAnswerValidator(config: .strict)
+        let question = textQuestion(primary: "Mississippi")
 
-    func testValidate_textType_removesPunctuation() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Hello World", answerType: .text)
+        let result = await validator.validate(userAnswer: "Mississippi", question: question)
 
-        XCTAssertTrue(validator.validate(userAnswer: "Hello, World!", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "Hello World", question: question).isCorrect)
+        XCTAssertTrue(result.isCorrect)
+        XCTAssertEqual(result.matchType, .exact)
     }
 
-    func testValidate_textType_removesArticles() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Eiffel Tower", answerType: .text)
+    // MARK: - Synonym Matching (standard strictness, domain dictionaries)
 
-        XCTAssertTrue(validator.validate(userAnswer: "The Eiffel Tower", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "Eiffel Tower", question: question).isCorrect)
+    func testValidate_placeSynonym_isAccepted() async {
+        // "USA" and "United States" are synonyms in the place dictionary.
+        let validator = KBAnswerValidator(strictness: .standard)
+        let question = textQuestion(primary: "United States", answerType: .place)
+
+        let result = await validator.validate(userAnswer: "USA", question: question)
+
+        XCTAssertTrue(result.isCorrect)
     }
 
-    // MARK: - Person Name Tests
+    func testValidate_scientificSynonym_isAccepted() async {
+        // "H2O" is a synonym for "water" in the scientific dictionary.
+        let validator = KBAnswerValidator(strictness: .standard)
+        let question = textQuestion(primary: "water", answerType: .scientific)
 
-    func testValidate_personType_removesTitles() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Albert Einstein", answerType: .person)
+        let result = await validator.validate(userAnswer: "H2O", question: question)
 
-        XCTAssertTrue(validator.validate(userAnswer: "Dr. Albert Einstein", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "Professor Albert Einstein", question: question).isCorrect)
+        XCTAssertTrue(result.isCorrect)
     }
 
-    func testValidate_personType_handlesLastFirstFormat() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Albert Einstein", answerType: .person)
+    // MARK: - Token Matching (word order / extra words)
 
-        XCTAssertTrue(validator.validate(userAnswer: "Einstein, Albert", question: question).isCorrect)
+    func testValidate_tokenReorder_isAccepted() async {
+        // The token matcher handles word-order swaps for multi-word answers.
+        let validator = KBAnswerValidator(strictness: .standard)
+        let question = textQuestion(primary: "George Washington", answerType: .person)
+
+        let result = await validator.validate(userAnswer: "Washington George", question: question)
+
+        XCTAssertTrue(result.isCorrect)
     }
 
-    // MARK: - Place Name Tests
+    // MARK: - Strictness Gating
 
-    func testValidate_placeType_handlesAbbreviations() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "United States", answerType: .place)
+    func testValidate_strictStrictness_skipsEnhancedTiers() async {
+        // At .strict strictness the synonym/phonetic/token tiers are skipped.
+        // A pure synonym that is not within Levenshtein distance should fail.
+        let validator = KBAnswerValidator(strictness: .strict)
+        let question = textQuestion(primary: "United States", answerType: .place)
 
-        XCTAssertTrue(validator.validate(userAnswer: "US", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "USA", question: question).isCorrect)
+        let result = await validator.validate(userAnswer: "USA", question: question)
+
+        XCTAssertFalse(result.isCorrect,
+                       "Synonym tier must not run at .strict strictness")
     }
 
-    func testValidate_placeType_expandsCommonAbbreviations() {
+    // MARK: - MCQ Validation
+
+    func testValidateMCQ_correctSelection_isCorrect() {
         let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Mount Everest", answerType: .place)
-
-        XCTAssertTrue(validator.validate(userAnswer: "Mt Everest", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "Mt. Everest", question: question).isCorrect)
-    }
-
-    // MARK: - Number Tests
-
-    func testValidate_numberType_parsesWrittenNumbers() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "12", answerType: .numeric)
-
-        XCTAssertTrue(validator.validate(userAnswer: "twelve", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "12", question: question).isCorrect)
-    }
-
-    func testValidate_numberType_handlesCommas() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "1000000", answerType: .numeric)
-
-        XCTAssertTrue(validator.validate(userAnswer: "1,000,000", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "1000000", question: question).isCorrect)
-    }
-
-    // MARK: - Date Tests
-
-    func testValidate_dateType_handlesMonthNames() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "7 4", answerType: .date)
-
-        XCTAssertTrue(validator.validate(userAnswer: "July 4", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "Jul 4", question: question).isCorrect)
-    }
-
-    // MARK: - Title Tests
-
-    func testValidate_titleType_removesLeadingThe() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Great Gatsby", answerType: .title)
-
-        XCTAssertTrue(validator.validate(userAnswer: "The Great Gatsby", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "Great Gatsby", question: question).isCorrect)
-    }
-
-    func testValidate_titleType_removesSubtitle() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Star Wars", answerType: .title)
-
-        XCTAssertTrue(validator.validate(userAnswer: "Star Wars: A New Hope", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "Star Wars", question: question).isCorrect)
-    }
-
-    // MARK: - Scientific Tests
-
-    func testValidate_scientificType_removesSpaces() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "h2o", answerType: .scientific)
-
-        XCTAssertTrue(validator.validate(userAnswer: "H2O", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "H 2 O", question: question).isCorrect)
-    }
-
-    // MARK: - MCQ Tests
-
-    func testValidateMCQ_correctSelection_returnsCorrect() {
-        let validator = KBAnswerValidator()
-        let question = KBQuestion(
-            text: "What is 2+2?",
-            answer: KBAnswer(primary: "4"),
-            domain: .mathematics,
-            mcqOptions: ["3", "4", "5", "6"]
+        let question = textQuestion(
+            primary: "Oxygen",
+            mcqOptions: ["Hydrogen", "Oxygen", "Carbon", "Nitrogen"]
         )
 
         let result = validator.validateMCQ(selectedIndex: 1, question: question)
 
         XCTAssertTrue(result.isCorrect)
-        XCTAssertEqual(result.confidence, 1.0)
-        XCTAssertEqual(result.matchedAnswer, "4")
+        XCTAssertEqual(result.matchType, .exact)
+        XCTAssertEqual(result.confidence, 1.0, accuracy: 0.0001)
+        XCTAssertEqual(result.matchedAnswer, "Oxygen")
     }
 
-    func testValidateMCQ_incorrectSelection_returnsIncorrect() {
+    func testValidateMCQ_wrongSelection_isIncorrect() {
         let validator = KBAnswerValidator()
-        let question = KBQuestion(
-            text: "What is 2+2?",
-            answer: KBAnswer(primary: "4"),
-            domain: .mathematics,
-            mcqOptions: ["3", "4", "5", "6"]
+        let question = textQuestion(
+            primary: "Oxygen",
+            mcqOptions: ["Hydrogen", "Oxygen", "Carbon", "Nitrogen"]
         )
 
         let result = validator.validateMCQ(selectedIndex: 0, question: question)
 
         XCTAssertFalse(result.isCorrect)
-        XCTAssertEqual(result.confidence, 0)
-    }
-
-    func testValidateMCQ_invalidIndex_returnsIncorrect() {
-        let validator = KBAnswerValidator()
-        let question = KBQuestion(
-            text: "What is 2+2?",
-            answer: KBAnswer(primary: "4"),
-            domain: .mathematics,
-            mcqOptions: ["3", "4", "5", "6"]
-        )
-
-        XCTAssertFalse(validator.validateMCQ(selectedIndex: -1, question: question).isCorrect)
-        XCTAssertFalse(validator.validateMCQ(selectedIndex: 4, question: question).isCorrect)
-        XCTAssertFalse(validator.validateMCQ(selectedIndex: 100, question: question).isCorrect)
-    }
-
-    func testValidateMCQ_noOptions_returnsIncorrect() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "4")
-
-        let result = validator.validateMCQ(selectedIndex: 0, question: question)
-
-        XCTAssertFalse(result.isCorrect)
-    }
-
-    // MARK: - Incorrect Answer Tests
-
-    func testValidate_completelyWrong_returnsIncorrect() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Paris")
-
-        let result = validator.validate(userAnswer: "Tokyo", question: question)
-
-        XCTAssertFalse(result.isCorrect)
-        XCTAssertEqual(result.confidence, 0)
-        XCTAssertEqual(result.matchType, .none)
+        XCTAssertEqual(result.matchType, KBMatchType.none)
         XCTAssertNil(result.matchedAnswer)
     }
 
-    func testValidate_emptyAnswer_returnsIncorrect() {
+    func testValidateMCQ_outOfRangeIndex_isIncorrect() {
         let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Paris")
-
-        XCTAssertFalse(validator.validate(userAnswer: "", question: question).isCorrect)
-        XCTAssertFalse(validator.validate(userAnswer: "   ", question: question).isCorrect)
-    }
-
-    // MARK: - Points Earned Tests
-
-    func testValidationResult_pointsEarned_oneForCorrect() {
-        let result = KBValidationResult(
-            isCorrect: true,
-            confidence: 1.0,
-            matchType: .exact,
-            matchedAnswer: "Paris"
+        let question = textQuestion(
+            primary: "Oxygen",
+            mcqOptions: ["Hydrogen", "Oxygen", "Carbon", "Nitrogen"]
         )
 
-        XCTAssertEqual(result.pointsEarned, 1)
+        let high = validator.validateMCQ(selectedIndex: 99, question: question)
+        let negative = validator.validateMCQ(selectedIndex: -1, question: question)
+
+        XCTAssertFalse(high.isCorrect)
+        XCTAssertFalse(negative.isCorrect)
     }
 
-    func testValidationResult_pointsEarned_zeroForIncorrect() {
-        let result = KBValidationResult(
-            isCorrect: false,
-            confidence: 0,
-            matchType: .none,
-            matchedAnswer: nil
+    func testValidateMCQ_noOptions_isIncorrect() {
+        let validator = KBAnswerValidator()
+        let question = textQuestion(primary: "Oxygen", mcqOptions: nil)
+
+        let result = validator.validateMCQ(selectedIndex: 0, question: question)
+
+        XCTAssertFalse(result.isCorrect)
+    }
+
+    // MARK: - Person Name Normalization
+
+    func testValidate_personName_lastCommaFirst_isAccepted() async {
+        // normalizePerson converts "Last, First" to "First Last".
+        let validator = KBAnswerValidator()
+        let question = textQuestion(primary: "George Washington", answerType: .person)
+
+        let result = await validator.validate(userAnswer: "Washington, George", question: question)
+
+        XCTAssertTrue(result.isCorrect)
+        XCTAssertEqual(result.matchType, .exact)
+    }
+
+    func testValidate_personName_stripsTitle() async {
+        // Leading honorific titles are removed during normalization.
+        let validator = KBAnswerValidator()
+        let question = textQuestion(primary: "Martin Luther King", answerType: .person)
+
+        let result = await validator.validate(userAnswer: "Dr. Martin Luther King", question: question)
+
+        XCTAssertTrue(result.isCorrect)
+    }
+
+    // MARK: - Numeric Normalization
+
+    func testValidate_numericWordForm_matchesDigits() async {
+        // "seven" normalizes to "7".
+        let validator = KBAnswerValidator()
+        let question = textQuestion(primary: "7", answerType: .numeric)
+
+        let result = await validator.validate(userAnswer: "seven", question: question)
+
+        XCTAssertTrue(result.isCorrect)
+        XCTAssertEqual(result.matchType, .exact)
+    }
+
+    func testValidate_numericWithCommas_matches() async {
+        // Commas are stripped from numbers during normalization.
+        let validator = KBAnswerValidator()
+        let question = textQuestion(primary: "1000000", answerType: .numeric)
+
+        let result = await validator.validate(userAnswer: "1,000,000", question: question)
+
+        XCTAssertTrue(result.isCorrect)
+        XCTAssertEqual(result.matchType, .exact)
+    }
+
+    // MARK: - Title Normalization
+
+    func testValidate_title_dropsLeadingThe() async {
+        // normalizeTitle removes a leading "the".
+        let validator = KBAnswerValidator()
+        let question = textQuestion(primary: "Great Gatsby", answerType: .title)
+
+        let result = await validator.validate(userAnswer: "The Great Gatsby", question: question)
+
+        XCTAssertTrue(result.isCorrect)
+        XCTAssertEqual(result.matchType, .exact)
+    }
+
+    func testValidate_title_dropsSubtitleAfterColon() async {
+        // normalizeTitle removes anything after a colon.
+        let validator = KBAnswerValidator()
+        let question = textQuestion(primary: "Frankenstein", answerType: .title)
+
+        let result = await validator.validate(
+            userAnswer: "Frankenstein: The Modern Prometheus",
+            question: question
         )
 
-        XCTAssertEqual(result.pointsEarned, 0)
+        XCTAssertTrue(result.isCorrect)
+        XCTAssertEqual(result.matchType, .exact)
     }
 
-    // MARK: - Config Tests
+    // MARK: - Place Normalization
 
-    func testConfig_standard_hasExpectedDefaults() {
-        let config = KBAnswerValidator.Config.standard
-
-        XCTAssertEqual(config.fuzzyThresholdPercent, 0.20, accuracy: 0.01)
-        XCTAssertEqual(config.minimumConfidence, 0.6)
-        XCTAssertFalse(config.strictMode)
-    }
-
-    func testConfig_strict_enablesStrictMode() {
-        let config = KBAnswerValidator.Config.strict
-
-        XCTAssertTrue(config.strictMode)
-    }
-
-    func testConfig_lenient_hasHigherThreshold() {
-        let config = KBAnswerValidator.Config.lenient
-
-        XCTAssertEqual(config.fuzzyThresholdPercent, 0.30, accuracy: 0.01)
-        XCTAssertEqual(config.minimumConfidence, 0.5)
-    }
-
-    // MARK: - Edge Cases
-
-    func testValidate_singleCharacterAnswer_handlesCorrectly() {
+    func testValidate_placeAbbreviation_expands() async {
+        // "uk" expands to "united kingdom" during place normalization.
         let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "A")
+        let question = textQuestion(primary: "United Kingdom", answerType: .place)
 
-        XCTAssertTrue(validator.validate(userAnswer: "A", question: question).isCorrect)
-        XCTAssertTrue(validator.validate(userAnswer: "a", question: question).isCorrect)
+        let result = await validator.validate(userAnswer: "UK", question: question)
+
+        XCTAssertTrue(result.isCorrect)
     }
 
-    func testValidate_veryLongAnswer_handlesCorrectly() {
-        let validator = KBAnswerValidator()
-        let longAnswer = String(repeating: "a", count: 1000)
-        let question = makeQuestion(primary: longAnswer)
+    // MARK: - KBValidationResult value type
 
-        XCTAssertTrue(validator.validate(userAnswer: longAnswer, question: question).isCorrect)
-    }
+    func testValidationResult_pointsEarned_reflectsCorrectness() {
+        let correct = KBValidationResult(isCorrect: true, confidence: 1.0, matchType: .exact, matchedAnswer: "x")
+        let wrong = KBValidationResult(isCorrect: false, confidence: 0, matchType: .none, matchedAnswer: nil)
 
-    func testValidate_unicodeCharacters_handlesCorrectly() {
-        let validator = KBAnswerValidator()
-        let question = makeQuestion(primary: "Café")
-
-        XCTAssertTrue(validator.validate(userAnswer: "café", question: question).isCorrect)
+        XCTAssertEqual(correct.pointsEarned, 1)
+        XCTAssertEqual(wrong.pointsEarned, 0)
     }
 }

@@ -838,6 +838,8 @@ public struct CombinedCostEstimator {
         public let duration: Int // minutes
 
         public var formattedTotal: String {
+            // A fully on-device (zero-cost) combination is free, not a tiny cost.
+            if totalCost == 0 { return "Free" }
             if totalCost < 0.01 { return "<$0.01" }
             return String(format: "$%.2f", totalCost)
         }

@@ -204,18 +204,21 @@ actor KBAnswerValidator {
     }
 
     nonisolated private func normalizePerson(_ text: String) -> String {
-        var result = normalizeText(text)
-        // Remove titles
-        let titles = ["dr", "mr", "mrs", "ms", "miss", "prof", "professor", "sir", "dame", "lord", "lady"]
-        for title in titles {
-            result = result.replacingOccurrences(of: "^\(title)\\.?\\s+", with: "", options: .regularExpression)
-        }
-        // Handle "First Last" vs "Last, First"
+        // Reorder "Last, First" into "First Last" BEFORE normalizeText runs, because
+        // normalizeText strips commas and would otherwise erase the structural cue
+        // this reordering depends on.
+        var result = text
         if result.contains(",") {
             let parts = result.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
             if parts.count == 2 {
                 result = "\(parts[1]) \(parts[0])"
             }
+        }
+        result = normalizeText(result)
+        // Remove titles
+        let titles = ["dr", "mr", "mrs", "ms", "miss", "prof", "professor", "sir", "dame", "lord", "lady"]
+        for title in titles {
+            result = result.replacingOccurrences(of: "^\(title)\\.?\\s+", with: "", options: .regularExpression)
         }
         return result
     }
@@ -286,13 +289,15 @@ actor KBAnswerValidator {
     }
 
     nonisolated private func normalizeTitle(_ text: String) -> String {
-        var result = normalizeText(text)
-        // Remove leading "the"
-        result = result.replacingOccurrences(of: "^the\\s+", with: "", options: .regularExpression)
-        // Remove subtitle after colon
+        // Drop the subtitle after a colon BEFORE normalizeText runs, because
+        // normalizeText strips colons and would otherwise leave the subtitle inline.
+        var result = text
         if let colonIndex = result.firstIndex(of: ":") {
             result = String(result[..<colonIndex])
         }
+        result = normalizeText(result)
+        // Remove leading "the"
+        result = result.replacingOccurrences(of: "^the\\s+", with: "", options: .regularExpression)
         return result.trimmingCharacters(in: .whitespaces)
     }
 

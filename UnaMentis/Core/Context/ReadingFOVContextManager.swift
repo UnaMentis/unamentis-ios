@@ -140,9 +140,12 @@ public actor ReadingFOVContextManager {
             currentText = ""
         }
 
-        // Get preceding chunks
-        let precedingStart = max(0, current - precedingChunkCount)
-        let precedingChunks = chunks[precedingStart..<current]
+        // Get preceding chunks. Clamp the upper bound to the array count so an
+        // out-of-range currentIndex (current > chunks.count) cannot trap on the
+        // slice subscript. precedingStart is clamped to never exceed the end.
+        let precedingEnd = min(max(current, 0), chunks.count)
+        let precedingStart = max(0, min(current - precedingChunkCount, precedingEnd))
+        let precedingChunks = chunks[precedingStart..<precedingEnd]
         let precedingText = truncateToLimit(
             precedingChunks.map(\.text).joined(separator: "\n\n")
         )
