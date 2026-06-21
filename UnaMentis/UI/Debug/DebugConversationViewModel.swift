@@ -133,6 +133,8 @@ class DebugConversationViewModel: ObservableObject {
             availableModels = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
         case .anthropic:
             availableModels = ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"]
+        case .google:
+            availableModels = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
         case .selfHosted, .localMLX:
             // Get discovered models from server
             Task {
@@ -196,6 +198,12 @@ class DebugConversationViewModel: ObservableObject {
                     throw DebugSessionError.missingAPIKey("OpenAI")
                 }
                 llmService = OpenAILLMService(apiKey: apiKey)
+
+            case .google:
+                guard let apiKey = await appState.apiKeys.getKey(.google) else {
+                    throw DebugSessionError.missingAPIKey("Google")
+                }
+                llmService = GoogleLLMService(apiKey: apiKey)
 
             case .localMLX:
                 // Use on-device LLM service

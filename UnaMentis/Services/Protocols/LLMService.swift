@@ -289,6 +289,7 @@ public enum TokenEstimation {
 public enum LLMProvider: String, Codable, Sendable, CaseIterable {
     case openAI = "OpenAI"
     case anthropic = "Anthropic Claude"
+    case google = "Google Gemini"
     case selfHosted = "Self-Hosted"
     case localMLX = "Local MLX"
 
@@ -302,6 +303,7 @@ public enum LLMProvider: String, Codable, Sendable, CaseIterable {
         switch self {
         case .openAI: return "openai"
         case .anthropic: return "anthropic"
+        case .google: return "google"
         case .selfHosted: return "selfhosted"
         case .localMLX: return "mlx"
         }
@@ -314,6 +316,8 @@ public enum LLMProvider: String, Codable, Sendable, CaseIterable {
             return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
         case .anthropic:
             return ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"]
+        case .google:
+            return ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
         case .selfHosted:
             return ["qwen2.5:7b", "qwen2.5:3b", "llama3.2:3b", "llama3.2:1b", "mistral:7b"]
         case .localMLX:

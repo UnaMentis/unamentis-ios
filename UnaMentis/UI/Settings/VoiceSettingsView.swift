@@ -584,6 +584,8 @@ class VoiceSettingsViewModel: ObservableObject {
             return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
         case .anthropic:
             return ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"]
+        case .google:
+            return ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
         case .selfHosted:
             if !discoveredModels.isEmpty {
                 return discoveredModels

@@ -220,6 +220,8 @@ public enum LMAPIProviderRegistry {
             return openAIInfo
         case .anthropic:
             return anthropicInfo
+        case .google:
+            return googleInfo
         case .elevenLabs:
             return elevenLabsInfo
         case .groq:
@@ -502,6 +504,73 @@ public enum LMAPIProviderRegistry {
                 "Claude excels at explaining complex concepts step-by-step",
                 "Claude 3.5 Haiku offers great value for simpler interactions",
                 "You can switch between OpenAI and Anthropic in Language Model settings"
+            ]
+        )
+    }
+
+    private static var googleInfo: LMAPIProviderInfo {
+        LMAPIProviderInfo(
+            id: .google,
+            name: "Google Gemini",
+            categories: [.languageModel],
+            shortDescription: "Gemini AI intelligence",
+            fullDescription: """
+                Google's Gemini models offer strong reasoning and a very large context \
+                window at low cost. The Flash tier is fast and inexpensive, well suited \
+                to real-time conversation, while the Pro tier handles deeper reasoning.
+                """,
+            usageInApp: """
+                UnaMentis can use Gemini as a cloud AI brain:
+
+                • **Low cost**: Flash models are among the cheapest capable cloud options
+                • **Large context**: Handles long learning sessions comfortably
+                • **Fast responses**: The Flash tier streams quickly for conversation
+                • **Strong reasoning**: The Pro tier is good for complex explanations
+
+                Gemini is a good default cloud fallback when on-device is unavailable.
+                """,
+            pricing: LMAPIPricing(
+                inputCost: 0.30,
+                outputCost: 2.50,
+                inputUnit: .perMillionInputTokens,
+                outputUnit: .perMillionOutputTokens,
+                notes: "Gemini 2.5 Flash pricing (approximate). Pro is several times higher."
+            ),
+            conversationEstimate: ConversationCostEstimate(
+                tenMinuteCost: 0.03,
+                sixtyMinuteCost: 0.18,
+                assumptions: "Using Gemini 2.5 Flash. Pro would be several times higher."
+            ),
+            models: [
+                LMAPIProviderInfo.ModelInfo(
+                    id: "gemini-2.5-flash",
+                    name: "Gemini 2.5 Flash",
+                    description: "Fast and inexpensive, good default for conversation",
+                    pricing: LMAPIPricing(
+                        inputCost: 0.30,
+                        outputCost: 2.50,
+                        inputUnit: .perMillionInputTokens,
+                        outputUnit: .perMillionOutputTokens
+                    ),
+                    isRecommended: true
+                ),
+                LMAPIProviderInfo.ModelInfo(
+                    id: "gemini-2.5-pro",
+                    name: "Gemini 2.5 Pro",
+                    description: "Most capable, best for complex reasoning"
+                ),
+                LMAPIProviderInfo.ModelInfo(
+                    id: "gemini-2.0-flash",
+                    name: "Gemini 2.0 Flash",
+                    description: "Previous-generation fast model"
+                )
+            ],
+            websiteURL: URL(string: "https://ai.google.dev"),
+            apiDocsURL: URL(string: "https://ai.google.dev/gemini-api/docs"),
+            tips: [
+                "Gemini Flash is a low-cost cloud fallback for the beta",
+                "Get an API key from Google AI Studio (aistudio.google.com)",
+                "You can switch between OpenAI, Anthropic, and Google in Language Model settings"
             ]
         )
     }

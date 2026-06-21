@@ -652,6 +652,9 @@ public actor LatencyTestCoordinator {
         case .openAI:
             throw TestCoordinatorError.providerCreationFailed("OpenAI LLM requires API key configuration")
 
+        case .google:
+            throw TestCoordinatorError.providerCreationFailed("Google LLM requires API key configuration")
+
         case .selfHosted:
             // Get endpoint from ServerConfigManager
             if let endpoint = await ServerConfigManager.shared.getBestLLMEndpoint() {

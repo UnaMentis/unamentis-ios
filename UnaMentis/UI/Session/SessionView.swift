@@ -1617,6 +1617,10 @@ class SessionViewModel: ObservableObject {
                 logger.info("Using OpenAILLMService as fallback (API key present)")
                 return OpenAILLMService(apiKey: apiKey)
             }
+            if let apiKey = await appState.apiKeys.getKey(.google) {
+                logger.info("Using GoogleLLMService as fallback (API key present)")
+                return GoogleLLMService(apiKey: apiKey)
+            }
             return nil
         }
 
@@ -1684,6 +1688,22 @@ class SessionViewModel: ObservableObject {
                 llmService = onDevice
             } else {
                 errorMessage = "OpenAI API key not configured and no fallback available. Please add it in Settings or configure a server."
+                showError = true
+                state = .idle
+                return
+            }
+
+        case .google:
+            if let apiKey = await appState.apiKeys.getKey(.google) {
+                llmService = GoogleLLMService(apiKey: apiKey)
+            } else if let selfHosted = createSelfHostedLLMIfAvailable() {
+                logger.warning("Google API key not configured, falling back to self-hosted")
+                llmService = selfHosted
+            } else if let onDevice = createOnDeviceLLMIfAvailable() {
+                logger.warning("Google API key not configured, falling back to on-device LLM")
+                llmService = onDevice
+            } else {
+                errorMessage = "Google API key not configured and no fallback available. Please add it in Settings or configure a server."
                 showError = true
                 state = .idle
                 return
