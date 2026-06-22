@@ -123,6 +123,33 @@ jobs:
         touch models/Models/voices/azelma.safetensors
         echo "Created placeholder model files for CI build"
 
+    - name: Cache llama.xcframework (b7263)
+      uses: actions/cache@v4
+      with:
+        path: UnaMentis/Frameworks/llama.xcframework
+        key: llama-xcframework-b7263
+
+    - name: Fetch llama.xcframework
+      run: |
+        # llama.xcframework is a ~467MB binary, gitignored and "downloaded
+        # separately" (see .gitignore). OnDeviceLLMService does `import llama`
+        # unconditionally, so the build needs it. Fetch the official b7263 build
+        # (the exact one project.yml targets). Cached across runs by the step above.
+        set -euo pipefail
+        FW="UnaMentis/Frameworks/llama.xcframework"
+        if [ -d "$FW" ] && [ -f "$FW/Info.plist" ]; then
+          echo "llama.xcframework present (cache hit), skipping download"
+          exit 0
+        fi
+        mkdir -p UnaMentis/Frameworks
+        curl -fsSL -o /tmp/llama-xcf.tar.gz \
+          https://github.com/ggml-org/llama.cpp/releases/download/b7263/llama-b7263-xcframework.tar.gz
+        mkdir -p /tmp/llama-xcf && tar -xzf /tmp/llama-xcf.tar.gz -C /tmp/llama-xcf
+        XCF="$(find /tmp/llama-xcf -name llama.xcframework -type d | head -1)"
+        rm -rf "$FW"
+        mv "$XCF" "$FW"
+        echo "Installed llama.xcframework b7263"
+
     - name: Generate Xcode project
       run: xcodegen generate
 
@@ -280,6 +307,33 @@ jobs:
         touch models/Models/voices/javert.safetensors
         touch models/Models/voices/azelma.safetensors
         echo "Created placeholder model files for CI build"
+
+    - name: Cache llama.xcframework (b7263)
+      uses: actions/cache@v4
+      with:
+        path: UnaMentis/Frameworks/llama.xcframework
+        key: llama-xcframework-b7263
+
+    - name: Fetch llama.xcframework
+      run: |
+        # llama.xcframework is a ~467MB binary, gitignored and "downloaded
+        # separately" (see .gitignore). OnDeviceLLMService does `import llama`
+        # unconditionally, so the build needs it. Fetch the official b7263 build
+        # (the exact one project.yml targets). Cached across runs by the step above.
+        set -euo pipefail
+        FW="UnaMentis/Frameworks/llama.xcframework"
+        if [ -d "$FW" ] && [ -f "$FW/Info.plist" ]; then
+          echo "llama.xcframework present (cache hit), skipping download"
+          exit 0
+        fi
+        mkdir -p UnaMentis/Frameworks
+        curl -fsSL -o /tmp/llama-xcf.tar.gz \
+          https://github.com/ggml-org/llama.cpp/releases/download/b7263/llama-b7263-xcframework.tar.gz
+        mkdir -p /tmp/llama-xcf && tar -xzf /tmp/llama-xcf.tar.gz -C /tmp/llama-xcf
+        XCF="$(find /tmp/llama-xcf -name llama.xcframework -type d | head -1)"
+        rm -rf "$FW"
+        mv "$XCF" "$FW"
+        echo "Installed llama.xcframework b7263"
 
     - name: Generate Xcode project
       run: xcodegen generate
