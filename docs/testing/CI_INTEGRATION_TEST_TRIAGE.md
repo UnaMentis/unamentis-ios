@@ -32,8 +32,17 @@ The 6 failing integration tests do **not** need hardware I/O. Every one of them 
 2. **Next:** evaluate providing the real Pocket TTS model in CI (download + cache, the same pattern as `llama.xcframework`) so the TTS-generation path itself is tested on the runner. Pocket TTS is CoreML and runs on the simulator CPU.
 3. **Later:** add explicit signal-quality assertions (RMS, correlation between injected and observed audio) so CI proves data integrity through the pipeline, not just "did not crash".
 
+## Enabled in CI via fixtures (2026-06-21)
+
+The two `BargeInCoordinatorAudioPathTests` speech tests now run in CI. They load a committed 16kHz mono speech fixture (`UnaMentisTests/Integration/Fixtures/speech-utterance.wav`) instead of generating audio with Pocket TTS. The transcript is already supplied by `MockTranscriptSTTService`, so the fixture's words do not matter, only that the Silero VAD detects real speech. The VAD uses its RMS fallback whenever the CoreML model is absent (as in CI), so the real `processAudioBuffer -> VAD -> BargeInCoordinator -> surface` pipeline is exercised with no model and no hardware. Verified locally under the same no-model condition CI runs in.
+
 ## Skipped in CI (must stay tracked)
 
-| Test | Reason it cannot run in CI | Condition to re-enable |
+| Test (class) | Reason it cannot run in CI | Condition to re-enable |
 |------|----------------------------|------------------------|
-| _(none yet; this table is filled as the plan above is implemented)_ | | |
+| `testAudioGeneratorCreatesValidBuffer` (KBAudioTestHarnessTests) | Asserts Pocket TTS itself produces a valid 16kHz buffer; weights are placeholders in CI and a fixture cannot stand in for the generator under test | Provide the real Pocket TTS model in CI (plan step 2) |
+| `testAudioGeneratorFromSource` (KBAudioTestHarnessTests) | Same: Pocket TTS generation is the thing under test | Provide Pocket TTS model in CI |
+| `testFullPipelineWithKyutaiPocketTTS` (KBAudioTestHarnessTests) | Needs real Pocket TTS generation and on-device STT, neither available in CI | Pocket TTS model + a CI-viable STT |
+| `testQuickTestConvenience` (KBAudioTestHarnessTests) | Same full TTS+STT pipeline | Pocket TTS model + a CI-viable STT |
+
+Skips use `XCTSkipIf(ProcessInfo...["CI"] == "true", ...)`, so these run normally on a developer machine and on device, where the real model is present.

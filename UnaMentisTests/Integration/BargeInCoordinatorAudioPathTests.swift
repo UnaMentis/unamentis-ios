@@ -72,9 +72,26 @@ final class BargeInCoordinatorAudioPathTests: XCTestCase {
         )
     }
 
-    /// Generate real on-device TTS speech (what the VAD reliably detects as speech).
-    private func speechBuffer(_ text: String) async throws -> AVAudioPCMBuffer {
-        try await KBAudioGenerator().generateAudio(for: text, using: .pocketTTS).buffer
+    /// Real recorded speech the Silero VAD reliably detects, loaded from a
+    /// committed fixture (16kHz mono) so this runs in CI without the Pocket TTS
+    /// model. The transcript is supplied by MockTranscriptSTTService, so the words
+    /// in the fixture are irrelevant: detection only needs genuine speech audio,
+    /// and the pipeline (VAD -> barge-in -> surface) is what this test exercises.
+    private func speechBuffer(_ text: String) throws -> AVAudioPCMBuffer {
+        let bundle = Bundle(for: Self.self)
+        guard let url = bundle.url(forResource: "speech-utterance", withExtension: "wav") else {
+            throw XCTSkip("speech-utterance.wav fixture missing from the test bundle")
+        }
+        let file = try AVAudioFile(forReading: url)
+        let format = file.processingFormat // 16kHz mono float32, matches the engine
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(file.length)
+        ) else {
+            throw XCTSkip("could not allocate a buffer for the speech fixture")
+        }
+        try file.read(into: buffer)
+        return buffer
     }
 
     // MARK: - Injection
@@ -115,7 +132,7 @@ final class BargeInCoordinatorAudioPathTests: XCTestCase {
         let coordinator = makeCoordinator(engine: engine, surface: spy)
         await coordinator.start()
 
-        let speech = try await speechBuffer("bookmark this")
+        let speech = try speechBuffer("bookmark this")
         await injectUtterance(speech, into: engine)
         await coordinator.stop()
 
@@ -133,7 +150,7 @@ final class BargeInCoordinatorAudioPathTests: XCTestCase {
         let coordinator = makeCoordinator(engine: engine, surface: spy)
         await coordinator.start()
 
-        let speech = try await speechBuffer("why does that happen")
+        let speech = try speechBuffer("why does that happen")
         await injectUtterance(speech, into: engine)
         await coordinator.stop()
 

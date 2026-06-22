@@ -64,6 +64,8 @@ htmlcov/
 Tests/Recordings/
 *.wav
 *.m4a
+# Committed test audio fixtures (small, required by CI integration tests)
+!UnaMentisTests/Integration/Fixtures/*.wav
 
 # Logs
 *.log
