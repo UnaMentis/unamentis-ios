@@ -16,6 +16,13 @@ import OSLog
 actor KBLinguisticMatcher {
     private let logger = Logger(subsystem: "com.unamentis", category: "KBLinguisticMatcher")
 
+    /// Common function words dropped by the deterministic key-term fallback.
+    private static let functionWords: Set<String> = [
+        "the", "a", "an", "and", "or", "but", "nor", "is", "are", "was", "were",
+        "am", "be", "been", "being", "of", "to", "in", "on", "at", "for", "with",
+        "as", "by", "that", "this", "these", "those", "it", "its",
+    ]
+
     // MARK: - Public API
 
     /// Lemmatize text (reduce words to base forms)
@@ -58,7 +65,24 @@ actor KBLinguisticMatcher {
             return true
         }
 
+        // Robustness: NLTagger's lexical-class model is not guaranteed to be
+        // available in every environment (for example a cold CI simulator),
+        // where it produces no tags and would leave key terms empty. Fall back
+        // to a deterministic tokenizer that drops common function words so
+        // extraction degrades gracefully instead of returning nothing.
+        if keyTerms.isEmpty {
+            keyTerms = Self.fallbackKeyTerms(text)
+        }
+
         return keyTerms
+    }
+
+    /// Deterministic key-term fallback used when NLTagger yields no lexical
+    /// tags. Splits on non-alphanumerics, lowercases, and drops function words.
+    nonisolated private static func fallbackKeyTerms(_ text: String) -> [String] {
+        text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty && !functionWords.contains($0) }
     }
 
     /// Check if two texts share key semantic terms

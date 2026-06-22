@@ -25,6 +25,7 @@ jobs:
   lint:
     name: Lint
     runs-on: macos-15
+    timeout-minutes: 20
 
     steps:
     - uses: actions/checkout@v4
@@ -51,6 +52,7 @@ jobs:
   hook-audit:
     name: Hook Bypass Detection
     runs-on: macos-15
+    timeout-minutes: 15
     if: github.event_name == 'push'
 
     steps:
@@ -75,6 +77,7 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: macos-15
+    timeout-minutes: 40
 
     steps:
     - uses: actions/checkout@v4
@@ -259,6 +262,7 @@ jobs:
   integration-tests:
     name: Integration Tests
     runs-on: macos-15
+    timeout-minutes: 40
     if: github.ref == 'refs/heads/main' || github.event.inputs.run_integration == 'true'
 
     steps:
