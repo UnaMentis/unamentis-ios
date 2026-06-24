@@ -304,13 +304,6 @@ main() {
     # that also turns a future hang into a precise diagnostic.
     cmd="$cmd -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 300"
 
-    # On CI, serialize tests. Parallel sim clones intermittently deadlock at
-    # launch on hosted runners (xcodebuild then sits at 0% CPU before any test
-    # runs, hanging the job to its timeout). Local runs keep parallel for speed.
-    if [ "$CI" = "true" ]; then
-        cmd="$cmd -parallel-testing-enabled NO"
-    fi
-
     # Get beautify command
     local beautify_cmd
     beautify_cmd=$(get_xcbeautify_cmd)

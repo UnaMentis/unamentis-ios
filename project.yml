@@ -223,6 +223,13 @@ schemes:
       config: Debug
     test:
       config: Debug
+      # Gather coverage ONLY for the app target. Instrumenting and collecting
+      # coverage for every SPM dependency and prebuilt framework (LiveKit,
+      # SwiftSoup, etc.) bloats the run with no value: the gate measures
+      # UnaMentis.app. Scoping keeps the test run fast and the data clean.
+      gatherCoverageData: true
+      coverageTargets:
+        - UnaMentis
       targets:
         - name: UnaMentisTests
           parallelizable: true

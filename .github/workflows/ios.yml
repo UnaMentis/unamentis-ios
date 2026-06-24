@@ -170,16 +170,6 @@ jobs:
         echo "simulator=$FALLBACK" >> "$GITHUB_OUTPUT"
         echo "Using fallback simulator: $FALLBACK"
 
-    - name: Build
-      run: |
-        set -o pipefail
-        xcodebuild build \
-          -scheme UnaMentis \
-          -destination 'platform=iOS Simulator,name=${{ steps.sim.outputs.simulator }}' \
-          -skipPackagePluginValidation \
-          CODE_SIGNING_ALLOWED=NO \
-          | xcbeautify --renderer github-actions
-
     # COVERAGE_THRESHOLD is a ratchet, not the goal. The extraction bug that
     # read the Watch App target (always 0%) and skipped enforcement is fixed,
     # so this gate is now real. Measured UnaMentis.app line coverage is ~12%
@@ -355,16 +345,6 @@ jobs:
         FALLBACK=$(xcrun simctl list devices available 2>/dev/null | grep -o 'iPhone [^(]*' | head -1 | xargs)
         echo "simulator=$FALLBACK" >> "$GITHUB_OUTPUT"
         echo "Using fallback simulator: $FALLBACK"
-
-    - name: Build
-      run: |
-        set -o pipefail
-        xcodebuild build \
-          -scheme UnaMentis \
-          -destination 'platform=iOS Simulator,name=${{ steps.sim.outputs.simulator }}' \
-          -skipPackagePluginValidation \
-          CODE_SIGNING_ALLOWED=NO \
-          | xcbeautify --renderer github-actions
 
     - name: Run Integration Tests
       run: |
