@@ -42,7 +42,10 @@ final class KBTransformerTests: XCTestCase {
         let result = transformer.transform(canonical)
 
         XCTAssertNotNil(result)
-        XCTAssertEqual(result?.text, "Medium form question text")
+        // The transformer runs text through TextCleaner.cleanQuizBowlText, which
+        // ensures a terminal sentence ending. The medium form lacks punctuation,
+        // so a period is appended. Assert the exact cleaned output.
+        XCTAssertEqual(result?.text, "Medium form question text.")
     }
 
     func testTransform_canonicalQuestion_fallsBackToShortForm() {
@@ -54,7 +57,9 @@ final class KBTransformerTests: XCTestCase {
         let result = transformer.transform(canonical)
 
         XCTAssertNotNil(result)
-        XCTAssertEqual(result?.text, "Short form question")
+        // Same cleaning contract as the medium-form path: the short form lacks
+        // terminal punctuation, so cleanQuizBowlText appends a period.
+        XCTAssertEqual(result?.text, "Short form question.")
     }
 
     func testTransform_canonicalQuestion_mapsDomain() {
@@ -67,6 +72,10 @@ final class KBTransformerTests: XCTestCase {
     }
 
     func testTransform_canonicalQuestion_mapsAllDomains() {
+        // Every PrimaryDomain must map to its same-named KBDomain. Asserting only
+        // non-nil would let a broken mapping (wrong domain, or all collapsing to
+        // one value) pass. The KBDomain and PrimaryDomain enums share raw values
+        // 1:1, so comparing rawValue proves the correct per-domain mapping.
         let domains: [PrimaryDomain] = [
             .science, .mathematics, .literature, .history,
             .socialStudies, .arts, .currentEvents, .language,
@@ -77,7 +86,11 @@ final class KBTransformerTests: XCTestCase {
             let canonical = makeCanonicalQuestion(domain: domain)
             let result = transformer.transform(canonical)
 
-            XCTAssertNotNil(result, "Should transform domain \(domain)")
+            XCTAssertEqual(
+                result?.domain.rawValue,
+                domain.rawValue,
+                "PrimaryDomain \(domain.rawValue) should map to the same-named KBDomain"
+            )
         }
     }
 
@@ -195,22 +208,32 @@ final class KBTransformerTests: XCTestCase {
     }
 
     func testQualityScore_formulaQuestion_lowerScore() {
-        let canonical = makeCanonicalQuestion(hasFormula: true)
+        // The only difference between the two inputs is hasFormula. A formula
+        // question forfeits the +0.1 "voice-friendly" bonus, so it must score
+        // strictly lower than its formula-free counterpart by exactly that amount.
+        // A bare "< 0.9" upper bound would pass even if the penalty were removed.
+        let formulaQuestion = makeCanonicalQuestion(hasFormula: true)
+        let plainQuestion = makeCanonicalQuestion(hasFormula: false)
 
-        let score = transformer.qualityScore(canonical)
+        let formulaScore = transformer.qualityScore(formulaQuestion)
+        let plainScore = transformer.qualityScore(plainQuestion)
 
-        XCTAssertLessThan(score, 0.9)
+        XCTAssertLessThan(formulaScore, plainScore)
+        XCTAssertEqual(plainScore - formulaScore, 0.1, accuracy: 0.0001)
     }
 
     func testQualityScore_commonKBDomain_bonusScore() {
+        // History is in the KB-common domain set (+0.05); technology is not.
+        // The two inputs are otherwise identical, so the common domain must score
+        // strictly higher. ">=" would pass even if the domain bonus were dropped.
         let historyQuestion = makeCanonicalQuestion(domain: .history)
         let techQuestion = makeCanonicalQuestion(domain: .technology)
 
         let historyScore = transformer.qualityScore(historyQuestion)
         let techScore = transformer.qualityScore(techQuestion)
 
-        // History is more common in KB, should have slightly higher score
-        XCTAssertGreaterThanOrEqual(historyScore, techScore)
+        XCTAssertGreaterThan(historyScore, techScore)
+        XCTAssertEqual(historyScore - techScore, 0.05, accuracy: 0.0001)
     }
 
     // MARK: - Batch Transformation Tests

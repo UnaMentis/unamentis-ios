@@ -14,12 +14,15 @@ final class KBOnDeviceTTSTests: XCTestCase {
 
     // MARK: - Initialization Tests
 
-    func testInit_startsWithDefaultState() {
+    func testInit_startsWithDefaultState() async {
         let tts = KBOnDeviceTTS()
 
-        XCTAssertFalse(tts.isSpeaking)
-        XCTAssertFalse(tts.isPaused)
-        XCTAssertEqual(tts.progress, 0)
+        let speaking = await tts.isSpeaking
+        let paused = await tts.isPaused
+        let progress = await tts.progress
+        XCTAssertFalse(speaking)
+        XCTAssertFalse(paused)
+        XCTAssertEqual(progress, 0)
     }
 
     // MARK: - VoiceConfig Tests
@@ -63,56 +66,41 @@ final class KBOnDeviceTTSTests: XCTestCase {
         XCTAssertLessThan(question, fast)
     }
 
-    func testVoiceConfig_isSendable() {
-        let config = KBOnDeviceTTS.VoiceConfig.questionPace
-
-        // Verify Sendable conformance by using in concurrent context
-        Task.detached {
-            _ = config.rate
-        }
-    }
-
     // MARK: - Stop Tests
 
-    func testStop_whenNotSpeaking_doesNotCrash() {
+    func testStop_resetsState() async {
         let tts = KBOnDeviceTTS()
 
-        // Should handle gracefully when not speaking
-        tts.stop()
+        await tts.stop()
 
-        XCTAssertFalse(tts.isSpeaking)
-        XCTAssertFalse(tts.isPaused)
-        XCTAssertEqual(tts.progress, 0)
-    }
-
-    func testStop_resetsState() {
-        let tts = KBOnDeviceTTS()
-
-        tts.stop()
-
-        XCTAssertFalse(tts.isSpeaking)
-        XCTAssertFalse(tts.isPaused)
-        XCTAssertEqual(tts.progress, 0)
+        let speaking = await tts.isSpeaking
+        let paused = await tts.isPaused
+        let progress = await tts.progress
+        XCTAssertFalse(speaking)
+        XCTAssertFalse(paused)
+        XCTAssertEqual(progress, 0)
     }
 
     // MARK: - Pause/Resume Tests
 
-    func testPause_whenNotSpeaking_doesNothing() {
+    func testPause_whenNotSpeaking_doesNothing() async {
         let tts = KBOnDeviceTTS()
 
-        tts.pause()
+        await tts.pause()
 
         // Should not change to paused if not speaking
-        XCTAssertFalse(tts.isPaused)
+        let paused = await tts.isPaused
+        XCTAssertFalse(paused)
     }
 
-    func testResume_whenNotPaused_doesNothing() {
+    func testResume_whenNotPaused_doesNothing() async {
         let tts = KBOnDeviceTTS()
 
-        tts.resume()
+        await tts.resume()
 
         // Should be safe to call when not paused
-        XCTAssertFalse(tts.isPaused)
+        let paused = await tts.isPaused
+        XCTAssertFalse(paused)
     }
 
     // MARK: - Available Voices Tests
@@ -133,14 +121,28 @@ final class KBOnDeviceTTSTests: XCTestCase {
         let voices = KBOnDeviceTTS.availableVoices()
 
         XCTAssertGreaterThan(voices.count, 0)
+        // The default language is en-US, so every returned voice must be English.
+        for voice in voices {
+            XCTAssertTrue(voice.language.hasPrefix("en"))
+        }
     }
 
-    func testAvailableVoices_forUnsupportedLanguage_mayReturnEmpty() {
-        // Using an obscure language code that might not have voices
+    func testAvailableVoices_filtersStrictlyByLanguagePrefix() {
+        // The real contract is the two-letter prefix filter, not "does not crash".
+        // An obscure code yields only voices whose language starts with that prefix
+        // (typically none on a normal device, but the invariant must always hold).
         let voices = KBOnDeviceTTS.availableVoices(for: "zz-ZZ")
 
-        // Should not crash, may return empty
-        _ = voices
+        for voice in voices {
+            XCTAssertTrue(voice.language.hasPrefix("zz"))
+        }
+
+        // Spanish voices ship on iOS; assert the filter does not leak other languages.
+        let spanish = KBOnDeviceTTS.availableVoices(for: "es-ES")
+        for voice in spanish {
+            XCTAssertTrue(voice.language.hasPrefix("es"))
+            XCTAssertFalse(voice.language.hasPrefix("en"))
+        }
     }
 
     func testBestVoice_returnsVoiceForLanguage() {
@@ -155,53 +157,66 @@ final class KBOnDeviceTTSTests: XCTestCase {
         let voice = KBOnDeviceTTS.bestVoice()
 
         XCTAssertNotNil(voice)
+        XCTAssertTrue(voice?.language.hasPrefix("en") ?? false)
     }
 
-    func testBestVoice_prefersEnhancedQuality() {
-        let voice = KBOnDeviceTTS.bestVoice(for: "en-US")
+    func testBestVoice_prefersEnhancedWhenAvailable() {
+        // The selection contract: if any enhanced-quality voice exists for the
+        // language, bestVoice MUST return an enhanced one. Assert the real branch
+        // taken instead of merely checking for non-nil.
+        let available = KBOnDeviceTTS.availableVoices(for: "en-US")
+        let hasEnhanced = available.contains { $0.quality == .enhanced }
 
-        // If enhanced is available, it should be selected
-        // We can't guarantee enhanced is available, but verify we get a voice
+        let voice = KBOnDeviceTTS.bestVoice(for: "en-US")
         XCTAssertNotNil(voice)
+
+        if hasEnhanced {
+            XCTAssertEqual(voice?.quality, .enhanced)
+        }
     }
 
     // MARK: - Preview Support Tests
 
     #if DEBUG
-    func testPreview_createsValidInstance() {
+    func testPreview_createsValidInstance() async {
         let tts = KBOnDeviceTTS.preview()
 
-        XCTAssertNotNil(tts)
-        XCTAssertFalse(tts.isSpeaking)
+        let speaking = await tts.isSpeaking
+        XCTAssertFalse(speaking)
     }
     #endif
 
     // MARK: - State Consistency Tests
 
-    func testState_afterMultipleStopCalls_remainsConsistent() {
+    func testState_afterMultipleStopCalls_remainsConsistent() async {
         let tts = KBOnDeviceTTS()
 
         // Multiple stops should be safe
-        tts.stop()
-        tts.stop()
-        tts.stop()
+        await tts.stop()
+        await tts.stop()
+        await tts.stop()
 
-        XCTAssertFalse(tts.isSpeaking)
-        XCTAssertFalse(tts.isPaused)
-        XCTAssertEqual(tts.progress, 0)
+        let speaking = await tts.isSpeaking
+        let paused = await tts.isPaused
+        let progress = await tts.progress
+        XCTAssertFalse(speaking)
+        XCTAssertFalse(paused)
+        XCTAssertEqual(progress, 0)
     }
 
-    func testState_pauseResumeSequence_whenNotSpeaking() {
+    func testState_pauseResumeSequence_whenNotSpeaking() async {
         let tts = KBOnDeviceTTS()
 
         // These should all be no-ops when not speaking
-        tts.pause()
-        tts.resume()
-        tts.pause()
-        tts.resume()
+        await tts.pause()
+        await tts.resume()
+        await tts.pause()
+        await tts.resume()
 
-        XCTAssertFalse(tts.isSpeaking)
-        XCTAssertFalse(tts.isPaused)
+        let speaking = await tts.isSpeaking
+        let paused = await tts.isPaused
+        XCTAssertFalse(speaking)
+        XCTAssertFalse(paused)
     }
 
     // MARK: - Configuration Tests

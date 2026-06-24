@@ -36,10 +36,14 @@ final class KBRegionalConfigTests: XCTestCase {
         XCTAssertEqual(KBRegion.washington.abbreviation, "WA")
     }
 
-    func testRegion_id_matchesRawValue() {
-        for region in KBRegion.allCases {
-            XCTAssertEqual(region.id, region.rawValue)
-        }
+    func testRegion_id_returnsStableRawValueString() {
+        // The Identifiable id is the stable string used for SwiftUI list identity
+        // and persistence. Assert the concrete values, not a tautology against
+        // rawValue, so a renamed case is caught here.
+        XCTAssertEqual(KBRegion.colorado.id, "colorado")
+        XCTAssertEqual(KBRegion.coloradoSprings.id, "coloradoSprings")
+        XCTAssertEqual(KBRegion.minnesota.id, "minnesota")
+        XCTAssertEqual(KBRegion.washington.id, "washington")
     }
 
     func testRegion_config_returnsCorrectConfiguration() {
@@ -50,16 +54,23 @@ final class KBRegionalConfigTests: XCTestCase {
         XCTAssertEqual(minnesotaConfig.region, .minnesota)
     }
 
-    func testRegion_codable_encodesAndDecodes() throws {
-        let region = KBRegion.colorado
+    func testRegion_codable_usesRawValueWireFormat() throws {
+        // KBRegion is persisted (session configs, saved practice). The on-disk
+        // wire format must stay the rawValue string so old saves keep decoding.
+        // A round-trip alone only re-tests synthesized Codable; assert the
+        // concrete encoded bytes so a custom CodingKeys change is caught.
+        let region = KBRegion.coloradoSprings
 
-        let encoder = JSONEncoder()
-        let data = try encoder.encode(region)
+        let data = try JSONEncoder().encode(region)
+        let json = try XCTUnwrap(String(bytes: data, encoding: .utf8))
+        XCTAssertEqual(json, "\"coloradoSprings\"")
 
-        let decoder = JSONDecoder()
-        let decoded = try decoder.decode(KBRegion.self, from: data)
-
+        let decoded = try JSONDecoder().decode(KBRegion.self, from: data)
         XCTAssertEqual(decoded, region)
+
+        // Decoding from a hand-written legacy string must still work.
+        let legacy = Data("\"minnesota\"".utf8)
+        XCTAssertEqual(try JSONDecoder().decode(KBRegion.self, from: legacy), .minnesota)
     }
 
     // MARK: - Colorado Configuration Tests
@@ -231,9 +242,17 @@ final class KBRegionalConfigTests: XCTestCase {
 
         let differences = colorado.keyDifferences(from: minnesota)
 
-        XCTAssertTrue(differences.contains { $0.contains("Conferring") })
-        XCTAssertTrue(differences.contains { $0.contains("Written points") })
-        XCTAssertTrue(differences.contains { $0.contains("SOS") })
+        // Assert the exact phrasing produced, since these strings drive the
+        // user-facing rule comparison table. Loose substring checks would pass
+        // even if the wording or the self/other ordering regressed.
+        XCTAssertTrue(differences.contains("Conferring: no verbal vs verbal allowed"))
+        XCTAssertTrue(differences.contains("Written points: 1 vs 2 per question"))
+        XCTAssertTrue(differences.contains("SOS: no SOS vs has SOS bonus"))
+
+        // Colorado and Minnesota share question count and written time, so
+        // those lines must NOT appear.
+        XCTAssertFalse(differences.contains { $0.hasPrefix("Written:") })
+        XCTAssertFalse(differences.contains { $0.hasPrefix("Written time:") })
     }
 
     func testKeyDifferences_coloradoVsWashington_identifiesTimeAndCount() {
@@ -242,8 +261,10 @@ final class KBRegionalConfigTests: XCTestCase {
 
         let differences = colorado.keyDifferences(from: washington)
 
-        XCTAssertTrue(differences.contains { $0.contains("Written:") && $0.contains("questions") })
-        XCTAssertTrue(differences.contains { $0.contains("Written time") })
+        // Colorado: 60 questions / 15 min written. Washington: 50 / 45 min.
+        // Assert the exact comparison strings the rule table renders.
+        XCTAssertTrue(differences.contains("Written: 60 vs 50 questions"))
+        XCTAssertTrue(differences.contains("Written time: 15 min vs 45 min"))
     }
 
     func testKeyDifferences_sameRegion_returnsEmpty() {
@@ -256,18 +277,41 @@ final class KBRegionalConfigTests: XCTestCase {
 
     // MARK: - Equatable Tests
 
-    func testEquatable_sameConfigs_areEqual() {
-        let config1 = KBRegionalConfig.forRegion(.colorado)
-        let config2 = KBRegionalConfig.forRegion(.colorado)
+    func testEquatable_isSensitiveToASingleFieldChange() throws {
+        // The synthesized Equatable must compare every stored field. Colorado vs
+        // Minnesota differ in many fields, which would still pass even if some
+        // fields were excluded from the comparison. To prove field sensitivity,
+        // round-trip Colorado, flip exactly one field via JSON, and require the
+        // result to be unequal to the original.
+        let colorado = KBRegionalConfig.forRegion(.colorado)
+        XCTAssertFalse(colorado.verbalConferringAllowed)
 
-        XCTAssertEqual(config1, config2)
+        var dict = try jsonObject(from: colorado)
+        dict["verbalConferringAllowed"] = true
+        let mutated = try decodeConfig(from: dict)
+
+        XCTAssertNotEqual(
+            colorado,
+            mutated,
+            "Equatable must detect a change in verbalConferringAllowed"
+        )
+        XCTAssertTrue(mutated.verbalConferringAllowed)
+        // Every other field must be untouched, so the description should now
+        // read as a verbal-allowed region despite being built from Colorado.
+        XCTAssertEqual(mutated.conferringRuleDescription, "Verbal discussion allowed")
     }
 
-    func testEquatable_differentConfigs_areNotEqual() {
-        let colorado = KBRegionalConfig.forRegion(.colorado)
-        let minnesota = KBRegionalConfig.forRegion(.minnesota)
+    // MARK: - JSON Mutation Helpers
 
-        XCTAssertNotEqual(colorado, minnesota)
+    private func jsonObject(from config: KBRegionalConfig) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(config)
+        let object = try JSONSerialization.jsonObject(with: data)
+        return try XCTUnwrap(object as? [String: Any])
+    }
+
+    private func decodeConfig(from dict: [String: Any]) throws -> KBRegionalConfig {
+        let data = try JSONSerialization.data(withJSONObject: dict)
+        return try JSONDecoder().decode(KBRegionalConfig.self, from: data)
     }
 
     // MARK: - Codable Tests

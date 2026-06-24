@@ -255,36 +255,26 @@ final class KBNGramMatcherTests: XCTestCase {
     // MARK: - Case Sensitivity
 
     func testCaseInsensitive_Uppercase() {
-        let score1 = matcher.nGramScore("HELLO", "HELLO")
-        let score2 = matcher.nGramScore("hello", "hello")
-        XCTAssertEqual(score1, score2, accuracy: 0.01)
+        // Two strings that differ only in case must fold to an exact match (1.0).
+        // Comparing differing-case inputs exercises the lowercasing path; comparing
+        // two identical strings would short-circuit on the exact-match guard and prove nothing.
+        let score = matcher.nGramScore("HELLO", "hello")
+        XCTAssertEqual(score, 1.0, accuracy: 0.01)
     }
 
     func testCaseInsensitive_MixedCase() {
-        let score1 = matcher.nGramScore("HeLLo WoRLd", "hello world")
-        let score2 = matcher.nGramScore("hello world", "hello world")
-        XCTAssertEqual(score1, score2, accuracy: 0.01)
+        // Mixed-case multi-word input must fold to an exact match against its lowercase form.
+        let score = matcher.nGramScore("HeLLo WoRLd", "hello world")
+        XCTAssertEqual(score, 1.0, accuracy: 0.01)
     }
 
-    // MARK: - Performance Tests
+    // MARK: - Symmetry
 
-    func testPerformance_ShortString() {
-        measure {
-            _ = matcher.nGramScore("hello", "hallo")
-        }
-    }
-
-    func testPerformance_MediumString() {
-        measure {
-            _ = matcher.nGramScore("mississippi river", "missisipi river")
-        }
-    }
-
-    func testPerformance_LongString() {
-        let long1 = "The quick brown fox jumps over the lazy dog"
-        let long2 = "The quik brown fox jumps over the lasy dog"
-        measure {
-            _ = matcher.nGramScore(long1, long2)
-        }
+    func testSymmetry_OrderIndependent() {
+        // nGramScore is built on Dice coefficients, which are symmetric.
+        // Swapping the argument order must not change the score.
+        let forward = matcher.nGramScore("mississippi", "missisipi")
+        let reverse = matcher.nGramScore("missisipi", "mississippi")
+        XCTAssertEqual(forward, reverse, accuracy: 0.0001)
     }
 }

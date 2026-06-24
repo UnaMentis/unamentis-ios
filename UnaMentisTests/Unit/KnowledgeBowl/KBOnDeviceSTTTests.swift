@@ -2,191 +2,121 @@
 //  KBOnDeviceSTTTests.swift
 //  UnaMentisTests
 //
-//  Tests for KBOnDeviceSTT speech recognition service
+//  Tests for KBOnDeviceSTT, the on-device STT adapter that drives the shared
+//  AppleSpeechSTTService from the unified AudioEngine.
+//
+//  NOTE: The legacy KBOnDeviceSTT was a @MainActor ObservableObject exposing
+//  isListening/transcript/isFinal/error/authorizationStatus, a stopListening()
+//  method, and a dedicated KBSTTError enum. That observable design was removed
+//  when the type became a public actor conforming to STTService (the streaming
+//  provider abstraction). Tests covering the removed surface were dropped; the
+//  tests below target the current actor API and its real contracts.
 //
 
+import AVFoundation
 import Speech
 import XCTest
 @testable import UnaMentis
 
-@MainActor
 final class KBOnDeviceSTTTests: XCTestCase {
-
-    // MARK: - Initialization Tests
-
-    func testInit_startsWithDefaultState() {
-        let stt = KBOnDeviceSTT()
-
-        XCTAssertFalse(stt.isListening)
-        XCTAssertEqual(stt.transcript, "")
-        XCTAssertFalse(stt.isFinal)
-        XCTAssertNil(stt.error)
-    }
-
-    func testInit_authorizationStatusStartsNotDetermined() {
-        let stt = KBOnDeviceSTT()
-
-        // May be .authorized if previously granted, or .notDetermined on fresh install
-        // Just verify it's one of the valid states
-        let validStatuses: [SFSpeechRecognizerAuthorizationStatus] = [
-            .notDetermined, .authorized, .denied, .restricted
-        ]
-        XCTAssertTrue(validStatuses.contains(stt.authorizationStatus))
-    }
 
     // MARK: - Availability Tests
 
-    func testIsAvailable_returnsRecognizerAvailability() {
+    /// KBOnDeviceSTT.isAvailable is documented to delegate to the shared
+    /// AppleSpeechSTTService. Assert the delegation contract rather than a
+    /// device-dependent absolute value, so the test is deterministic on any
+    /// simulator while still protecting the wiring.
+    func testIsAvailable_delegatesToAppleSpeechService() {
+        XCTAssertEqual(KBOnDeviceSTT.isAvailable, AppleSpeechSTTService.isAvailable)
+    }
+
+    // MARK: - Authorization Tests
+    //
+    // Note: A test that called KBOnDeviceSTT.requestAuthorization() was removed.
+    // SFSpeechRecognizer.requestAuthorization presents a system permission dialog
+    // on first use; in a headless simulator run no one dismisses it, so the
+    // continuation never resumes and the test hangs to its full time allowance.
+    // The assertion it carried ("result is one of the four enum cases") was also
+    // a tautology over the status type rather than a real contract. The delegation
+    // wiring is still protected by testIsAvailable_delegatesToAppleSpeechService.
+
+    // MARK: - Initial State Tests
+
+    /// A freshly constructed adapter must not be streaming and must report the
+    /// on-device (free) cost. These are concrete STTService contract values.
+    func testInit_startsIdleAndFree() async {
         let stt = KBOnDeviceSTT()
 
-        // This should return true if speech recognition is available on the test device/simulator
-        // It's a wrapper around SFSpeechRecognizer.isAvailable
-        // We can't guarantee the value, just that it doesn't crash
-        _ = stt.isAvailable
+        let isStreaming = await stt.isStreaming
+        let cost = await stt.costPerHour
+
+        XCTAssertFalse(isStreaming)
+        XCTAssertEqual(cost, Decimal(0))
     }
 
-    func testSupportsOnDevice_returnsOnDeviceCapability() {
+    // MARK: - Streaming Guard Tests
+
+    /// sendAudio before startStreaming must surface STTError.notStreaming.
+    /// This protects the provider abstraction's precondition, a real failure
+    /// path that callers depend on.
+    func testSendAudio_whenNotStreaming_throwsNotStreaming() async throws {
         let stt = KBOnDeviceSTT()
 
-        // This should return whether on-device recognition is supported
-        // On iOS 13+ this is typically true for en-US locale
-        _ = stt.supportsOnDevice
-    }
+        let format = try XCTUnwrap(
+            AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)
+        )
+        let buffer = try XCTUnwrap(
+            AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 256)
+        )
+        buffer.frameLength = 256
 
-    // MARK: - Stop Listening Tests
-
-    func testStopListening_whenNotListening_doesNotCrash() {
-        let stt = KBOnDeviceSTT()
-
-        // Should handle gracefully when not listening
-        stt.stopListening()
-
-        XCTAssertFalse(stt.isListening)
-    }
-
-    func testStopListening_setsIsListeningFalse() {
-        let stt = KBOnDeviceSTT()
-
-        // Ensure state is correct after stop
-        stt.stopListening()
-
-        XCTAssertFalse(stt.isListening)
-    }
-
-    // MARK: - KBSTTError Tests
-
-    func testKBSTTError_authorizationDenied_hasDescription() {
-        let error = KBSTTError.authorizationDenied
-
-        XCTAssertNotNil(error.errorDescription)
-        XCTAssertTrue(error.errorDescription!.contains("denied"))
-    }
-
-    func testKBSTTError_microphoneAccessDenied_hasDescription() {
-        let error = KBSTTError.microphoneAccessDenied
-
-        XCTAssertNotNil(error.errorDescription)
-        XCTAssertTrue(error.errorDescription!.contains("Microphone"))
-    }
-
-    func testKBSTTError_restricted_hasDescription() {
-        let error = KBSTTError.restricted
-
-        XCTAssertNotNil(error.errorDescription)
-        XCTAssertTrue(error.errorDescription!.contains("restricted"))
-    }
-
-    func testKBSTTError_recognizerUnavailable_hasDescription() {
-        let error = KBSTTError.recognizerUnavailable
-
-        XCTAssertNotNil(error.errorDescription)
-        XCTAssertTrue(error.errorDescription!.contains("not available"))
-    }
-
-    func testKBSTTError_recognitionRequestFailed_hasDescription() {
-        let error = KBSTTError.recognitionRequestFailed
-
-        XCTAssertNotNil(error.errorDescription)
-        XCTAssertTrue(error.errorDescription!.contains("request"))
-    }
-
-    func testKBSTTError_recognitionFailed_includesMessage() {
-        let message = "Custom error message"
-        let error = KBSTTError.recognitionFailed(message)
-
-        XCTAssertNotNil(error.errorDescription)
-        XCTAssertTrue(error.errorDescription!.contains(message))
-    }
-
-    func testKBSTTError_isSendable() {
-        // Verify Sendable conformance by using in concurrent context
-        let error = KBSTTError.authorizationDenied
-
-        Task.detached {
-            _ = error.errorDescription
+        do {
+            try await stt.sendAudio(buffer)
+            XCTFail("Expected STTError.notStreaming when not streaming")
+        } catch let error as STTError {
+            guard case .notStreaming = error else {
+                return XCTFail("Expected .notStreaming, got \(error)")
+            }
         }
     }
 
-    func testKBSTTError_allCases_haveDescriptions() {
-        let errors: [KBSTTError] = [
-            .authorizationDenied,
-            .microphoneAccessDenied,
-            .restricted,
-            .recognizerUnavailable,
-            .recognitionRequestFailed,
-            .recognitionFailed("test")
-        ]
+    /// stopStreaming while idle is a documented no-op: it must not throw and
+    /// must leave the adapter not streaming.
+    func testStopStreaming_whenNotStreaming_isSafeNoOp() async throws {
+        let stt = KBOnDeviceSTT()
 
-        for error in errors {
-            XCTAssertNotNil(error.errorDescription, "Error \(error) should have a description")
-            XCTAssertFalse(error.errorDescription!.isEmpty, "Error description should not be empty")
-        }
+        try await stt.stopStreaming()
+
+        let isStreaming = await stt.isStreaming
+        XCTAssertFalse(isStreaming)
+    }
+
+    /// cancelStreaming while idle must not throw and must leave the adapter
+    /// not streaming. Repeated cancels must remain consistent.
+    func testCancelStreaming_whenIdle_remainsConsistent() async {
+        let stt = KBOnDeviceSTT()
+
+        await stt.cancelStreaming()
+        await stt.cancelStreaming()
+
+        let isStreaming = await stt.isStreaming
+        XCTAssertFalse(isStreaming)
     }
 
     // MARK: - Preview Support Tests
 
     #if DEBUG
-    func testPreview_createsValidInstance() {
+    /// preview() must return an instance that honors the full initial STTService
+    /// contract, not streaming and reporting the on-device (free) cost, so the
+    /// preview factory cannot silently drift from a real init.
+    func testPreview_createsIdleInstance() async {
         let stt = KBOnDeviceSTT.preview()
 
-        XCTAssertNotNil(stt)
-        XCTAssertFalse(stt.isListening)
+        let isStreaming = await stt.isStreaming
+        let cost = await stt.costPerHour
+
+        XCTAssertFalse(isStreaming)
+        XCTAssertEqual(cost, Decimal(0))
     }
     #endif
-
-    // MARK: - State Consistency Tests
-
-    func testState_afterMultipleStopCalls_remainsConsistent() {
-        let stt = KBOnDeviceSTT()
-
-        // Multiple stops should be safe
-        stt.stopListening()
-        stt.stopListening()
-        stt.stopListening()
-
-        XCTAssertFalse(stt.isListening)
-        XCTAssertEqual(stt.transcript, "")
-    }
-
-    // MARK: - Authorization Status Tests
-
-    func testAuthorizationStatus_matchesSystemStatus() {
-        // Get the system's current authorization status
-        let systemStatus = SFSpeechRecognizer.authorizationStatus()
-
-        let stt = KBOnDeviceSTT()
-
-        // The STT instance should reflect the system status (or .notDetermined if never requested)
-        // Since we can't know the exact state, just verify it's a valid status
-        let validStatuses: [SFSpeechRecognizerAuthorizationStatus] = [
-            .notDetermined, .authorized, .denied, .restricted
-        ]
-        XCTAssertTrue(validStatuses.contains(stt.authorizationStatus))
-
-        // If system is authorized, STT should also be authorized after checking
-        if systemStatus == .authorized {
-            // The authorization status might be updated during init
-            _ = stt.authorizationStatus
-        }
-    }
 }

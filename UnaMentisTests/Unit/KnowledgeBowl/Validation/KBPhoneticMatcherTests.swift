@@ -55,14 +55,19 @@ final class KBPhoneticMatcherTests: XCTestCase {
         XCTAssertTrue(matcher.arePhoneticMatch("Jeffrey", "Geoffrey"))
     }
 
-    func testPersonName_KristenKristen() {
-        // Exact match (should always work)
-        XCTAssertTrue(matcher.arePhoneticMatch("Kristen", "Kristen"))
+    func testPersonName_KristenCode() {
+        // Pin the actual encoding. Kristen collapses to KRST, which (after 4-char
+        // truncation) is the same code Christopher/Kristopher produce, so a
+        // self-match is guaranteed and uninteresting. The code value is the real
+        // contract worth protecting.
+        XCTAssertEqual(matcher.metaphone("Kristen").primary, "KRST")
     }
 
-    func testPersonName_MichaelMichael() {
-        // Exact match
-        XCTAssertTrue(matcher.arePhoneticMatch("Michael", "Michael"))
+    func testPersonName_MichaelCode() {
+        // CH after a vowel mid-word yields X (church sound) primary with K secondary.
+        let michael = matcher.metaphone("Michael")
+        XCTAssertEqual(michael.primary, "MXL")
+        XCTAssertEqual(michael.secondary, "MKL")
     }
 
     func testPersonName_ChristopherKristopher() {
@@ -70,9 +75,9 @@ final class KBPhoneticMatcherTests: XCTestCase {
         XCTAssertTrue(matcher.arePhoneticMatch("Christopher", "Kristopher"))
     }
 
-    func testPersonName_JenniferJennifer() {
-        // Exact match
-        XCTAssertTrue(matcher.arePhoneticMatch("Jennifer", "Jennifer"))
+    func testPersonName_JenniferCode() {
+        // Initial J at word start keeps J in both codes; NN collapses to a single N.
+        XCTAssertEqual(matcher.metaphone("Jennifer").primary, "JNFR")
     }
 
     // MARK: - Place Names
@@ -98,13 +103,14 @@ final class KBPhoneticMatcherTests: XCTestCase {
     }
 
     func testPlaceName_ConnecticutConneticut() {
-        // Double Metaphone may not match these exactly as the phonetic codes differ
-        // The n-gram matcher handles this spelling variation instead
-        let codes1 = matcher.metaphone("Connecticut")
-        let codes2 = matcher.metaphone("Conneticut")
-        // Both should have valid codes, even if they don't match perfectly
-        XCTAssertFalse(codes1.primary.isEmpty)
-        XCTAssertFalse(codes2.primary.isEmpty)
+        // The silent double-C vs single-C produces distinct codes (KNKT vs KNTK),
+        // so Double Metaphone does NOT treat this spelling variation as a match.
+        // The n-gram matcher is responsible for catching it instead. This test
+        // pins the actual codes and the resulting non-match so a regression in the
+        // C/CC handling is caught.
+        XCTAssertEqual(matcher.metaphone("Connecticut").primary, "KNKT")
+        XCTAssertEqual(matcher.metaphone("Conneticut").primary, "KNTK")
+        XCTAssertFalse(matcher.arePhoneticMatch("Connecticut", "Conneticut"))
     }
 
     func testPlaceName_AlbuquerqueAlbequerque() {
@@ -112,9 +118,9 @@ final class KBPhoneticMatcherTests: XCTestCase {
         XCTAssertTrue(matcher.arePhoneticMatch("Albuquerque", "Albequerque"))
     }
 
-    func testPlaceName_SacramentoSacramento() {
-        // Exact match
-        XCTAssertTrue(matcher.arePhoneticMatch("Sacramento", "Sacramento"))
+    func testPlaceName_SacramentoCode() {
+        // C before R encodes as K; truncated to 4 chars this is SKRM.
+        XCTAssertEqual(matcher.metaphone("Sacramento").primary, "SKRM")
     }
 
     func testPlaceName_ChicagoChikago() {
@@ -123,21 +129,26 @@ final class KBPhoneticMatcherTests: XCTestCase {
     }
 
     func testPlaceName_TucsonTuson() {
-        // Silent C - phonetic codes may differ due to C->K vs nothing
-        // This is better handled by n-gram or token matching
-        let codes1 = matcher.metaphone("Tucson")
-        let codes2 = matcher.metaphone("Tuson")
-        XCTAssertFalse(codes1.primary.isEmpty)
-        XCTAssertFalse(codes2.primary.isEmpty)
+        // The silent C in Tucson is still encoded as K (TKSN), while Tuson drops it
+        // entirely (TSN), so Double Metaphone does NOT match this pair. This is better
+        // handled by n-gram or token matching. Pin the actual codes and the non-match.
+        XCTAssertEqual(matcher.metaphone("Tucson").primary, "TKSN")
+        XCTAssertEqual(matcher.metaphone("Tuson").primary, "TSN")
+        XCTAssertFalse(matcher.arePhoneticMatch("Tucson", "Tuson"))
     }
 
     func testPlaceName_WorcesterWooster() {
-        // Worcester has a unique pronunciation that Double Metaphone struggles with
-        // The actual pronunciation (WOOS-ter) vs spelling makes this a special case
-        let codes1 = matcher.metaphone("Worcester")
-        let codes2 = matcher.metaphone("Wooster")
-        XCTAssertFalse(codes1.primary.isEmpty)
-        XCTAssertFalse(codes2.primary.isEmpty)
+        // Worcester has a unique pronunciation (WOOS-ter) that Double Metaphone
+        // encodes from spelling, so it does NOT match the phonetic "Wooster".
+        // Initial W before a vowel yields the A (primary) / F (secondary) pair.
+        // Pin both code variants and the resulting non-match.
+        let worcester = matcher.metaphone("Worcester")
+        XCTAssertEqual(worcester.primary, "ARSS")
+        XCTAssertEqual(worcester.secondary, "FRSS")
+        let wooster = matcher.metaphone("Wooster")
+        XCTAssertEqual(wooster.primary, "ASTR")
+        XCTAssertEqual(wooster.secondary, "FSTR")
+        XCTAssertFalse(matcher.arePhoneticMatch("Worcester", "Wooster"))
     }
 
     // MARK: - Scientific Terms
@@ -148,12 +159,12 @@ final class KBPhoneticMatcherTests: XCTestCase {
     }
 
     func testScientific_ChlorophyllClorofill() {
-        // Ph/F and Ch/C variations - complex case with multiple variations
-        // CHL maps to K in Double Metaphone, but the multiple variations make exact match unlikely
-        let codes1 = matcher.metaphone("Chlorophyll")
-        let codes2 = matcher.metaphone("Clorofill")
-        XCTAssertFalse(codes1.primary.isEmpty)
-        XCTAssertFalse(codes2.primary.isEmpty)
+        // Ph/F and CHL/CL variations. CHL maps to K just like the bare C, and PH maps
+        // to F, so both spellings collapse to the same code (KLRF) and DO match. This
+        // is exactly the misspelling-tolerance the matcher exists to provide.
+        XCTAssertEqual(matcher.metaphone("Chlorophyll").primary, "KLRF")
+        XCTAssertEqual(matcher.metaphone("Clorofill").primary, "KLRF")
+        XCTAssertTrue(matcher.arePhoneticMatch("Chlorophyll", "Clorofill"))
     }
 
     func testScientific_PneumoniaNeumon() {
@@ -171,14 +182,16 @@ final class KBPhoneticMatcherTests: XCTestCase {
         XCTAssertTrue(matcher.arePhoneticMatch("Chemistry", "Kemistry"))
     }
 
-    func testScientific_GenealogyGenealogy() {
-        // Exact match
-        XCTAssertTrue(matcher.arePhoneticMatch("Genealogy", "Genealogy"))
+    func testScientific_GenealogyCode() {
+        // Initial G before E gives J (primary) / K (secondary); both variants pinned.
+        let genealogy = matcher.metaphone("Genealogy")
+        XCTAssertEqual(genealogy.primary, "JNLJ")
+        XCTAssertEqual(genealogy.secondary, "KNLK")
     }
 
-    func testScientific_BacteriaBacteria() {
-        // Exact match
-        XCTAssertTrue(matcher.arePhoneticMatch("Bacteria", "Bacteria"))
+    func testScientific_BacteriaCode() {
+        // Leading B encodes as P; C before T encodes as K, giving PKTR.
+        XCTAssertEqual(matcher.metaphone("Bacteria").primary, "PKTR")
     }
 
     func testScientific_ChromosomeKromosome() {
@@ -191,9 +204,11 @@ final class KBPhoneticMatcherTests: XCTestCase {
         XCTAssertTrue(matcher.arePhoneticMatch("Pharmacy", "Farmacy"))
     }
 
-    func testScientific_MitochondriaMitochondria() {
-        // Exact match
-        XCTAssertTrue(matcher.arePhoneticMatch("Mitochondria", "Mitochondria"))
+    func testScientific_MitochondriaCode() {
+        // CH after a vowel yields X (primary) / K (secondary), giving MTXN / MTKN.
+        let mitochondria = matcher.metaphone("Mitochondria")
+        XCTAssertEqual(mitochondria.primary, "MTXN")
+        XCTAssertEqual(mitochondria.secondary, "MTKN")
     }
 
     // MARK: - Metaphone Code Generation
@@ -287,20 +302,5 @@ final class KBPhoneticMatcherTests: XCTestCase {
 
     func testCaseInsensitive_MixedCase() {
         XCTAssertTrue(matcher.arePhoneticMatch("StEpHeN", "sTeVeN"))
-    }
-
-    // MARK: - Performance Tests
-
-    func testPerformance_SingleMatch() {
-        measure {
-            _ = matcher.arePhoneticMatch("Christopher", "Kristopher")
-        }
-    }
-
-    func testPerformance_LongString() {
-        let longString = String(repeating: "Christopher", count: 10)
-        measure {
-            _ = matcher.metaphone(longString)
-        }
     }
 }

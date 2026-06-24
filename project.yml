@@ -154,19 +154,16 @@ targets:
           - E2E  # E2E tests separate
           # Tests for excluded Modules classes
           - "Unit/KnowledgeBowl/KBStatsManagerTests.swift"
+          # KBPracticeEngine, KBStudyMode, and the Modules KBQuestion live under
+          # Modules/KnowledgeBowl/** which is excluded from the app target (the
+          # types are duplicates of Core/). They are not linked into the test
+          # target, so this test cannot compile without re-introducing the
+          # duplicate-type conflicts the exclusions exist to prevent.
           - "Unit/KnowledgeBowl/KBPracticeEngineTests.swift"
           # Tests with stale API signatures (need maintenance)
-          - "Unit/KnowledgeBowl/KBOnDeviceSTTTests.swift"
-          - "Unit/KnowledgeBowl/KBOnDeviceTTSTests.swift"
           - "Unit/KnowledgeBowl/KBQuestionTests.swift"
-          - "Unit/KnowledgeBowl/KBQuestionEngineTests.swift"
-          - "Unit/KnowledgeBowl/KBTransformerTests.swift"
           - "Unit/KnowledgeBowl/KBReboundSimulatorTests.swift"  # stale KBQuestion API
-          - "Unit/KnowledgeBowl/KBRegionalConfigTests.swift"  # stale KBQuestion/KBDifficulty API
           - "Unit/KnowledgeBowl/KBMatchEngineTests.swift"  # stale KBQuestion API, actor isolation
-          - "Unit/KnowledgeBowl/Validation/KBNGramMatcherTests.swift"  # stale pronunciation parameter
-          - "Unit/KnowledgeBowl/Validation/KBPhoneticMatcherTests.swift"  # stale pronunciation parameter
-          - "Unit/Services/GLMASRSTTServiceTests.swift"  # async API changes
           - "Integration/GLMASRIntegrationTests.swift"  # async API changes
           - "Integration/KnowledgeBowl/KBAnswerValidationIntegrationTests.swift"  # async API changes
           - "Integration/KnowledgeBowl/KBSessionIntegrationTests.swift"  # stale KBQuestion API

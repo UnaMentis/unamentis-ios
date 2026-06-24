@@ -39,9 +39,8 @@ final class GLMASRSTTServiceTests: XCTestCase {
             telemetry: telemetry
         )
 
-        XCTAssertNotNil(service)
         let streaming = await service.isStreaming
-        XCTAssertFalse(streaming)
+        XCTAssertFalse(streaming, "A freshly initialized service must not be streaming")
     }
 
     func testInit_withCustomConfiguration() async {
@@ -55,12 +54,22 @@ final class GLMASRSTTServiceTests: XCTestCase {
             reconnectDelayMs: 2000
         )
 
+        // Verify the Configuration initializer preserves the supplied values.
+        XCTAssertEqual(config.serverURL.absoluteString, "wss://custom-server.com/v1/audio/stream")
+        XCTAssertEqual(config.authToken, "test-token")
+        XCTAssertEqual(config.language, "en")
+        XCTAssertFalse(config.interimResults)
+        XCTAssertFalse(config.punctuate)
+        XCTAssertEqual(config.reconnectAttempts, 5)
+        XCTAssertEqual(config.reconnectDelayMs, 2000)
+
         let service = GLMASRSTTService(
             configuration: config,
             telemetry: telemetry
         )
 
-        XCTAssertNotNil(service)
+        let streaming = await service.isStreaming
+        XCTAssertFalse(streaming, "A freshly initialized service must not be streaming")
     }
 
     // MARK: - Cost Tests
@@ -148,51 +157,6 @@ final class GLMASRSTTServiceTests: XCTestCase {
     }
 
     // MARK: - Connection State Tests
-
-    func testStartStreaming_whenAlreadyStreaming_throws() async throws {
-        let service = GLMASRSTTService(
-            configuration: .mockLocal,
-            telemetry: telemetry
-        )
-
-        guard let format1 = AVAudioFormat(
-            standardFormatWithSampleRate: 16000,
-            channels: 1
-        ) else {
-            XCTFail("Failed to create audio format")
-            return
-        }
-
-        // Set up streaming state (mock internal state)
-        // First attempt may fail due to connection, that's expected
-        do {
-            _ = try await service.startStreaming(audioFormat: format1)
-        } catch {
-            // Ignore connection errors for this test
-        }
-
-        // Manually verify that double-start would be prevented
-        // This tests the internal guard
-        let isStreaming = await service.isStreaming
-        if isStreaming {
-            // Create new format for second attempt to avoid data race
-            guard let format2 = AVAudioFormat(
-                standardFormatWithSampleRate: 16000,
-                channels: 1
-            ) else {
-                XCTFail("Failed to create audio format")
-                return
-            }
-            do {
-                _ = try await service.startStreaming(audioFormat: format2)
-                XCTFail("Should throw when already streaming")
-            } catch STTError.alreadyStreaming {
-                // Expected
-            }
-        }
-
-        await service.cancelStreaming()
-    }
 
     func testSendAudio_whenNotStreaming_throws() async throws {
         let service = GLMASRSTTService(
@@ -399,9 +363,13 @@ final class GLMASRSTTServiceTests: XCTestCase {
 
         let metrics = await service.metrics
 
-        // Initial metrics should be reasonable defaults
-        XCTAssertGreaterThanOrEqual(metrics.medianLatency, 0)
-        XCTAssertGreaterThanOrEqual(metrics.p99Latency, 0)
+        // Before any session runs, metrics expose the documented target defaults
+        // (median 150ms, p99 350ms) and a zero word emission rate. Asserting the
+        // exact seeded values protects the contract that a fresh service reports
+        // its targets rather than arbitrary or uninitialized numbers.
+        XCTAssertEqual(metrics.medianLatency, 0.15, accuracy: 0.0001)
+        XCTAssertEqual(metrics.p99Latency, 0.35, accuracy: 0.0001)
+        XCTAssertEqual(metrics.wordEmissionRate, 0, accuracy: 0.0001)
     }
 
     // MARK: - Configuration Tests

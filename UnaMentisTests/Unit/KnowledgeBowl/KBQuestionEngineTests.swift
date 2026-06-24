@@ -13,13 +13,6 @@ final class KBQuestionEngineTests: XCTestCase {
 
     // MARK: - Test Helpers
 
-    private func makeEngine(with questions: [KBQuestion] = []) -> KBQuestionEngine {
-        let engine = KBQuestionEngine()
-        // Inject test questions using reflection or test-specific method
-        // For now, we'll test with loadQuestions(from:) using temporary files
-        return engine
-    }
-
     private func makeQuestion(
         domain: KBDomain = .science,
         difficulty: KBDifficulty = .varsity,
@@ -468,7 +461,8 @@ final class KBQuestionEngineTests: XCTestCase {
 
     func testSelectWeighted_respectsDomainWeights() async throws {
         let engine = KBQuestionEngine()
-        // Create many questions in each domain
+        // Create a deep pool in every domain (20 each) so the per-domain target
+        // computed from each domain's weight is always satisfiable.
         var questions: [KBQuestion] = []
         for domain in KBDomain.allCases {
             questions.append(contentsOf: (0..<20).map { _ in makeQuestion(domain: domain) })
@@ -479,15 +473,35 @@ final class KBQuestionEngineTests: XCTestCase {
 
         let selected = engine.selectWeighted(count: 50, respectDomainWeights: true)
 
-        // Verify selection was made
         XCTAssertEqual(selected.count, 50)
 
-        // Verify multiple domains are represented (weighted selection)
-        let domains = Set(selected.map { $0.domain })
-        XCTAssertGreaterThan(domains.count, 1)
+        // The real contract is that higher-weight domains receive proportionally
+        // more questions. With count=50 and 20 available per domain, the engine's
+        // per-domain target is Int(50 * weight): science(0.20)=10, mathematics(0.15)=7,
+        // miscellaneous(0.01)=0. The 2 leftover slots are filled randomly, so a domain
+        // count can exceed its target by at most a few, never drop below it.
+        var counts: [KBDomain: Int] = [:]
+        for question in selected {
+            counts[question.domain, default: 0] += 1
+        }
+
+        // Highest-weight domain must meet its weighted target floor.
+        XCTAssertGreaterThanOrEqual(counts[.science, default: 0], 10,
+                                    "Science (weight 0.20) should receive at least its weighted target of 10")
+        // Mid-weight domain meets its floor.
+        XCTAssertGreaterThanOrEqual(counts[.mathematics, default: 0], 7,
+                                    "Mathematics (weight 0.15) should receive at least its weighted target of 7")
+        // Weighting must produce a real gradient: the top-weight domain gets
+        // strictly more than the bottom-weight domain. science >= 10 while
+        // miscellaneous's target is 0 (it can only gain from the 2 random fill slots).
+        XCTAssertGreaterThan(counts[.science, default: 0], counts[.miscellaneous, default: 0],
+                             "Higher-weight science must receive more questions than lowest-weight miscellaneous")
+        // Ordering of weights must be reflected: science (0.20) >= mathematics (0.15) >= language (0.05).
+        XCTAssertGreaterThanOrEqual(counts[.science, default: 0], counts[.mathematics, default: 0])
+        XCTAssertGreaterThanOrEqual(counts[.mathematics, default: 0], counts[.language, default: 0])
     }
 
-    func testSelectWeighted_withoutWeights_selectsRandomly() async throws {
+    func testSelectWeighted_withoutWeights_returnsCountFromActualPool() async throws {
         let engine = KBQuestionEngine()
         let questions = (0..<20).map { _ in makeQuestion(domain: .science) }
         let url = try makeTestBundle(questions: questions)
@@ -497,5 +511,14 @@ final class KBQuestionEngineTests: XCTestCase {
         let selected = engine.selectWeighted(count: 10, respectDomainWeights: false)
 
         XCTAssertEqual(selected.count, 10)
+
+        // Unweighted selection must return distinct real questions drawn from the
+        // loaded pool, not fabricated or duplicated entries.
+        let poolIds = Set(engine.questions.map { $0.id })
+        let selectedIds = selected.map { $0.id }
+        XCTAssertTrue(selectedIds.allSatisfy { poolIds.contains($0) },
+                      "Every selected question must come from the loaded pool")
+        XCTAssertEqual(Set(selectedIds).count, selected.count,
+                       "Unweighted selection must not duplicate questions")
     }
 }
