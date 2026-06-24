@@ -1,7 +1,20 @@
 # Coverage Campaign: the official cadence
 
 **Date:** 2026-06-21
-**Goal:** Logic-layer (Core / Services / ViewModels) line coverage **>= 80%**, with REAL tests (Real Over Mock), and the suite **green in CI**. Not a checkbox 80%, a healthy 80%.
+**Goal:** Genuine quality gating of the logic layer (Core / Services / ViewModels) via REAL, meaningful tests (Real Over Mock), green in CI. The 80% line-coverage figure is the floor we must clear, but it is **secondary to the intent**.
+
+## Quality over the number (the controlling principle)
+
+Coverage is a byproduct, not the objective. The objective is sincere quality gating: catching real regressions before they ship. A test only counts if it **validates a real outcome**, exercising a meaningful function and asserting the behavior that actually matters. It is trivially possible to write a pile of tests that execute lines but verify nothing (no assertions, tautologies, asserting on mocks, re-asserting language/library behavior, or "does not crash" where the real contract is the value produced). Those are worse than no test: they inflate the number and give false confidence.
+
+Therefore, for every test written or revived in this campaign:
+- It must assert the **correct behavior/value/error**, not merely that code ran.
+- It must test a function/outcome **worth protecting**, not filler.
+- Edge cases and failure paths matter more than happy-path line hits.
+- Reviving a disabled test means making it genuinely correct again, never weakening assertions or stubbing it to pass.
+- Every wave includes an adversarial quality pass that rejects shallow/tautological tests; rejected tests are removed, not counted.
+
+If a module cannot be meaningfully tested to 80% with real assertions, we say so and fix the design or document why, rather than padding with hollow tests. A lower number of honest tests beats a higher number of hollow ones.
 
 SwiftUI View bodies are excluded from the logic-layer denominator (they are ~60% of the app's lines and are covered separately by XCUITest of critical flows, see the final phase). The 80% bar is on testable logic.
 
@@ -34,7 +47,8 @@ Keep waves digestible so a failure is contained and CI verification is quick. Ad
 | Date | Overall | Logic-only | Ratchet | Notes |
 |------|---------|------------|---------|-------|
 | 2026-06-21 (start) | 12.0% | ~28% | 10 | QA pipeline repaired; gate honest |
-| 2026-06-21 (wave 1) | 17.6% | 45% (Core 56% / Services 33%) | 10, bump to 15 after CI green | +5.6 overall / +17 logic; 36 real-test files; 5 real bugs fixed |
+| 2026-06-21 (wave 1) | 17.6% | 45% (Core 56% / Services 33%) | 10 | +5.6 overall / +17 logic; 36 real-test files; 5 real bugs fixed |
+| 2026-06-24 (CI fixed) | 17.8% (app-scoped) | - | 15 | full CI green end-to-end; coverage scoped to app target; unit run ~6-11m (was hanging) |
 
 Target: logic-only >= 80%.
 
