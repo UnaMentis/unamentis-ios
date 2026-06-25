@@ -155,24 +155,8 @@ final class SessionSentenceSegmentTests: XCTestCase {
     }
 }
 
-// MARK: - PlaybackOrchestratorConfig Tests
-
-final class PlaybackOrchestratorConfigTests: XCTestCase {
-
-    func testCustomConfig_setsAllFields() {
-        let config = PlaybackOrchestratorConfig(
-            prefetchDepth: 10,
-            interSegmentSilenceMs: 250,
-            retainBehindCount: 3,
-            bufferTimeoutSeconds: 30
-        )
-
-        XCTAssertEqual(config.prefetchDepth, 10)
-        XCTAssertEqual(config.interSegmentSilenceMs, 250)
-        XCTAssertEqual(config.retainBehindCount, 3)
-        XCTAssertEqual(config.bufferTimeoutSeconds, 30)
-    }
-}
+// PlaybackOrchestratorConfig is covered by PlaybackOrchestratorConfigTests in
+// Unit/Audio/PlaybackOrchestratorConfigTests.swift (preset values and relationships).
 
 // MARK: - PlaybackOrchestratorDelegate Default Tests
 
