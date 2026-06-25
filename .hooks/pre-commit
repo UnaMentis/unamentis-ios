@@ -128,7 +128,7 @@ if [ -n "$IOS_NON_TEST_FILES" ]; then
             # failures. Redirect to a log and check the real exit code. The
             # COVERAGE_THRESHOLD must match the CI ratchet in .github/workflows/ios.yml.
             PRECOMMIT_TEST_LOG="${TMPDIR:-/tmp}/unamentis-precommit-tests.log"
-            if ENFORCE_COVERAGE=true TEST_TYPE=unit COVERAGE_THRESHOLD=15 ./scripts/test-ci.sh > "$PRECOMMIT_TEST_LOG" 2>&1; then
+            if ENFORCE_COVERAGE=true TEST_TYPE=unit COVERAGE_THRESHOLD=18 ./scripts/test-ci.sh > "$PRECOMMIT_TEST_LOG" 2>&1; then
                 tail -6 "$PRECOMMIT_TEST_LOG"
                 echo -e "${GREEN}iOS unit tests passed and coverage gate met.${NC}"
             else

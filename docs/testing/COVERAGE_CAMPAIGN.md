@@ -51,13 +51,16 @@ Keep waves digestible so a failure is contained and CI verification is quick. Ad
 | 2026-06-24 (CI fixed) | 17.8% (app-scoped) | - | 15 | full CI green end-to-end; coverage scoped to app target; unit run ~6-11m (was hanging) |
 | 2026-06-24 (wave 2) | 19.4% | - | 15 | 228 disabled KB/STT tests revived, quality-gated; 19 hollow dropped |
 | 2026-06-25 (wave 3) | 20.6% | - | 15 | ~280 new tests: TTS/STT/ViewModels/Core remainder; quality-gated (2 weak tests strengthened) |
+| 2026-06-25 (wave 4) | 20.8% | - | 18 | Voice pipeline + context: SileroVADService 65.8% (fallback path; CoreML inference unreachable without bundled model), VADService types 91.9%, AudioSegmentCache 95.6%, ConfidenceMonitor 98.9%, BufferModels 97.8%. ~97 real tests; adversarial pass deleted 8 hollow/duplicate, strengthened 17, added 4 boundary tests |
 
-Target: logic-only >= 80%.
+Target: logic-only >= 80%. (Denominator is the whole UnaMentis.app target, 114,732 executable lines including SwiftUI View bodies, so a fully-covered module moves the headline only a few tenths. Per-file coverage of the critical-path modules is the real signal.)
 
 ## Wave plan (logic modules, highest ROI first)
 
 - **Wave 1 (DONE, green):** Core/Config, Core/Tools, Core/Telemetry, Core/Session, Core/Curriculum, Core/ReadingList, Core/Context, Core/Discovery; Services/KnowledgeBowl, Services/Curriculum, Services/LLM, Services/ReadingPlayback.
-- **Wave 2+:** Services/TTS and Services/STT (test request building, response parsing, cost, error mapping, routing/health, with the paid-API boundary mocked), Core/Audio remainder, Core/Persistence, the UI ViewModels (DebugConversationViewModel, ChatterboxSettingsViewModel, SessionViewModel, ReadingPlaybackViewModel, KB view models, settings view models), Intents, remaining Core/Services.
+- **Wave 2-3 (DONE, green):** Services/TTS and Services/STT (request building, response parsing, cost, error mapping, routing/health, with the paid-API boundary mocked), Core/Audio caches, Core/Persistence, the UI ViewModels (DebugConversationViewModel, ChatterboxSettingsViewModel, SessionViewModel, ReadingPlaybackViewModel, KB view models, settings view models), Intents, remaining Core/Services.
+- **Wave 4 (DONE, green):** Voice pipeline first per the MVP prioritization. Services/VAD (SileroVADService fallback path + VAD protocol value types), Core/Audio/AudioSegmentCache, Core/Context (ConfidenceMonitor uncertainty detection, BufferModels budget/buffer rendering).
+- **Wave 5+ (prioritized order):** finish the voice pipeline (Core/Audio remainder: UnifiedAnnouncer, AudioPreGenInvalidator, configs; Services/Voice: VoiceActivityFeedback, FlaggableActivity; Services/ReadingPlayback/ReadingTTSCache), then AI/models (Services/LLM on-device + remote + fallback, STT/TTS providers, Embeddings), then server comms (Core/Discovery, Core/Routing, Core/Config), then observability/stability (Core/Logging, Core/Telemetry, Core/Device), then the basics (Curriculum, ReadingList, Todo, KnowledgeBowl, etc.).
 - **Final phase (after logic >= 80%):** XCUITest for critical user flows (onboarding/consent gate, start a session, reading playback, a Knowledge Bowl round) so the UI layer has behavioral coverage without brittle View-body unit tests.
 
 Each wave updates this doc's "Starting point" numbers as the ratchet climbs.
