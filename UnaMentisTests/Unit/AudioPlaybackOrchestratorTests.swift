@@ -243,7 +243,14 @@ final class AudioPlaybackOrchestratorTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(100))
         await orch.pausePlayback()
 
-        let state = await orch.state
+        // Pause transitions asynchronously; poll briefly so the assertion is
+        // deterministic instead of racing the transition (this was intermittently
+        // flaky on CI under parallel load).
+        var state = await orch.state
+        for _ in 0 ..< 50 where state != .paused {
+            try? await Task.sleep(for: .milliseconds(20))
+            state = await orch.state
+        }
         XCTAssertEqual(state, .paused)
     }
 

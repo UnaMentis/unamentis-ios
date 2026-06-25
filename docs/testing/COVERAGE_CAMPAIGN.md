@@ -49,6 +49,8 @@ Keep waves digestible so a failure is contained and CI verification is quick. Ad
 | 2026-06-21 (start) | 12.0% | ~28% | 10 | QA pipeline repaired; gate honest |
 | 2026-06-21 (wave 1) | 17.6% | 45% (Core 56% / Services 33%) | 10 | +5.6 overall / +17 logic; 36 real-test files; 5 real bugs fixed |
 | 2026-06-24 (CI fixed) | 17.8% (app-scoped) | - | 15 | full CI green end-to-end; coverage scoped to app target; unit run ~6-11m (was hanging) |
+| 2026-06-24 (wave 2) | 19.4% | - | 15 | 228 disabled KB/STT tests revived, quality-gated; 19 hollow dropped |
+| 2026-06-25 (wave 3) | 20.6% | - | 15 | ~280 new tests: TTS/STT/ViewModels/Core remainder; quality-gated (2 weak tests strengthened) |
 
 Target: logic-only >= 80%.
 

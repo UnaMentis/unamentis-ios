@@ -847,7 +847,7 @@ public final class SessionManager: ObservableObject {
                             return
                         }
 
-                        await self.logger.debug("Silence threshold reached, completing utterance: \(transcript.prefix(50))...")
+                        self.logger.debug("Silence threshold reached, completing utterance: \(transcript.prefix(50))...")
                         await self.completeUtteranceFromSilence(transcript)
                     }
                 }
