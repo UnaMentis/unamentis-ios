@@ -1,0 +1,40 @@
+name: Hook Bypass Detection
+
+# Focused workflow: detect pre-commit hook bypasses in recent commits. Runs on
+# every push (it audits commit metadata, not file contents, so no path filter).
+on:
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+concurrency:
+  group: hook-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  hook-audit:
+    name: Hook Bypass Detection
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 15
+
+    - name: Install linting tools
+      run: brew install swiftlint
+
+    - name: Detect Hook Bypasses
+      run: ./scripts/hook-audit.sh --detect
+
+    - name: Summary
+      if: always()
+      run: |
+        echo "## Hook Bypass Detection" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Checked recent commits for potential hook bypasses." >> $GITHUB_STEP_SUMMARY
+        echo "Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

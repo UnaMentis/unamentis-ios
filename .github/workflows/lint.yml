@@ -1,0 +1,55 @@
+name: Lint
+
+# Focused workflow: SwiftLint + SwiftFormat only. Runs only when Swift files or
+# the lint configs change, so docs/config-only commits skip it entirely.
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.swift'
+      - '.swiftlint.yml'
+      - '.swiftformat'
+      - '.github/workflows/lint.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.swift'
+      - '.swiftlint.yml'
+      - '.swiftformat'
+      - '.github/workflows/lint.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install linting tools
+      run: brew install swiftlint swiftformat
+
+    - name: SwiftLint
+      run: swiftlint lint --strict --reporter github-actions-logging
+
+    - name: SwiftFormat Check
+      run: swiftformat --lint .
+
+    - name: Summary
+      if: always()
+      run: |
+        echo "## Lint Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| SwiftLint | ${{ job.status == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| SwiftFormat | ${{ job.status == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
