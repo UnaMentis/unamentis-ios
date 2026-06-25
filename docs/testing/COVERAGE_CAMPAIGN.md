@@ -51,7 +51,7 @@ Keep waves digestible so a failure is contained and CI verification is quick. Ad
 | 2026-06-24 (CI fixed) | 17.8% (app-scoped) | - | 15 | full CI green end-to-end; coverage scoped to app target; unit run ~6-11m (was hanging) |
 | 2026-06-24 (wave 2) | 19.4% | - | 15 | 228 disabled KB/STT tests revived, quality-gated; 19 hollow dropped |
 | 2026-06-25 (wave 3) | 20.6% | - | 15 | ~280 new tests: TTS/STT/ViewModels/Core remainder; quality-gated (2 weak tests strengthened) |
-| 2026-06-25 (wave 4) | 20.8% | - | 18 | Voice pipeline + context: SileroVADService 65.8% (fallback path; CoreML inference unreachable without bundled model), VADService types 91.9%, AudioSegmentCache 95.6%, ConfidenceMonitor 98.9%, BufferModels 97.8%. ~97 real tests; adversarial pass deleted 8 hollow/duplicate, strengthened 17, added 4 boundary tests |
+| 2026-06-25 (wave 4) | 20.8% local / 20.3% CI | - | 19 | Voice pipeline + context: SileroVADService 65.8% (fallback path; CoreML inference unreachable without bundled model), VADService types 91.9%, AudioSegmentCache 95.6%, ConfidenceMonitor 98.9%, BufferModels 97.8%. ~97 real tests; adversarial pass deleted 8 hollow/duplicate, strengthened 17, added 4 boundary tests |
 
 Target: logic-only >= 80%. (Denominator is the whole UnaMentis.app target, 114,732 executable lines including SwiftUI View bodies, so a fully-covered module moves the headline only a few tenths. Per-file coverage of the critical-path modules is the real signal.)
 
