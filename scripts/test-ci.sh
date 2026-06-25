@@ -299,6 +299,13 @@ main() {
     # This catches Sendable violations that would fail in CI
     cmd="$cmd SWIFT_STRICT_CONCURRENCY=complete"
 
+    # Disable SwiftUI preview thunk generation. The app is ~60% SwiftUI, so the
+    # preview dylib (__preview.dylib) is a large, pointless link for headless
+    # test builds, it was the last activity logged before an intermittent CI
+    # build stall. Removing it lightens and speeds the build. Previews are a
+    # Xcode-IDE feature; xcodebuild test never uses them.
+    cmd="$cmd ENABLE_PREVIEWS=NO"
+
     # Per-test timeouts: a stuck test fails fast with its name instead of
     # stalling the whole job until the workflow's job timeout. Cheap insurance
     # that also turns a future hang into a precise diagnostic.
@@ -320,10 +327,52 @@ main() {
     log_info "Command: $cmd | $beautify_cmd"
     echo ""
 
-    set -o pipefail
-    if ! eval "$cmd" 2>&1 | $beautify_cmd; then
-        log_error "Tests failed!"
-        exit 1
+    if [ "$CI" = "true" ]; then
+        # CI hardening. On hosted runners the large, coverage-instrumented app
+        # intermittently fails its simulator launch preflight ("Application
+        # failed preflight checks"/"Busy"), and xcodebuild then sits at 0% CPU
+        # until the job timeout (a 40-min dead hang with zero tests run). Make a
+        # flaky launch self-recover: pre-boot a clean device, cap each attempt
+        # with a watchdog, and retry once. The local path (else branch) is left
+        # exactly as it was, so the pre-commit hook is unaffected.
+        # 18 min/attempt: a healthy CI run is ~11 min, so this leaves margin while
+        # killing a launch-stall in time for the retry to still finish inside the
+        # job's 40-min timeout (build+hang ~18, then incremental build+tests ~11).
+        local test_timeout="${TEST_RUN_TIMEOUT:-1080}" attempt=1 rc=1
+        while [ "$attempt" -le 2 ]; do
+            rm -rf "$result_bundle" 2>/dev/null || true
+            if [ -n "$sim_udid" ]; then
+                log_info "Pre-booting a clean simulator ($sim_udid)..."
+                xcrun simctl shutdown "$sim_udid" >/dev/null 2>&1 || true
+                xcrun simctl boot "$sim_udid" >/dev/null 2>&1 || true
+                xcrun simctl bootstatus "$sim_udid" -b >/dev/null 2>&1 || true
+            fi
+            log_info "CI test attempt $attempt/2 (watchdog ${test_timeout}s)..."
+            echo ""
+            ( set -o pipefail; eval "$cmd" 2>&1 | $beautify_cmd ) &
+            local run_pid=$!
+            ( sleep "$test_timeout"
+              echo ""; echo "[WATCHDOG] test run exceeded ${test_timeout}s, killing for retry"
+              pkill -9 -P "$run_pid" 2>/dev/null
+              kill -9 "$run_pid" 2>/dev/null
+              pkill -9 xcodebuild 2>/dev/null ) &
+            local wd_pid=$!
+            wait "$run_pid" 2>/dev/null; rc=$?
+            kill "$wd_pid" 2>/dev/null; wait "$wd_pid" 2>/dev/null || true
+            [ "$rc" -eq 0 ] && break
+            log_warning "CI test attempt $attempt failed or timed out (rc=$rc)."
+            attempt=$((attempt + 1))
+        done
+        if [ "$rc" -ne 0 ]; then
+            log_error "Tests failed after retries!"
+            exit 1
+        fi
+    else
+        set -o pipefail
+        if ! eval "$cmd" 2>&1 | $beautify_cmd; then
+            log_error "Tests failed!"
+            exit 1
+        fi
     fi
 
     log_success "Tests passed!"
