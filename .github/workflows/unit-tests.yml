@@ -136,7 +136,7 @@ jobs:
 
     # COVERAGE_THRESHOLD is a ratchet, not the goal. Coverage is gathered only
     # for the UnaMentis app target (see project.yml scheme), and measured
-    # UnaMentis.app line coverage is ~20.3% in CI as of 2026-06 (wave 4); the
+    # UnaMentis.app line coverage is ~20.5% in CI as of 2026-06 (wave 5); the
     # threshold sits just below measured to lock in the gain. Raise it as coverage
     # grows toward the 80% logic target. Keep this in sync with the pre-commit hook.
     - name: Run Unit Tests
@@ -147,7 +147,7 @@ jobs:
         SIMULATOR="${{ steps.sim.outputs.simulator }}" \
         ENABLE_COVERAGE=true \
         ENFORCE_COVERAGE=true \
-        COVERAGE_THRESHOLD=19 \
+        COVERAGE_THRESHOLD=20 \
         RESULT_BUNDLE_PATH=UnitTestResults.xcresult \
         XCBEAUTIFY_RENDERER=github-actions \
         ./scripts/test-ci.sh
