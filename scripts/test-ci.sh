@@ -337,7 +337,7 @@ main() {
         # exactly as it was, so the pre-commit hook is unaffected.
         # 18 min/attempt: a healthy CI run is ~11 min, so this leaves margin while
         # killing a launch-stall in time for the retry to still finish inside the
-        # job's 40-min timeout (build+hang ~18, then incremental build+tests ~11).
+        # job's 55-min timeout (build+hang ~18, then incremental build+tests ~11).
         local test_timeout="${TEST_RUN_TIMEOUT:-1080}" attempt=1 rc=1
         while [ "$attempt" -le 2 ]; do
             rm -rf "$result_bundle" 2>/dev/null || true
@@ -345,7 +345,20 @@ main() {
                 log_info "Pre-booting a clean simulator ($sim_udid)..."
                 xcrun simctl shutdown "$sim_udid" >/dev/null 2>&1 || true
                 xcrun simctl boot "$sim_udid" >/dev/null 2>&1 || true
-                xcrun simctl bootstatus "$sim_udid" -b >/dev/null 2>&1 || true
+                # Bound `bootstatus -b`: on a flaky hosted runner the sim boot can
+                # wedge and block here indefinitely, with no watchdog, eating the
+                # whole 40-min job (zero output after this line). Cap it; if it does
+                # not settle in time, proceed anyway and let the test-run watchdog
+                # below catch a genuinely dead device. `|| true` keeps `set -e` happy.
+                local boot_timeout="${SIM_BOOT_TIMEOUT:-240}"
+                ( xcrun simctl bootstatus "$sim_udid" -b >/dev/null 2>&1 ) &
+                local bs_pid=$!
+                ( sleep "$boot_timeout"
+                  echo "[WATCHDOG] simulator pre-boot exceeded ${boot_timeout}s, proceeding"
+                  kill -9 "$bs_pid" 2>/dev/null ) &
+                local bs_wd_pid=$!
+                wait "$bs_pid" 2>/dev/null || true
+                kill "$bs_wd_pid" 2>/dev/null || true; wait "$bs_wd_pid" 2>/dev/null || true
             fi
             log_info "CI test attempt $attempt/2 (watchdog ${test_timeout}s)..."
             echo ""
@@ -357,8 +370,16 @@ main() {
               kill -9 "$run_pid" 2>/dev/null
               pkill -9 xcodebuild 2>/dev/null ) &
             local wd_pid=$!
-            wait "$run_pid" 2>/dev/null; rc=$?
-            kill "$wd_pid" 2>/dev/null; wait "$wd_pid" 2>/dev/null || true
+            # Capture the test run's exit code WITHOUT tripping `set -e`. When the
+            # watchdog SIGKILLs run_pid, `wait` returns 137; a bare failing command
+            # under `set -e` would exit the script here, killing the retry before
+            # attempt 2 ever runs (the whole point of this loop). Keeping `wait` in
+            # a `|| rc=$?` list suppresses errexit and records the real code.
+            rc=0; wait "$run_pid" 2>/dev/null || rc=$?
+            # `|| true` on the kill too: when the watchdog has already fired it has
+            # exited, so killing its pid fails, and a bare failure would trip `set -e`
+            # and abort the retry, the same trap the line above avoids.
+            kill "$wd_pid" 2>/dev/null || true; wait "$wd_pid" 2>/dev/null || true
             [ "$rc" -eq 0 ] && break
             log_warning "CI test attempt $attempt failed or timed out (rc=$rc)."
             attempt=$((attempt + 1))

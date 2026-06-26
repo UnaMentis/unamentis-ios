@@ -37,7 +37,11 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: macos-15
-    timeout-minutes: 40
+    # 55 min so the test-ci.sh self-recover (bounded sim pre-boot + a watchdogged
+    # test run, retried once) has room to finish attempt 2 after a flaky attempt 1.
+    # The per-step watchdogs bound real hangs, so this only prevents premature
+    # cancellation of a legitimate retry; it does not mask a true dead-hang.
+    timeout-minutes: 55
 
     steps:
     - uses: actions/checkout@v4
