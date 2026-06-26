@@ -15,6 +15,10 @@ public actor AnthropicLLMService: LLMService {
     private let apiKey: String
     private let baseURL = "https://api.anthropic.com/v1/messages"
     private let model = "claude-3-5-sonnet-20241022"
+
+    /// URLSession used for requests. Defaults to `.shared`; injectable so tests can
+    /// drive the real request building and event-stream parsing through a URLProtocol seam.
+    private let session: URLSession
     
     public private(set) var metrics = LLMMetrics(
         medianTTFT: 0.5,
@@ -29,8 +33,9 @@ public actor AnthropicLLMService: LLMService {
     
     // MARK: - Initialization
     
-    public init(apiKey: String) {
+    public init(apiKey: String, session: URLSession = .shared) {
         self.apiKey = apiKey
+        self.session = session
         logger.info("AnthropicLLMService initialized with default model: \(model)")
     }
     
@@ -72,7 +77,7 @@ public actor AnthropicLLMService: LLMService {
             Task {
                 do {
                     let startTime = Date()
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await self.session.bytes(for: request)
                     
                     guard let httpResponse = response as? HTTPURLResponse, 
                           (200...299).contains(httpResponse.statusCode) else {

@@ -23,6 +23,10 @@ public actor GoogleLLMService: LLMService {
     private let apiKey: String
     private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models"
 
+    /// URLSession used for requests. Defaults to `.shared`; injectable so tests can
+    /// drive the real request building and SSE parsing through a URLProtocol seam.
+    private let session: URLSession
+
     /// Default model when config does not specify one.
     private var currentModel: String = "gemini-2.5-flash"
 
@@ -49,8 +53,9 @@ public actor GoogleLLMService: LLMService {
 
     // MARK: - Initialization
 
-    public init(apiKey: String) {
+    public init(apiKey: String, session: URLSession = .shared) {
         self.apiKey = apiKey
+        self.session = session
         logger.info("GoogleLLMService initialized")
     }
 
@@ -114,7 +119,7 @@ public actor GoogleLLMService: LLMService {
             Task {
                 do {
                     let startTime = Date()
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await self.session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw LLMError.connectionFailed("Invalid response")

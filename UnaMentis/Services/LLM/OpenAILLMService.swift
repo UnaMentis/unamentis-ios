@@ -19,6 +19,10 @@ public actor OpenAILLMService: LLMService {
     private let logger = Logger(label: "com.unamentis.llm.openai")
     private let apiKey: String
     private let baseURL = "https://api.openai.com/v1/chat/completions"
+
+    /// URLSession used for requests. Defaults to `.shared`; injectable so tests can
+    /// drive the real request building and SSE parsing through a URLProtocol seam.
+    private let session: URLSession
     
     /// Performance metrics
     public private(set) var metrics: LLMMetrics = LLMMetrics(
@@ -48,8 +52,9 @@ public actor OpenAILLMService: LLMService {
     
     // MARK: - Initialization
     
-    public init(apiKey: String) {
+    public init(apiKey: String, session: URLSession = .shared) {
         self.apiKey = apiKey
+        self.session = session
         logger.info("OpenAILLMService initialized")
     }
     
@@ -110,7 +115,7 @@ public actor OpenAILLMService: LLMService {
         return AsyncStream { continuation in
             Task {
                 do {
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await self.session.bytes(for: request)
                     
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw LLMError.connectionFailed("Invalid response")
