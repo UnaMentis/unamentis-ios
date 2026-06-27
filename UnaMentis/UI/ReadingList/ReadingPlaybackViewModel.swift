@@ -478,7 +478,7 @@ public final class ReadingPlaybackViewModel: ObservableObject {
         }
 
         // Fallback: create new
-        let engine = AudioEngine(vadService: SileroVADService(), telemetry: TelemetryEngine())
+        let engine = AudioEngine(vadService: DefaultVAD.make(), telemetry: TelemetryEngine())
         do {
             try await engine.configure(config: .default)
             try await engine.start()

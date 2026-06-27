@@ -249,7 +249,7 @@ class DebugConversationViewModel: ObservableObject {
             // Use a minimal STT service (not needed but required by API)
             let sttService = AppleSpeechSTTService()
             let ttsService = AppleTTSService()
-            let vadService = SileroVADService()
+            let vadService = DefaultVAD.make()
 
             // Start the session
             try await manager.startSession(

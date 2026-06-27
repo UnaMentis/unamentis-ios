@@ -106,7 +106,7 @@ final class KBVoiceCoordinator: ObservableObject {
         self.sttService = stt
 
         // Create VAD service for speech detection
-        let vad = SileroVADService()
+        let vad = DefaultVAD.make()
         self.vadService = vad
 
         // Create audio engine

@@ -129,7 +129,10 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
     /// Decision + tiering: docs/ios/ON_DEVICE_LLM_MODEL_RECONSIDERATION_2026-06-20.md.
     public var runsOnBundledRuntime: Bool {
         switch self {
-        case .gemma4_e2b: return false // needs a gemma4-capable llama.cpp (b7263 is too old)
+        // Enabled 2026-06-26: the bundled llama.xcframework was upgraded from b7263
+        // to b9821, which includes the gemma4 architecture. Gemma 4 E2B loads and
+        // generates on it (verified in the simulator).
+        case .gemma4_e2b: return true
         case .qwen3_1_7B, .qwen3_0_6B, .ministral3_3B: return true
         }
     }

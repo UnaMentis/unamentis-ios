@@ -69,18 +69,20 @@ jobs:
         touch models/Models/voices/azelma.safetensors
         echo "Created placeholder model files for CI build"
 
-    - name: Cache llama.xcframework (b7263)
+    - name: Cache llama.xcframework (b9821)
       uses: actions/cache@v4
       with:
         path: UnaMentis/Frameworks/llama.xcframework
-        key: llama-xcframework-b7263
+        key: llama-xcframework-b9821
 
     - name: Fetch llama.xcframework
       run: |
-        # llama.xcframework is a ~467MB binary, gitignored and "downloaded
+        # llama.xcframework is a large binary, gitignored and "downloaded
         # separately" (see .gitignore). OnDeviceLLMService does `import llama`
-        # unconditionally, so the build needs it. Fetch the official b7263 build
-        # (the exact one project.yml targets). Cached across runs by the step above.
+        # unconditionally, so the build needs it. Fetch the official b9821 build,
+        # which includes the gemma4 architecture (b7263 did not), so Gemma 4 E2B
+        # loads on-device. Recent releases ship the asset as .zip (older ones used
+        # .tar.gz). Cached across runs by the step above.
         set -euo pipefail
         FW="UnaMentis/Frameworks/llama.xcframework"
         if [ -d "$FW" ] && [ -f "$FW/Info.plist" ]; then
@@ -88,13 +90,13 @@ jobs:
           exit 0
         fi
         mkdir -p UnaMentis/Frameworks
-        curl -fsSL -o /tmp/llama-xcf.tar.gz \
-          https://github.com/ggml-org/llama.cpp/releases/download/b7263/llama-b7263-xcframework.tar.gz
-        mkdir -p /tmp/llama-xcf && tar -xzf /tmp/llama-xcf.tar.gz -C /tmp/llama-xcf
+        curl -fsSL -o /tmp/llama-xcf.zip \
+          https://github.com/ggml-org/llama.cpp/releases/download/b9821/llama-b9821-xcframework.zip
+        mkdir -p /tmp/llama-xcf && unzip -q /tmp/llama-xcf.zip -d /tmp/llama-xcf
         XCF="$(find /tmp/llama-xcf -name llama.xcframework -type d | head -1)"
         rm -rf "$FW"
         mv "$XCF" "$FW"
-        echo "Installed llama.xcframework b7263"
+        echo "Installed llama.xcframework b9821"
 
     - name: Generate Xcode project
       run: xcodegen generate

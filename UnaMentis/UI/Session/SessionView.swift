@@ -828,7 +828,7 @@ class SessionViewModel: ObservableObject {
     private var bargeInAudioEngine: AudioEngine?
 
     /// VAD service for barge-in detection
-    private var bargeInVADService: SileroVADService?
+    private var bargeInVADService: (any VADService)?
 
     /// STT service for transcribing user speech during barge-in
     private var bargeInSTTService: (any STTService)?
@@ -1457,7 +1457,7 @@ class SessionViewModel: ObservableObject {
         let sttService: any STTService
         let ttsService: any TTSService
         let llmService: any LLMService
-        let vadService: any VADService = SileroVADService()
+        let vadService: any VADService = DefaultVAD.make()
 
         // Configure STT based on settings
         logger.info("STT provider setting: \(sttProviderSetting.rawValue)")
@@ -2474,7 +2474,7 @@ class SessionViewModel: ObservableObject {
         logger.info("Starting barge-in monitoring for direct streaming mode")
 
         // Create VAD service
-        let vadService = SileroVADService()
+        let vadService = DefaultVAD.make()
         self.bargeInVADService = vadService
 
         // Create audio engine with VAD

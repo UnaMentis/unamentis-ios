@@ -165,3 +165,21 @@ extension VADError: LocalizedError {
         }
     }
 }
+
+// MARK: - Default VAD Factory
+
+/// Selects the best on-device VAD available.
+public enum DefaultVAD {
+    /// Returns FluidAudio's real Silero v5 neural VAD (Neural Engine) when the
+    /// FluidAudio package is present, otherwise `SileroVADService`, which falls
+    /// back to dB-energy detection because its CoreML model is not bundled.
+    /// Use this everywhere the live audio pipeline needs a VAD so the best
+    /// available model is chosen in one place.
+    public static func make(configuration: VADConfiguration = .default) -> any VADService {
+        #if canImport(FluidAudio)
+        return FluidAudioVADService(configuration: configuration)
+        #else
+        return SileroVADService(configuration: configuration)
+        #endif
+    }
+}

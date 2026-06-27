@@ -140,7 +140,8 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
     func testModelInfoDerivesFromRunnableModel() {
         // The settings info derives from the device's runnable model so the UI can
         // never drift from what is downloaded/run. It must never surface the
-        // deprecated Ministral, nor Gemma 4 (which the bundled llama.cpp cannot load).
+        // deprecated Ministral. The exact model depends on the host's RAM tier, so
+        // assert the derivation and the decided constraints, not a fixed model.
         let canonical = OnDeviceLLMModelInfo.canonical
         XCTAssertNotEqual(canonical, .ministral3_3B, "Ministral is deprecated, never the canonical model")
         XCTAssertTrue(canonical.runsOnBundledRuntime, "canonical must load on the bundled llama.cpp")
@@ -153,11 +154,17 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
         XCTAssertEqual(OnDeviceLLMModelInfo.contextSize, UInt32(canonical.config.contextSize))
         XCTAssertEqual(OnDeviceLLMModelInfo.minimumRAMGB, canonical.config.minimumRAMGB)
         XCTAssertEqual(OnDeviceLLMModelInfo.license, "Apache 2.0")
+    }
 
-        // On any normal test host (>= 8 GB) the runnable model is Qwen3-1.7B.
-        XCTAssertEqual(canonical, .qwen3_1_7B)
-        XCTAssertEqual(OnDeviceLLMModelInfo.displayName, "Qwen3 1.7B")
-        XCTAssertEqual(OnDeviceLLMModelInfo.publisher, "Alibaba (Qwen)")
+    func testBestRunnableForDevicePerRAMTier() {
+        // With the gemma4-capable llama.cpp (b9821), Gemma 4 E2B is runnable and is
+        // the 12 GB pick; Qwen3-1.7B is the 8 GB pick; Qwen3-0.6B the 6 GB pick.
+        // Ministral is deprecated and excluded from the runnable ladder.
+        XCTAssertTrue(OnDeviceLLMModel.gemma4_e2b.runsOnBundledRuntime)
+        XCTAssertEqual(OnDeviceLLMModel.bestRunnableForDevice(physicalMemoryGB: 12), .gemma4_e2b)
+        XCTAssertEqual(OnDeviceLLMModel.bestRunnableForDevice(physicalMemoryGB: 8), .qwen3_1_7B)
+        XCTAssertEqual(OnDeviceLLMModel.bestRunnableForDevice(physicalMemoryGB: 6), .qwen3_0_6B)
+        XCTAssertNotEqual(OnDeviceLLMModel.bestRunnableForDevice(physicalMemoryGB: 12), .ministral3_3B)
     }
 
     func testModelInfoKeepReasons() {

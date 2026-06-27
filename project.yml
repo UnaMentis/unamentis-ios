@@ -52,8 +52,9 @@ packages:
     from: "0.14.8"
   # LlamaCpp SPM package removed (StanfordBDHG 0.3.3 wraps an early-2024 llama.cpp whose API
   # predates llama_sampler_init_greedy and friends). The app links the official prebuilt
-  # llama.cpp b7263 xcframework at UnaMentis/Frameworks/llama.xcframework instead, the exact
-  # build OnDeviceLLMService targets.
+  # llama.cpp b9821 xcframework at UnaMentis/Frameworks/llama.xcframework instead. b9821
+  # includes the gemma4 architecture (b7263 did not), so Gemma 4 E2B loads on-device.
+  # The CI fetch URLs in .github/workflows live in unit-tests.yml and integration.yml.
 
 targets:
   UnaMentis:
@@ -96,7 +97,7 @@ targets:
       - package: FluidAudio
       - framework: UnaMentis/Frameworks/PocketTTS.xcframework
         embed: false
-      # llama.cpp b7263 official xcframework (dynamic, must embed). Enables the
+      # llama.cpp b9821 official xcframework (dynamic, must embed). Enables the
       # LLAMA_AVAILABLE on-device LLM path (OnDeviceLLMService).
       - framework: UnaMentis/Frameworks/llama.xcframework
         embed: true

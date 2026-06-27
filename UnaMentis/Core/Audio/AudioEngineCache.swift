@@ -58,7 +58,7 @@ public actor AudioEngineCache {
 
         // Create new engine
         let engine = AudioEngine(
-            vadService: SileroVADService(),
+            vadService: DefaultVAD.make(),
             telemetry: TelemetryEngine()
         )
 
