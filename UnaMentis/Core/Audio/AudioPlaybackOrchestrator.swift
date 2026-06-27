@@ -24,6 +24,21 @@ public enum OrchestratorState: Equatable, Sendable {
     case error(String)
 }
 
+/// Errors surfaced by the playback orchestrator.
+public enum PlaybackOrchestratorError: LocalizedError, Equatable {
+    /// A segment's audio did not become available within the configured timeout.
+    /// The on-device TTS can occasionally fail to emit any audio and never finish
+    /// its stream; this turns that hang into a recoverable, surfaced error.
+    case synthesisTimedOut(seconds: TimeInterval)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .synthesisTimedOut(seconds):
+            return "Speech synthesis did not produce audio within \(Int(seconds))s."
+        }
+    }
+}
+
 // MARK: - Audio Playback Orchestrator
 
 /// Central actor that manages TTS audio playback for all modules.
@@ -376,12 +391,14 @@ public actor AudioPlaybackOrchestrator {
             // Prefetch returned nil, fall through to direct synthesis
         }
 
-        // 4. Fallback: stream directly from TTS
-        logger.debug("Streaming segment \(index) from TTS")
+        // 4. Fallback: synthesize directly from TTS, bounded so a stalled
+        // synthesis fails (and is surfaced) instead of hanging with no audio.
+        logger.debug("Synthesizing segment \(index) from TTS")
         do {
             let stream = try await ttsService.synthesize(text: segment.segmentText)
+            let chunks = try await collectChunksWithTimeout(stream)
             var isFirstChunk = true
-            for await chunk in stream {
+            for chunk in chunks {
                 if Task.isCancelled || state != .playing { break }
                 if isFirstChunk {
                     isFirstChunk = false
@@ -461,14 +478,36 @@ public actor AudioPlaybackOrchestrator {
     private func synthesizeSegment(text: String) async -> [TTSAudioChunk]? {
         do {
             let stream = try await ttsService.synthesize(text: text)
-            var chunks: [TTSAudioChunk] = []
-            for await chunk in stream {
-                chunks.append(chunk)
-            }
-            return chunks
+            return try await collectChunksWithTimeout(stream)
         } catch {
-            logger.error("Prefetch synthesis failed: \(error.localizedDescription)")
+            logger.error("Prefetch synthesis failed or timed out: \(error.localizedDescription)")
             return nil
+        }
+    }
+
+    /// Collect every chunk from a TTS stream, but never wait forever. The
+    /// on-device TTS can occasionally emit nothing and never finish its stream;
+    /// without a bound the playback loop would await it indefinitely and the user
+    /// would hear nothing with no error surfaced (the "Listen does nothing" hang).
+    /// On expiry of `config.bufferTimeoutSeconds` this throws so the caller can
+    /// fail the segment, which the playback loop reports via the delegate.
+    private func collectChunksWithTimeout(_ stream: AsyncStream<TTSAudioChunk>) async throws -> [TTSAudioChunk] {
+        let timeout = config.bufferTimeoutSeconds
+        return try await withThrowingTaskGroup(of: [TTSAudioChunk]?.self) { group in
+            group.addTask {
+                var collected: [TTSAudioChunk] = []
+                for await chunk in stream { collected.append(chunk) }
+                return collected
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                return nil  // timeout sentinel
+            }
+            defer { group.cancelAll() }
+            if let result = try await group.next(), let chunks = result {
+                return chunks
+            }
+            throw PlaybackOrchestratorError.synthesisTimedOut(seconds: timeout)
         }
     }
 

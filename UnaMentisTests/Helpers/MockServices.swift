@@ -427,6 +427,11 @@ actor MockTTSService: TTSService { // ALLOWED: paid external API mock (TTS provi
     /// Error to simulate (nil = success)
     var simulatedError: TTSError?
 
+    /// When true, synthesize returns a stream that never yields and never
+    /// finishes, modelling a stalled on-device TTS (the engine fails to emit any
+    /// audio and never completes its stream).
+    var simulateHang: Bool = false
+
     /// Whether to simulate latency
     var simulateLatency: Bool = false
 
@@ -466,6 +471,14 @@ actor MockTTSService: TTSService { // ALLOWED: paid external API mock (TTS provi
         // ERROR SIMULATION
         if let error = simulatedError {
             throw error
+        }
+
+        // HANG SIMULATION: a stalled engine that never emits audio nor finishes.
+        if simulateHang {
+            return AsyncStream { _ in
+                // Intentionally never yields and never finishes; the consumer's
+                // timeout is what must rescue this.
+            }
         }
 
         let chunks = chunksPerSynthesize
@@ -512,6 +525,7 @@ actor MockTTSService: TTSService { // ALLOWED: paid external API mock (TTS provi
         flushCallCount = 0
         configureCallCount = 0
         simulatedError = nil
+        simulateHang = false
         simulateLatency = false
         chunksPerSynthesize = 1
         bytesPerChunk = 9600
@@ -523,6 +537,12 @@ actor MockTTSService: TTSService { // ALLOWED: paid external API mock (TTS provi
     /// Configure to fail with a specific error
     func configureToFail(with error: TTSError) {
         simulatedError = error
+    }
+
+    /// Configure to hang: synthesize returns a stream that never produces audio
+    /// and never finishes, modelling a stalled on-device TTS.
+    func configureToHang() {
+        simulateHang = true
     }
 
     /// Configure multi-chunk streaming

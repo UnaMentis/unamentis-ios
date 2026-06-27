@@ -578,4 +578,43 @@ final class AudioPlaybackOrchestratorTests: XCTestCase {
 
         XCTAssertEqual(state, .completed)
     }
+
+    // MARK: - Stalled synthesis (the reading "Listen does nothing" hang)
+
+    func testSynthesisHang_surfacesTimeoutErrorInsteadOfHanging() async {
+        // Regression: the on-device TTS can stall and never emit audio nor finish
+        // its stream. Before the fix the playback loop awaited it forever and the
+        // user heard nothing while the UI sat "playing". Synthesis is now bounded
+        // by config.bufferTimeoutSeconds and must surface a timeout error so the
+        // surface can react, instead of hanging.
+        await mockTTS.configureToHang()
+        let config = PlaybackOrchestratorConfig(
+            prefetchDepth: 0,            // segment 0 goes straight to direct synthesis
+            interSegmentSilenceMs: 0,
+            retainBehindCount: 0,
+            bufferTimeoutSeconds: 0.5    // short so the test is fast
+        )
+        let orch = makeOrchestrator(config: config)
+        let delegate = TestDelegate()
+        await orch.setDelegate(delegate)
+        await orch.loadSegments([TestSegment(index: 0, text: "hello world")])
+
+        await orch.startPlayback(from: 0)
+
+        // The stalled synthesis must surface an error (and leave .playing) within a
+        // few timeout windows, rather than hanging forever on the stream.
+        var surfaced = false
+        for _ in 0..<60 {  // up to ~3s
+            if !delegate.errors.isEmpty { surfaced = true; break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        await orch.stopPlayback()
+
+        XCTAssertTrue(surfaced, "a stalled synthesis must surface a timeout error, not hang")
+        if let err = delegate.errors.first as? PlaybackOrchestratorError {
+            XCTAssertEqual(err, .synthesisTimedOut(seconds: 0.5))
+        } else {
+            XCTFail("expected PlaybackOrchestratorError.synthesisTimedOut, got \(String(describing: delegate.errors.first))")
+        }
+    }
 }
