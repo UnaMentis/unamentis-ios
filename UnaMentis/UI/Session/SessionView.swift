@@ -873,12 +873,6 @@ class SessionViewModel: ObservableObject {
     /// Audio buffers collected during barge-in for STT processing
     private var bargeInAudioBuffers: [AVAudioPCMBuffer] = []
 
-    /// Segment index where we paused for barge-in (to resume from)
-    private var bargeInPauseSegmentIndex: Int = 0
-
-    /// Position in current segment's audio where we paused
-    private var bargeInPauseTime: TimeInterval = 0
-
     /// Audio player for direct transcript playback
     private var audioPlayer: AVAudioPlayer?
 
@@ -2758,34 +2752,30 @@ class SessionViewModel: ObservableObject {
         // which would desync the flag from the detector's active tentative.
         guard !isTentativeBargeIn else { return }
         // The detector emits events asynchronously, so the state may have moved on
-        // between detection and here. Only pause if still in direct-streaming
+        // between detection and here. Only engage if still in direct-streaming
         // playback; otherwise drop the stale event and reset the detector.
         guard state == .aiSpeaking, isDirectStreamingMode else {
             await bargeInDetector?.abortTentative()
             return
         }
 
-        logger.info("Tentative barge-in detected - pausing playback for confirmation")
-
+        // INVARIANT: a tentative is evaluation only. Do NOT pause playback; the
+        // detector is still deciding whether this sustains into a genuine barge-in.
+        // Background noise that does not sustain must never slow narration down. We
+        // only set the protect flag so the audio collected from the speech onset is
+        // preserved across brief gaps while we evaluate. Playback keeps flowing.
+        logger.info("Tentative barge-in - evaluating without disrupting narration")
         isTentativeBargeIn = true
-        state = .interrupted
-
-        // Record where we paused so we can resume
-        bargeInPauseSegmentIndex = currentSegmentIndex
-        bargeInPauseTime = audioPlayer?.currentTime ?? 0
-
-        // Pause playback (don't stop - we might resume). STT audio collected from
-        // the onset in handleVADResult is preserved (not cleared here).
-        audioPlayer?.pause()
     }
 
-    /// Stage 2: Confirmed barge-in - user is actually speaking
+    /// Stage 2: Confirmed barge-in - sustained genuine speech, the user is really
+    /// barging in. Narration was never paused on tentative, so we stop it now.
     private func confirmBargeIn() async {
         guard isTentativeBargeIn else { return }
 
-        logger.info("Barge-in confirmed - stopping playback, listening to user")
+        logger.info("Barge-in confirmed (sustained speech) - stopping playback, listening to user")
 
-        // Stop playback completely (not just pause)
+        // Stop playback completely (it was never paused on the tentative).
         stopAudioMeteringTimer()
         audioPlayer?.stop()
         audioPlayer = nil
@@ -2799,18 +2789,16 @@ class SessionViewModel: ObservableObject {
         startListeningForBargeInUtterance()
     }
 
-    /// Resume playback after false positive barge-in (no continued speech)
+    /// The tentative did not sustain (background noise / echo / changed mind).
+    /// Narration was never paused, so there is nothing to resume: discard the
+    /// collected audio and let playback continue uninterrupted.
     private func resumeFromTentativeBargeIn() async {
         guard isTentativeBargeIn else { return }
 
-        logger.info("False positive barge-in - resuming playback from \(bargeInPauseTime)s")
+        logger.info("Tentative did not sustain - discarding and continuing narration")
 
         isTentativeBargeIn = false
         bargeInAudioBuffers.removeAll()
-
-        // Resume playback
-        state = .aiSpeaking
-        audioPlayer?.play()
     }
 
     /// Start listening for the user's complete utterance after confirmed barge-in

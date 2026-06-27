@@ -20,8 +20,9 @@
 //   tentative --(silence gap > maxGapMs before sustain)-> resumed    (false positive; keep narrating)
 //   tentative --(safety window elapses with no resolve)-> resumed    (backstop; never stuck in tentative)
 //
-// Timing is driven by `VADResult.timestamp` (monotonic audio time), so the
-// "sustained speech" decision is deterministic and unit-testable without
+// Timing is driven by `VADResult.timestamp` (wall-clock at frame capture, which
+// tracks audio time under the real-time mic delivery the app always uses). This
+// makes the "sustained speech" decision deterministic and unit-testable without
 // real-time sleeps: feed frames with controlled timestamps, read the events.
 
 import Foundation

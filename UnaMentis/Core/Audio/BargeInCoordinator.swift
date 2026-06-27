@@ -60,6 +60,12 @@ public final class BargeInCoordinator {
     private let endOfUtteranceSilence: TimeInterval = 1.0
     private let speechThreshold: Float
 
+    /// Backstop: if a captured engagement neither finishes nor resumes within this
+    /// window (e.g. an empty transcript path or a hung LLM/TTS), force a resume so
+    /// narration is never left stuck.
+    private var engagementBackstop: Task<Void, Never>?
+    private let maxEngagementSeconds: TimeInterval = 30
+
     public init(
         audioEngine: AudioEngine,
         llm: any LLMService,
@@ -102,6 +108,8 @@ public final class BargeInCoordinator {
         subscription = nil
         eventTask?.cancel()
         eventTask = nil
+        engagementBackstop?.cancel()
+        engagementBackstop = nil
         await detector.finish()
     }
 
@@ -112,7 +120,8 @@ public final class BargeInCoordinator {
         case .narrating:
             await detector.process(vad)
         case .capturing:
-            await detector.process(vad)   // continued speech keeps confirming
+            // The detector confirmed and is idle; end-of-utterance is driven by
+            // the silence tracker from here.
             trackUtteranceEnd(vad)
         case .responding:
             break
@@ -137,10 +146,18 @@ public final class BargeInCoordinator {
 
     private func finishUtterance() async {
         guard phase == .capturing else { return }
-        phase = .responding
         let transcript = await audioEngine.lastTranscript
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            // We confirmed on sustained sound, but nothing intelligible was said
+            // (noise, echo, or a changed mind). Do not engage; resume narration so
+            // we never stick on a non-utterance.
+            await resumeNarrating()
+            return
+        }
+        phase = .responding
         // Classify + route: command -> bargeInExecute; conversational -> LLM + TTS.
-        await responder.handle(transcript: transcript, llm: llm, tts: tts)
+        await responder.handle(transcript: trimmed, llm: llm, tts: tts)
     }
 
     // MARK: Detector events
@@ -148,21 +165,45 @@ public final class BargeInCoordinator {
     private func handle(_ event: BargeInEvent) async {
         switch event.kind {
         case .tentative:
+            // INVARIANT: a tentative is evaluation only. Do NOT pause narration;
+            // the detector is still deciding whether this sustains into a genuine
+            // barge-in. Background noise that does not sustain never disrupts.
+            break
+        case .confirmed:
+            // Sustained genuine speech: a real barge-in. Now pause and capture.
             guard phase == .narrating else { return }
             phase = .capturing
-            hadSpeechSinceBargeIn = false
+            hadSpeechSinceBargeIn = true   // confirmation already implies sustained speech
             silenceStart = nil
+            startEngagementBackstop()
             await surface?.bargeInPauseNarration()
-        case .confirmed:
-            // Continued speech confirmed it; stay in capturing until end-of-utterance.
-            break
         case .resumed:
-            // False positive: nothing more came. Resume narration.
-            if phase == .capturing { await resumeNarrating() }
+            // False positive during evaluation: nothing was paused, keep narrating.
+            // (Defensive: resume if we somehow paused.)
+            if phase != .narrating { await resumeNarrating() }
         }
     }
 
+    /// Force a resume if an engagement runs too long without completing, so a hung
+    /// response or an empty-transcript edge can never leave narration stuck.
+    private func startEngagementBackstop() {
+        engagementBackstop?.cancel()
+        let seconds = maxEngagementSeconds
+        engagementBackstop = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.backstopResume()
+        }
+    }
+
+    private func backstopResume() async {
+        guard phase != .narrating else { return }
+        await resumeNarrating()
+    }
+
     private func resumeNarrating() async {
+        engagementBackstop?.cancel()
+        engagementBackstop = nil
         phase = .narrating
         hadSpeechSinceBargeIn = false
         silenceStart = nil

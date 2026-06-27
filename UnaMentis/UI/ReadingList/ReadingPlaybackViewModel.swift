@@ -529,6 +529,7 @@ public final class ReadingPlaybackViewModel: ObservableObject {
                     + "\"\(title)\" to ask a question or give an instruction. Answer concisely "
                     + "and conversationally - this is a short spoken exchange, then they resume listening."
             },
+            detectorConfig: BargeInTuning.detectorConfig(),
             surface: self
         )
         bargeInCoordinator = coordinator

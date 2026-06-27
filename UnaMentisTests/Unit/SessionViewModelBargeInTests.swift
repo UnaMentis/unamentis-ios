@@ -36,7 +36,10 @@ final class SessionViewModelBargeInTests: XCTestCase {
         XCTAssertEqual(vm._testBargeInBufferCount, 0, "stray pre-barge-in audio is dropped")
     }
 
-    func testTentativeEventPausesToInterrupted() async {
+    func testTentativeEventDoesNotDisruptNarration() async {
+        // INVARIANT: a tentative must not pause or change state. It only arms the
+        // protect flag so the onset audio is preserved while the detector evaluates
+        // whether the speech sustains. Playback keeps flowing.
         let vm = SessionViewModel()
         vm.state = .aiSpeaking
         vm.isDirectStreamingMode = true
@@ -44,13 +47,15 @@ final class SessionViewModelBargeInTests: XCTestCase {
 
         await vm._testDispatchBargeInEvent(.tentative)
 
-        XCTAssertEqual(vm.state, .interrupted)
-        XCTAssertTrue(vm.isTentativeBargeIn)
+        XCTAssertEqual(vm.state, .aiSpeaking, "tentative must not disrupt narration")
+        XCTAssertTrue(vm.isTentativeBargeIn, "tentative arms the protect flag for collected audio")
     }
 
     func testConfirmedEventStopsToUserSpeaking() async {
+        // After a tentative (state still aiSpeaking, protect flag set), sustained
+        // speech confirms: stop playback and hand the floor to the user.
         let vm = SessionViewModel()
-        vm.state = .interrupted
+        vm.state = .aiSpeaking
         vm.isTentativeBargeIn = true
 
         await vm._testDispatchBargeInEvent(.confirmed)
@@ -59,9 +64,11 @@ final class SessionViewModelBargeInTests: XCTestCase {
         XCTAssertFalse(vm.isTentativeBargeIn)
     }
 
-    func testResumedEventReturnsToAiSpeaking() async {
+    func testResumedEventContinuesNarration() async {
+        // A tentative that does not sustain: narration was never paused, so resume
+        // just clears the protect flag and playback continues (state unchanged).
         let vm = SessionViewModel()
-        vm.state = .interrupted
+        vm.state = .aiSpeaking
         vm.isTentativeBargeIn = true
 
         await vm._testDispatchBargeInEvent(.resumed)

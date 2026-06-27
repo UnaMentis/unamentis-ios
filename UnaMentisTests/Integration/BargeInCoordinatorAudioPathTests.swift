@@ -98,8 +98,8 @@ final class BargeInCoordinatorAudioPathTests: XCTestCase {
 
     /// Feed a buffer through the engine in real-time-paced 512-sample frames,
     /// exactly as the mic tap delivers it. Real-time pacing matters: the detector's
-    /// 600ms confirmation timer and the coordinator's 1.0s end-of-utterance timer
-    /// are wall-clock, so frames must advance wall-clock to make them fire.
+    /// sustained-speech confirmation (700ms by default) and the coordinator's 1.0s
+    /// end-of-utterance timer are wall-clock, so frames must advance wall-clock.
     private func injectFrames(_ buffer: AVAudioPCMBuffer, into engine: AudioEngine) async {
         let frameSize: AVAudioFrameCount = 512
         var position: AVAudioFrameCount = 0
