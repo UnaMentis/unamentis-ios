@@ -51,7 +51,7 @@ struct OnDeviceLLMSettingsView: View {
                 }
             }
         } message: {
-            Text("This will remove the 2.2 GB model from your device. You can re-download it anytime.\n\nWithout this model, some learning modules may have reduced functionality when offline.")
+            Text("This will remove the on-device model (\(OnDeviceLLMModelInfo.downloadSizeText)) from your device. You can re-download it anytime.\n\nWithout this model, some learning modules may have reduced functionality when offline.")
         }
     }
 
@@ -102,10 +102,10 @@ struct OnDeviceLLMSettingsView: View {
             if viewModel.isDownloaded {
                 Text("Model is stored locally and works offline. No internet required for inference.")
             } else {
-                Text("Download requires ~2.2 GB. The model will be stored on your device for offline use.")
+                Text("Download requires \(OnDeviceLLMModelInfo.downloadSizeText). The model will be stored on your device for offline use.")
             }
             #else
-            Text("This build does not include the on-device LLM runtime, so the 2.2 GB download is disabled. Self-hosted and cloud AI are unaffected.")
+            Text("This build does not include the on-device LLM runtime, so the \(OnDeviceLLMModelInfo.downloadSizeText) download is disabled. Self-hosted and cloud AI are unaffected.")
             #endif
         }
     }
@@ -141,7 +141,7 @@ struct OnDeviceLLMSettingsView: View {
                 HStack {
                     Label("Download Model", systemImage: "arrow.down.circle")
                     Spacer()
-                    Text("~2.2 GB")
+                    Text(OnDeviceLLMModelInfo.downloadSizeText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -293,7 +293,7 @@ struct OnDeviceLLMSettingsView: View {
         } header: {
             Text("Model Information")
         } footer: {
-            Text("Ministral 3 3B is a compact, efficient language model optimized for on-device inference on Apple Silicon.")
+            Text("\(OnDeviceLLMModelInfo.displayName) is a compact, efficient language model optimized for on-device inference on Apple Silicon.")
         }
     }
 

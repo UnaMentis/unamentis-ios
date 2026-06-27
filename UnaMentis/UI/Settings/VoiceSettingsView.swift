@@ -602,7 +602,7 @@ class VoiceSettingsViewModel: ObservableObject {
            let stt = STTProvider(rawValue: sttRaw) {
             self.sttProvider = stt
         } else {
-            self.sttProvider = .glmASRNano
+            self.sttProvider = .parakeetEOU
         }
 
         if let llmRaw = defaults.string(forKey: "llmProvider"),

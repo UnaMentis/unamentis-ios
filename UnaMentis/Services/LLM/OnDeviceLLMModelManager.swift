@@ -72,7 +72,7 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 displayName: "Gemma 4 E2B",
                 huggingFaceRepo: "unsloth/gemma-4-E2B-it-GGUF",
                 filename: "gemma-4-E2B-it-Q4_K_M.gguf",
-                expectedSizeBytes: 2_000_000_000, // ~2 GB on disk (verify at download)
+                expectedSizeBytes: 3_106_736_256, // 3.11 GB (validated against the live HF link; Per-Layer Embeddings load ~5.1B weights)
                 quantization: "Q4_K_M",
                 contextSize: 8192,
                 minimumRAMGB: 12,
@@ -117,10 +117,28 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
         }
     }
 
-    /// The most capable model the device's RAM can safely run alongside the
-    /// voice stack (Pocket TTS, VAD, STT) during a long session. This is the
-    /// capability ceiling, not necessarily what is downloaded; use
-    /// `bestAvailableModel(...)` for the model to actually load.
+    /// Whether this model's architecture loads on the llama.cpp build that ships
+    /// in the app today (`UnaMentis/Frameworks/llama.xcframework`, b7263).
+    ///
+    /// Gemma 4 (arch `gemma4`) needs an April-2026-or-later llama.cpp; b7263 has
+    /// build functions only through gemma3n, so a Gemma 4 GGUF fails to load with
+    /// "unknown architecture". This stays `false` until a gemma4-capable
+    /// llama.xcframework is integrated and Gemma 4 generation is verified on device.
+    /// Flipping it to `true` is the ONLY change needed to auto-activate the Gemma 4
+    /// showcase on 12 GB devices.
+    /// Decision + tiering: docs/ios/ON_DEVICE_LLM_MODEL_RECONSIDERATION_2026-06-20.md.
+    public var runsOnBundledRuntime: Bool {
+        switch self {
+        case .gemma4_e2b: return false // needs a gemma4-capable llama.cpp (b7263 is too old)
+        case .qwen3_1_7B, .qwen3_0_6B, .ministral3_3B: return true
+        }
+    }
+
+    /// The decided capability ceiling per device (the TARGET, not necessarily what
+    /// loads today). Per ON_DEVICE_LLM_MODEL_RECONSIDERATION_2026-06-20.md: Gemma 4
+    /// E2B is the 12 GB showcase, Qwen3-1.7B the 8 GB tier, Qwen3-0.6B the 6 GB tier.
+    /// Ministral 3 3B is deprecated and is not a ceiling for any tier.
+    /// Use `bestRunnableForDevice(...)` for the model the app downloads and loads now.
     public static func recommendedForDevice(
         physicalMemoryGB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
     ) -> OnDeviceLLMModel? {
@@ -128,8 +146,22 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
         case 12...: return .gemma4_e2b
         case 8...: return .qwen3_1_7B
         case 6...: return .qwen3_0_6B
-        default: return nil // below 6 GB: use the server LLM + Apple TTS fallback
+        default: return nil // below 6 GB: server LLM + Apple TTS fallback
         }
+    }
+
+    /// The most capable model the device can run RIGHT NOW: RAM-appropriate AND
+    /// supported by the bundled llama.cpp runtime. This is what the app actually
+    /// downloads and loads. On a 12 GB device today this is Qwen3-1.7B (the decided
+    /// fallback tier), because the Gemma 4 showcase awaits a gemma4-capable
+    /// llama.cpp. When `gemma4_e2b.runsOnBundledRuntime` flips to true, 12 GB
+    /// devices auto-upgrade to Gemma 4 E2B with no other change. Ministral 3 3B is
+    /// deprecated and intentionally excluded from this ladder.
+    public static func bestRunnableForDevice(
+        physicalMemoryGB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
+    ) -> OnDeviceLLMModel? {
+        let ladder: [OnDeviceLLMModel] = [.gemma4_e2b, .qwen3_1_7B, .qwen3_0_6B]
+        return ladder.first { $0.config.minimumRAMGB <= physicalMemoryGB && $0.runsOnBundledRuntime }
     }
 }
 
@@ -205,8 +237,12 @@ public actor OnDeviceLLMModelManager {
 
     public private(set) var state: ModelState = .notDownloaded
 
-    /// Currently selected model
-    public private(set) var selectedModel: OnDeviceLLMModel = .ministral3_3B
+    /// The model the app downloads/loads, chosen for THIS device: the most capable
+    /// model whose RAM tier fits AND that the bundled llama.cpp can run today. On a
+    /// 12 GB iPhone this resolves to Qwen3-1.7B now and auto-upgrades to the Gemma 4
+    /// E2B showcase once a gemma4-capable llama.cpp lands. Set in init() from the
+    /// real device RAM. See ON_DEVICE_LLM_MODEL_RECONSIDERATION_2026-06-20.md.
+    public private(set) var selectedModel: OnDeviceLLMModel
 
     // MARK: - Download State
 
@@ -235,6 +271,10 @@ public actor OnDeviceLLMModelManager {
     // MARK: - Initialization
 
     public init() {
+        // Pick the device-appropriate, runnable model up front so the download UI
+        // and the session load the same thing. Falls back to the smallest runnable
+        // model on unexpectedly small devices.
+        self.selectedModel = OnDeviceLLMModel.bestRunnableForDevice() ?? .qwen3_0_6B
         Task {
             await checkModelAvailability()
         }
@@ -491,17 +531,47 @@ public enum OnDeviceLLMModelError: Error, LocalizedError {
 
 // MARK: - Model Info
 
-/// Static information about the on-device LLM model
+/// Static information about the on-device LLM model.
+///
+/// Display fields derive from the canonical model's config so the settings UI can
+/// never drift from the model the app actually downloads and runs. Keep `canonical`
+/// in sync with `OnDeviceLLMModelManager.selectedModel`.
 public enum OnDeviceLLMModelInfo {
-    public static let displayName = "Ministral 3 3B"
-    public static let version = "December 2025"
-    public static let quantization = "Q4_K_M"
-    public static let totalSizeMB: Float = 2150
-    public static let contextSize: UInt32 = 4096
-    public static let minimumRAMGB = 4
+    /// The model the app downloads and runs on THIS device (the device-appropriate,
+    /// runnable tier). Derives everything below so the settings UI can never drift
+    /// from the model that is actually used, including after the Gemma 4 upgrade.
+    public static var canonical: OnDeviceLLMModel {
+        OnDeviceLLMModel.bestRunnableForDevice() ?? .qwen3_1_7B
+    }
+
+    public static var displayName: String { canonical.config.displayName }
+    public static var quantization: String { canonical.config.quantization }
+    public static var totalSizeMB: Float { Float(canonical.config.expectedSizeBytes) / 1_000_000 }
+    public static var contextSize: UInt32 { UInt32(canonical.config.contextSize) }
+    public static var minimumRAMGB: Int { canonical.config.minimumRAMGB }
     public static let minimumIOSVersion = "16.0"
     public static let license = "Apache 2.0"
-    public static let publisher = "Mistral AI"
+
+    public static var version: String {
+        switch canonical {
+        case .gemma4_e2b: return "April 2026"
+        case .qwen3_1_7B, .qwen3_0_6B: return "May 2025"
+        case .ministral3_3B: return "December 2025"
+        }
+    }
+
+    public static var publisher: String {
+        switch canonical {
+        case .gemma4_e2b: return "Google"
+        case .qwen3_1_7B, .qwen3_0_6B: return "Alibaba (Qwen)"
+        case .ministral3_3B: return "Mistral AI"
+        }
+    }
+
+    /// Approximate download size, derived so UI copy never drifts from the model.
+    public static var downloadSizeText: String {
+        String(format: "~%.1f GB", Double(canonical.config.expectedSizeBytes) / 1_000_000_000)
+    }
 
     /// Why users should keep the model
     public static let keepModelReasons = [
@@ -517,7 +587,7 @@ public enum OnDeviceLLMModelInfo {
         "Learning modules will fall back to simpler validation methods",
         "Complex answers requiring judgment may not be validated correctly",
         "Some curriculum features may require an internet connection",
-        "You can re-download the model anytime (requires ~2.2 GB download)"
+        "You can re-download the model anytime"
     ]
 }
 

@@ -1444,7 +1444,7 @@ class SessionViewModel: ObservableObject {
 
         // Read user settings from UserDefaults
         let sttProviderSetting = UserDefaults.standard.string(forKey: "sttProvider")
-            .flatMap { STTProvider(rawValue: $0) } ?? .glmASRNano
+            .flatMap { STTProvider(rawValue: $0) } ?? .parakeetEOU
         let llmProviderSetting = UserDefaults.standard.string(forKey: "llmProvider")
             .flatMap { LLMProvider(rawValue: $0) } ?? .localMLX
         let ttsProviderSetting = UserDefaults.standard.string(forKey: "ttsProvider")
@@ -2507,7 +2507,7 @@ class SessionViewModel: ObservableObject {
 
         // Configure STT service for transcribing barge-in speech
         let sttProviderSetting = UserDefaults.standard.string(forKey: "sttProvider")
-            .flatMap { STTProvider(rawValue: $0) } ?? .appleSpeech
+            .flatMap { STTProvider(rawValue: $0) } ?? .parakeetEOU
 
         switch sttProviderSetting {
         case .glmASROnDevice:

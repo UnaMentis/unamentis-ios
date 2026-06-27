@@ -137,15 +137,27 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
 
     // MARK: - Model Info Tests
 
-    func testModelInfoStaticValues() {
-        XCTAssertEqual(OnDeviceLLMModelInfo.displayName, "Ministral 3 3B")
-        XCTAssertEqual(OnDeviceLLMModelInfo.version, "December 2025")
-        XCTAssertEqual(OnDeviceLLMModelInfo.quantization, "Q4_K_M")
-        XCTAssertEqual(OnDeviceLLMModelInfo.totalSizeMB, 2150)
-        XCTAssertEqual(OnDeviceLLMModelInfo.contextSize, 4096)
-        XCTAssertEqual(OnDeviceLLMModelInfo.minimumRAMGB, 4)
+    func testModelInfoDerivesFromRunnableModel() {
+        // The settings info derives from the device's runnable model so the UI can
+        // never drift from what is downloaded/run. It must never surface the
+        // deprecated Ministral, nor Gemma 4 (which the bundled llama.cpp cannot load).
+        let canonical = OnDeviceLLMModelInfo.canonical
+        XCTAssertNotEqual(canonical, .ministral3_3B, "Ministral is deprecated, never the canonical model")
+        XCTAssertTrue(canonical.runsOnBundledRuntime, "canonical must load on the bundled llama.cpp")
+        XCTAssertEqual(canonical, OnDeviceLLMModel.bestRunnableForDevice())
+
+        // Every displayed field derives from the canonical model's config.
+        XCTAssertEqual(OnDeviceLLMModelInfo.displayName, canonical.config.displayName)
+        XCTAssertEqual(OnDeviceLLMModelInfo.quantization, canonical.config.quantization)
+        XCTAssertEqual(OnDeviceLLMModelInfo.totalSizeMB, Float(canonical.config.expectedSizeBytes) / 1_000_000)
+        XCTAssertEqual(OnDeviceLLMModelInfo.contextSize, UInt32(canonical.config.contextSize))
+        XCTAssertEqual(OnDeviceLLMModelInfo.minimumRAMGB, canonical.config.minimumRAMGB)
         XCTAssertEqual(OnDeviceLLMModelInfo.license, "Apache 2.0")
-        XCTAssertEqual(OnDeviceLLMModelInfo.publisher, "Mistral AI")
+
+        // On any normal test host (>= 8 GB) the runnable model is Qwen3-1.7B.
+        XCTAssertEqual(canonical, .qwen3_1_7B)
+        XCTAssertEqual(OnDeviceLLMModelInfo.displayName, "Qwen3 1.7B")
+        XCTAssertEqual(OnDeviceLLMModelInfo.publisher, "Alibaba (Qwen)")
     }
 
     func testModelInfoKeepReasons() {
@@ -231,24 +243,31 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
     func testManagerModelPath() async {
         let manager = OnDeviceLLMModelManager()
         let path = await manager.modelPath
+        let expectedFile = (OnDeviceLLMModel.bestRunnableForDevice() ?? .qwen3_0_6B).config.filename
 
         XCTAssertTrue(path.path.contains("models/LLM"))
-        XCTAssertTrue(path.path.contains("Ministral-3-3B-Instruct-2512-Q4_K_M.gguf"))
+        XCTAssertTrue(path.path.contains(expectedFile), "modelPath should point to the device's runnable model file")
+        XCTAssertFalse(path.path.contains("Ministral"), "Ministral is deprecated")
     }
 
     func testManagerModelPathString() async {
         let manager = OnDeviceLLMModelManager()
         let pathString = await manager.modelPathString
+        let expectedFile = (OnDeviceLLMModel.bestRunnableForDevice() ?? .qwen3_0_6B).config.filename
 
         XCTAssertTrue(pathString.contains("models/LLM"))
-        XCTAssertTrue(pathString.contains("Ministral-3-3B-Instruct-2512-Q4_K_M.gguf"))
+        XCTAssertTrue(pathString.contains(expectedFile), "modelPathString should point to the device's runnable model file")
     }
 
-    func testManagerSelectedModel() async {
+    func testManagerSelectedModelIsTheDeviceRunnableModel() async {
         let manager = OnDeviceLLMModelManager()
         let selectedModel = await manager.selectedModel
 
-        XCTAssertEqual(selectedModel, .ministral3_3B)
+        // The manager downloads/loads the device-appropriate, runnable model, never
+        // the deprecated Ministral and never a model the bundled llama.cpp cannot run.
+        XCTAssertEqual(selectedModel, OnDeviceLLMModel.bestRunnableForDevice() ?? .qwen3_0_6B)
+        XCTAssertNotEqual(selectedModel, .ministral3_3B)
+        XCTAssertTrue(selectedModel.runsOnBundledRuntime)
     }
 
     func testManagerMarkLoadedAndUnloaded() async {

@@ -637,9 +637,12 @@ extension OnDeviceLLMService {
             .urls(for: .documentDirectory, in: .userDomainMask).first!
             .appendingPathComponent("models/LLM")
 
-        // Tier ladder from most to least capable. Skip tiers too heavy for the device.
+        // Tier ladder from most to least capable. Skip tiers too heavy for the
+        // device, AND skip any model the bundled llama.cpp cannot load (Gemma 4
+        // until a gemma4-capable framework lands), so a stray GGUF on disk can
+        // never trigger an "unknown architecture" load failure mid-demo.
         let ladder: [OnDeviceLLMModel] = [.gemma4_e2b, .qwen3_1_7B, .qwen3_0_6B, .ministral3_3B]
-        for model in ladder where model.config.minimumRAMGB <= physicalMemoryGB {
+        for model in ladder where model.config.minimumRAMGB <= physicalMemoryGB && model.runsOnBundledRuntime {
             let path = documentsLLM.appendingPathComponent(model.config.filename)
             if FileManager.default.fileExists(atPath: path.path) {
                 staticLogger.debug("Selected on-device model \(model.config.displayName) at \(path.path)")

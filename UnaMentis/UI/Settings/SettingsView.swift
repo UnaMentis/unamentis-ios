@@ -628,7 +628,7 @@ class SettingsViewModel: ObservableObject {
            let stt = STTProvider(rawValue: sttRaw) {
             self.sttProvider = stt
         } else {
-            self.sttProvider = .glmASRNano  // Default to server-based GLM-ASR (on-device requires LLAMA_AVAILABLE)
+            self.sttProvider = .parakeetEOU  // Default to Parakeet EOU: best on-device streaming STT (FluidAudio, no server, no network)
         }
 
         if let llmRaw = UserDefaults.standard.string(forKey: "llmProvider"),

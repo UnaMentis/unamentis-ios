@@ -132,6 +132,26 @@ Remaining for the showcase tier:
 
 Note on a test-environment observation: when verifying the LLM, the spoken output used Apple's `AVSpeechSynthesizer` (logs: `com.unamentis.tts.apple`), not Kyutai Pocket TTS. This is the documented graceful-degradation fallback firing because the throwaway test container had only the LLM GGUF provisioned, not the Pocket TTS model files. It is a test-setup artifact and is independent of the LLM tier work, which does not touch the TTS pipeline. A full-voice re-verification requires provisioning the Pocket TTS models in the simulator.
 
+## 7a. Status update (2026-06-26)
+
+Code now matches the decision, and the Gemma 4 unblock path is validated.
+
+**Landed in code (`OnDeviceLLMModelManager` / `OnDeviceLLMService`):**
+- Ministral 3 3B is no longer a default anywhere. `selectedModel` is now set in `init()` from `bestRunnableForDevice()`.
+- New `OnDeviceLLMModel.runsOnBundledRuntime` flag: `gemma4_e2b = false` (b7263 lacks gemma4), all others `true`. New `bestRunnableForDevice(...)` returns the most capable RAM-appropriate model that the bundled llama.cpp can actually load, so a 12 GB device runs Qwen3-1.7B today and AUTO-UPGRADES to Gemma 4 E2B the moment the flag flips. `recommendedForDevice(...)` restored to the decided ceiling (12 GB Gemma 4 E2B, 8 GB Qwen3-1.7B, 6 GB Qwen3-0.6B). `bestAvailableModel(...)` also skips non-runnable models so a stray GGUF can never trigger an unknown-architecture load failure mid-session.
+- Settings (`OnDeviceLLMSettingsView` / `OnDeviceLLMModelInfo`) now DERIVE the model name, size, context, quantization, publisher, and version from the device's runnable model, so the UI can never drift from what is downloaded/run (was hardcoded to "Ministral 3 3B / 2.2 GB").
+- Gemma 4 E2B `expectedSizeBytes` corrected 2.0 GB -> 3.11 GB (validated against the live HF link; PLE weights are ~5.1B).
+
+**Download links validated 2026-06-26** (actual HTTP request, GGUF magic, size): Qwen3-1.7B 1.107 GB, Qwen3-0.6B 397 MB (full download tested + cleaned up), Ministral 2.15 GB, Gemma 4 E2B 3.11 GB. All serve real GGUF v3 files. Unsloth repos confirmed.
+
+**Gemma 4 unblock (validated path):** the llama.xcframework is fetched from official llama.cpp releases (`github.com/ggml-org/llama.cpp/releases/download/<bNNNN>/llama-<bNNNN>-xcframework.zip`; recent asset is `.zip`, b7263 used `.tar.gz`). Verified 2026-06-26 that build **b9820 includes the `gemma4` architecture** (b7263 does not). To ship the Gemma 4 showcase:
+1. Bump the framework (local `UnaMentis/Frameworks/llama.xcframework` + the CI fetch URLs in `unit-tests.yml` and `integration.yml`) from b7263 to a current build.
+2. Re-verify `OnDeviceLLMService`'s llama.cpp API calls against the new build (b7263 -> b9820 is a large jump; the sampler/tokenize/batch API may have changed).
+3. Device-validate Gemma 4 E2B loads and generates (3.11 GB GGUF, 12 GB device).
+4. Flip `gemma4_e2b.runsOnBundledRuntime = true`. 12 GB devices then auto-select Gemma 4 E2B.
+
+Until then, the on-device LLM demo runs on Qwen3-1.7B, which is the decided fallback tier and is verified working on b7263.
+
 ## 7. Process lesson
 
 When a fresh implementation overrides an existing, dated, adversarially-verified recommendation in the repo, that override is a decision worth raising explicitly, not a footnote. The research was found and read during the sprint; the failure was treating "fastest path to a green checkmark" as the goal when the goal was "the right beta model." Flagging the divergence at the time would have surfaced this in the morning summary instead of three weeks later.
