@@ -2493,11 +2493,8 @@ class SessionViewModel: ObservableObject {
         // Create the single barge-in detector and consume its events. It owns the
         // tentative/confirm decision and the confirmation timer; the event handler
         // performs this view model's side effects (pause/stop/resume playback).
-        let detector = BargeInDetector(config: BargeInDetectorConfig(
-            enabled: true,
-            confidenceThreshold: bargeInThreshold,
-            confirmationMs: Int(bargeInConfirmationWindow * 1000)
-        ))
+        // Detection thresholds come from the runtime tuning knobs (BargeInTuning).
+        let detector = BargeInDetector(config: BargeInTuning.detectorConfig())
         self.bargeInDetector = detector
         self.bargeInEventTask = Task { [weak self] in
             for await event in detector.events {

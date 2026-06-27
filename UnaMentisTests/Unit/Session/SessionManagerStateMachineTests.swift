@@ -224,49 +224,46 @@ final class SessionManagerStateMachineTests: XCTestCase {
 
     // MARK: - Barge-In Event Dispatch (side effects)
 
-    func testConfirmedBargeIn_handsFloorBackToUser() async {
+    func testConfirmedBargeIn_pausesPendingEngagementNotImmediateUserSpeaking() async {
+        // INVARIANT: a confirmed (sustained) barge-in PAUSES narration pending real
+        // engagement; it must NOT immediately hand the floor to the user. Only an
+        // actual utterance commits the interruption. With no pausable audio engine
+        // in this bare manager, confirm cannot pause, so it leaves narration alone
+        // rather than dropping to .userSpeaking. The full pause -> commit/resume
+        // flow is covered by the session integration tests (with a real AudioEngine).
         let manager = makeManager()
         await manager._testForceState(.aiSpeaking)
 
         await manager._testDispatchBargeInEvent(.confirmed)
 
-        XCTAssertEqual(manager.state, .userSpeaking, "a confirmed barge-in returns to userSpeaking")
+        XCTAssertNotEqual(manager.state, .userSpeaking,
+                          "confirmed must not immediately hand the floor; it pauses pending engagement")
     }
 
-    func testConfirmedBargeIn_clearsAIResponse() async {
-        let manager = makeManager()
-        await manager._testForceState(.aiSpeaking)
-
-        await manager._testDispatchBargeInEvent(.confirmed)
-
-        XCTAssertTrue(manager.aiResponse.isEmpty,
-                      "confirming a barge-in clears the partially spoken AI response")
-    }
-
-    func testConfirmedBargeIn_fromInterrupted_returnsToUserSpeaking() async {
-        // A tentative pause leaves the session in .interrupted; a subsequent
-        // confirmation must still hand the floor to the user.
+    func testConfirmedBargeIn_onlyActsWhileAISpeaking() async {
+        // confirmBargeIn guards on .aiSpeaking. A confirmed event arriving in any
+        // other state (here .interrupted) is ignored, with no spurious transition.
         let manager = makeManager()
         await manager._testForceState(.interrupted)
 
         await manager._testDispatchBargeInEvent(.confirmed)
 
-        XCTAssertEqual(manager.state, .userSpeaking)
+        XCTAssertEqual(manager.state, .interrupted,
+                       "a confirmed event off aiSpeaking is ignored")
     }
 
-    func testResumedEvent_returnsToAISpeaking() async {
-        // A resumed event is a false-positive recovery: the session should go
-        // back to aiSpeaking so playback continues.
+    func testResumedEvent_doesNotDisruptNarration() async {
+        // Tentative no longer pauses narration, so a resumed (false-positive)
+        // event has nothing to undo: it must not alter session state. Recovery
+        // from a genuine confirmed pause is handled by the no-engagement timer.
         let manager = makeManager()
         manager._testInstallBargeInDetector()
-        await manager._testForceState(.interrupted)
+        await manager._testForceState(.aiSpeaking)
 
         await manager._testDispatchBargeInEvent(.resumed)
 
-        XCTAssertEqual(manager.state, .aiSpeaking, "a resumed (false-positive) event returns to aiSpeaking")
-        let phase = await manager._testBargeInDetectorPhase()
-        XCTAssertEqual(phase, .listening,
-                       "returning to aiSpeaking re-arms the detector")
+        XCTAssertEqual(manager.state, .aiSpeaking,
+                       "a resumed event must not disrupt ongoing narration")
     }
 
     func testTentativeEvent_whenNotSpeaking_isDroppedAndStateUnchanged() async {
@@ -282,11 +279,11 @@ final class SessionManagerStateMachineTests: XCTestCase {
                        "a tentative event while not speaking must not change state")
     }
 
-    func testTentativeEvent_withoutAudioEngine_doesNotEnterInterrupted() async {
-        // With no started session there is no audio engine, so pausePlayback()
-        // resolves to nil and the tentative must abort rather than enter
-        // .interrupted. This documents that the interrupted transition depends
-        // on a successful playback pause, which is the audio hardware path.
+    func testTentativeEvent_doesNotDisruptNarration() async {
+        // INVARIANT: a tentative is only the START of evaluation. It must never
+        // pause or otherwise disrupt narration; the session stays in .aiSpeaking
+        // while the detector decides whether the speech sustains into a genuine
+        // barge-in. Only a confirmed event acts.
         let manager = makeManager()
         manager._testInstallBargeInDetector()
         await manager._testForceState(.aiSpeaking)
@@ -294,7 +291,7 @@ final class SessionManagerStateMachineTests: XCTestCase {
         await manager._testDispatchBargeInEvent(.tentative)
 
         XCTAssertEqual(manager.state, .aiSpeaking,
-                       "without a pausable engine the tentative is aborted, state stays aiSpeaking")
+                       "a tentative must not disrupt narration; only a confirmed barge-in acts")
     }
 
     // MARK: - DEBUG Utterance Injection Guard

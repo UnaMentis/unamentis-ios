@@ -89,7 +89,7 @@ public actor BargeInMeasurementHarness {
             sttProvider: "none (known-text classification; STT first-partial is device-only)",
             ttsProvider: TTSProvider.pocketTTS.rawValue,
             confidenceThreshold: detectorConfig.confidenceThreshold,
-            confirmationMs: detectorConfig.confirmationMs,
+            confirmationMs: detectorConfig.sustainedSpeechMs,
             metrics: BargeInMetrics.compute(from: outcomes),
             outcomes: outcomes,
             thermalState: Self.thermalString(),

@@ -210,6 +210,12 @@ public struct SettingsView: View {
                         Label("TTS Playback Tuning", systemImage: "slider.horizontal.3")
                     }
 
+                    NavigationLink {
+                        BargeInTuningView()
+                    } label: {
+                        Label("Barge-In Tuning", systemImage: "hand.raised.slash")
+                    }
+
                     #if DEBUG
                     NavigationLink {
                         DebugConversationTestView()

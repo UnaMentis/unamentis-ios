@@ -497,6 +497,8 @@ public final class SessionManager: ObservableObject {
         // Tear down the barge-in detector (cancels its confirmation timer).
         bargeInEventTask?.cancel()
         bargeInEventTask = nil
+        noEngagementResumeTask?.cancel()
+        noEngagementResumeTask = nil
         await bargeInDetector?.finish()
         bargeInDetector = nil
 
@@ -761,11 +763,12 @@ public final class SessionManager: ObservableObject {
         // Create the single barge-in detector for this session and consume its
         // events. The detector owns the detection decision and the confirmation
         // timer; this manager performs the side effects (pause/stop/resume).
-        let detector = BargeInDetector(config: BargeInDetectorConfig(
-            enabled: config.enableInterruptions,
-            confidenceThreshold: config.audio.bargeInThreshold,
-            confirmationMs: config.bargeInConfirmationMs
-        ))
+        // Detection thresholds come from the runtime tuning knobs (BargeInTuning),
+        // so they can be dialed in on-device without a rebuild. The master enable
+        // still respects the session's enableInterruptions.
+        var detectorConfig = BargeInTuning.detectorConfig()
+        detectorConfig.enabled = detectorConfig.enabled && config.enableInterruptions
+        let detector = BargeInDetector(config: detectorConfig)
         bargeInDetector = detector
         bargeInEventTask = Task { [weak self] in
             for await event in detector.events {
@@ -984,6 +987,13 @@ public final class SessionManager: ObservableObject {
 
     private func processUserUtterance(_ transcript: String) async {
         logger.debug("Processing user utterance: \(transcript.prefix(50))...")
+
+        // If a confirmed barge-in paused narration and is waiting to see whether
+        // the user actually engages, this real utterance IS that engagement:
+        // commit the interruption (tear down the paused narration) before the turn.
+        if state == .interrupted {
+            await commitInterruptedBargeIn()
+        }
 
         await setState(.processingUserUtterance)
         currentTurnStartTime = Date()
@@ -1420,6 +1430,10 @@ public final class SessionManager: ObservableObject {
     /// Task consuming the detector's event stream.
     private var bargeInEventTask: Task<Void, Never>?
 
+    /// After a confirmed barge-in pauses narration, this timer resumes it if the
+    /// user never actually engages (no real utterance), so we are never stuck.
+    private var noEngagementResumeTask: Task<Void, Never>?
+
     /// Dispatch a barge-in detection event from the single BargeInDetector to
     /// the appropriate side-effect handler.
     private func handleBargeInEvent(_ event: BargeInEvent) async {
@@ -1437,83 +1451,93 @@ public final class SessionManager: ObservableObject {
     /// interrupted state. If playback cannot be paused, abort the tentative so a
     /// later frame retries (mirrors the prior failed-pause behavior).
     private func onBargeInTentative() async {
-        // The detector emits events asynchronously, so the session state may have
-        // moved on (e.g. the AI finished speaking) between detection and here.
-        // Only pause if the AI is still speaking; otherwise drop the stale event
-        // (the detector was already disarmed by that state transition). This
-        // preserves the original `guard state == .aiSpeaking` safety.
+        // INVARIANT: the act of detecting a barge-in must NOT disrupt narration.
+        // A tentative is only the START of evaluation; narration keeps playing.
+        // We deliberately do not pause here. If the speech sustains, the detector
+        // emits `.confirmed` and we act then; if it does not, it emits `.resumed`
+        // and nothing was ever interrupted.
         guard state == .aiSpeaking else {
             await bargeInDetector?.abortTentative()
             return
         }
-
-        logger.info("Tentative barge-in detected - pausing playback")
-        // Live/device latency marks. Onset is unknown precisely in the live app,
-        // so it is stamped here with the tentative; the measurement harness marks
-        // a true onset itself (injection/playback start).
         await TTFAInstrumentation.shared.markBargeInOnset()
         await TTFAInstrumentation.shared.markBargeInTentative()
+    }
+
+    /// A tentative did not sustain (false positive / noise / changed mind). Since
+    /// we never paused on tentative, this is a no-op for narration; it only
+    /// re-arms latency instrumentation.
+    private func resumeFromTentativePause() async {
+        await TTFAInstrumentation.shared.markBargeInResolved()
+    }
+
+    /// Sustained, genuine speech: a real barge-in. PAUSE narration (do not tear it
+    /// down yet) and give the user the floor. If the user actually engages (a real
+    /// utterance reaches `processUserUtterance`), we commit and fully stop. If no
+    /// engagement arrives within the tuning window, we resume narration, so a rare
+    /// false-confirm or a changed mind never leaves us stuck.
+    private func confirmBargeIn() async {
+        guard state == .aiSpeaking else { return }
+        logger.info("Barge-in confirmed (sustained speech) - pausing for the user")
+        await TTFAInstrumentation.shared.markBargeInConfirmed()
+
+        voiceFeedback.playTone(.commandRecognized)
+        await telemetry.recordEvent(.userInterrupted)
 
         if let paused = await audioEngine?.pausePlayback(), paused {
             await setState(.interrupted)
+            startNoEngagementResumeTimer()
         } else {
+            // Could not pause cleanly; leave narration alone and keep listening.
             await bargeInDetector?.abortTentative()
         }
     }
 
-    /// Resume playback after a false-positive barge-in (detector resume event).
-    private func resumeFromTentativePause() async {
-        logger.info("Resuming from tentative pause")
+    /// Start the timer that resumes narration if a confirmed barge-in produces no
+    /// actual engagement within the tunable window.
+    private func startNoEngagementResumeTimer() {
+        noEngagementResumeTask?.cancel()
+        let seconds = BargeInTuning.resumeAfterNoEngagementSec
+        noEngagementResumeTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await self?.resumeAfterNoEngagement()
+        }
+    }
 
-        // Resume audio playback
+    private func resumeAfterNoEngagement() async {
+        guard state == .interrupted else { return }
+        logger.info("No engagement after barge-in - resuming narration")
+        noEngagementResumeTask = nil
         _ = await audioEngine?.resumePlayback()
-
-        // Return to aiSpeaking state (re-arms the detector)
         await setState(.aiSpeaking)
         await TTFAInstrumentation.shared.markBargeInResolved()
     }
 
-    /// Confirm barge-in as real - fully stop and switch to user speaking
-    /// (detector confirmed event). The detector has already cancelled its timer
-    /// and returned to idle; this performs the interruption side effects.
-    private func confirmBargeIn() async {
-        logger.info("Barge-in confirmed - fully interrupting")
-        await TTFAInstrumentation.shared.markBargeInConfirmed()
+    /// The user actually engaged after a confirmed barge-in: tear down the paused
+    /// narration before the new turn is processed.
+    private func commitInterruptedBargeIn() async {
+        noEngagementResumeTask?.cancel()
+        noEngagementResumeTask = nil
 
-        // Instant haptic/tone feedback so user knows they've been heard (<10ms)
-        voiceFeedback.playTone(.commandRecognized)
-
-        await telemetry.recordEvent(.userInterrupted)
-
-        // Cancel and invalidate speculative starters since context has shifted
         preGenerationTask?.cancel()
         preGenerationTask = nil
         await responsePreGenerator.invalidate()
 
-        // Now fully stop everything
         ttsStreamTask?.cancel()
         llmStreamTask?.cancel()
         if let orch = ttsOrchestrator {
             await orch.stopPlayback()
         }
         await audioEngine?.stopPlayback()
-
-        // Clear buffers if configured
         if config.audio.ttsClearOnInterrupt {
             try? await ttsService?.flush()
         }
 
-        // Return to listening
-        await setState(.userSpeaking)
-
-        // Reset silence tracking for new utterance
         hasDetectedSpeech = false
         silenceStartTime = nil
         await TTFAInstrumentation.shared.markBargeInResolved()
-
-        await MainActor.run {
-            aiResponse = ""
-        }
+        await MainActor.run { aiResponse = "" }
     }
 }
 

@@ -34,13 +34,20 @@ final class SessionManagerBargeInTests: XCTestCase {
         XCTAssertEqual(phase, .listening, ".interrupted must not disarm the detector")
     }
 
-    func testConfirmedBargeInEventReturnsToUserSpeaking() async {
+    func testConfirmedBargeInPausesPendingEngagementNotImmediateStop() async {
+        // INVARIANT: a confirmed (sustained) barge-in PAUSES narration pending real
+        // engagement; it must NOT immediately drop the floor / stop. Only an actual
+        // user utterance commits the interruption. With no pausable audio engine in
+        // this bare manager, confirm cannot pause, so it leaves narration alone
+        // (state stays .aiSpeaking) rather than dropping to .userSpeaking. The full
+        // pause -> commit/resume flow is covered by the session integration tests
+        // with a real AudioEngine.
         let manager = SessionManager(telemetry: TelemetryEngine())
 
         await manager._testForceState(.aiSpeaking)
-        XCTAssertEqual(manager.state, .aiSpeaking)
-
         await manager._testDispatchBargeInEvent(.confirmed)
-        XCTAssertEqual(manager.state, .userSpeaking, "a confirmed barge-in hands the floor to the user")
+
+        XCTAssertNotEqual(manager.state, .userSpeaking,
+                          "confirmed must not immediately hand the floor; it pauses pending engagement")
     }
 }
