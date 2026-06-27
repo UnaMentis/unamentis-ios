@@ -296,6 +296,12 @@ public final class SessionManager: ObservableObject {
     private let silenceThreshold: TimeInterval
     private var pendingUtteranceTask: Task<Void, Never>?
 
+    /// True while a user utterance is being turned into a response. Two completion
+    /// paths can fire for one utterance (the STT final result and the silence
+    /// timer); this flag, set before any await, ensures the turn runs exactly once
+    /// so the user transcript is not appended (and answered) twice.
+    private var isProcessingUserUtterance = false
+
     /// Sentence-level TTS streaming
     private var sentenceBuffer: String = ""
     private var isLLMStreamingComplete: Bool = false
@@ -815,6 +821,16 @@ public final class SessionManager: ObservableObject {
         case .interrupted:
             break
         }
+
+        // The turn is over once we are ready for the next utterance (or the session
+        // ended / errored): clear the in-flight marker so the next utterance can be
+        // processed.
+        switch newState {
+        case .userSpeaking, .idle, .error:
+            isProcessingUserUtterance = false
+        default:
+            break
+        }
     }
     
     // MARK: - Audio Stream Handling
@@ -1050,12 +1066,28 @@ public final class SessionManager: ObservableObject {
     private func processUserUtterance(_ transcript: String) async {
         logger.debug("Processing user utterance: \(transcript.prefix(50))...")
 
-        // If a confirmed barge-in paused narration and is waiting to see whether
-        // the user actually engages, this real utterance IS that engagement:
-        // commit the interruption (tear down the paused narration) before the turn.
+        // The STT final-result path and the silence timer can both complete the
+        // same utterance. Cancel the silence timer so it cannot fire late, then
+        // guard against a duplicate. SessionManager is @MainActor, so setting the
+        // flag before the first await closes the race between the two paths and the
+        // turn (history append + LLM call) runs exactly once.
+        pendingUtteranceTask?.cancel()
+        pendingUtteranceTask = nil
+
+        // A confirmed barge-in paused narration and is waiting to see whether the
+        // user actually engages. This real utterance IS that engagement: it
+        // abandons the in-flight (paused) turn and starts a fresh one, so clear the
+        // in-flight marker before committing the barge-in.
         if state == .interrupted {
+            isProcessingUserUtterance = false
             await commitInterruptedBargeIn()
         }
+
+        guard !isProcessingUserUtterance else {
+            logger.debug("Duplicate utterance completion ignored - a turn is already in progress")
+            return
+        }
+        isProcessingUserUtterance = true
 
         await setState(.processingUserUtterance)
         currentTurnStartTime = Date()
@@ -1703,5 +1735,22 @@ extension SessionManager {
     func _testBargeInDetectorPhase() async -> BargeInDetector.Phase? {
         await bargeInDetector?.phase
     }
+
+    /// Inject mock services so a full turn can be driven without starting the mic
+    /// or the audio engine. The TTS orchestrator and instant filler both no-op
+    /// when the audio engine is nil, so passing nil for tts/audio is fine: the
+    /// turn still runs at the LLM and conversation-history level.
+    func _testInjectServices(
+        llm: (any LLMService)?,
+        stt: (any STTService)? = nil,
+        tts: (any TTSService)? = nil
+    ) {
+        llmService = llm
+        sttService = stt
+        ttsService = tts
+    }
+
+    /// Read-only view of the conversation history for assertions.
+    var _testConversationHistory: [LLMMessage] { conversationHistory }
 }
 #endif
