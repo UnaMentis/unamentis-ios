@@ -164,6 +164,10 @@ public struct SessionMetrics: Sendable {
     public var ttsCost: Decimal
     public var llmCost: Decimal
 
+    // Token counts (tracked per-turn, accumulated over session)
+    public var llmInputTokens: Int
+    public var llmOutputTokens: Int
+
     // Counts
     public var turnsTotal: Int
     public var interruptions: Int
@@ -196,6 +200,8 @@ public struct SessionMetrics: Sendable {
         sttCost = 0
         ttsCost = 0
         llmCost = 0
+        llmInputTokens = 0
+        llmOutputTokens = 0
         turnsTotal = 0
         interruptions = 0
         thermalThrottleEvents = 0
@@ -650,8 +656,9 @@ public actor TelemetryEngine {
         )
     }
 
-    /// Export metrics as a snapshot for persistence/analysis
-    public func exportMetrics() -> MetricsSnapshot {
+    /// Export metrics as a snapshot for persistence/analysis.
+    /// - Parameter providerInfo: Provider/config snapshot captured at session start.
+    public func exportMetrics(providerInfo: SessionProviderInfo? = nil) -> MetricsSnapshot {
         let latencies = LatencyMetrics(
             sttMedianMs: Int(metrics.sttLatencies.median * 1000),
             sttP99Ms: Int(metrics.sttLatencies.percentile(99) * 1000),
@@ -668,8 +675,8 @@ public actor TelemetryEngine {
         let costs = CostMetrics(
             sttTotal: metrics.sttCost,
             ttsTotal: metrics.ttsCost,
-            llmInputTokens: 0, // Would need token tracking
-            llmOutputTokens: 0,
+            llmInputTokens: metrics.llmInputTokens,
+            llmOutputTokens: metrics.llmOutputTokens,
             llmTotal: metrics.llmCost,
             totalSession: metrics.totalCost
         )
@@ -684,11 +691,69 @@ public actor TelemetryEngine {
             errorsByStage: metrics.errorsByStage
         )
 
+        let log = buildEventLog()
+
         return MetricsSnapshot(
             latencies: latencies,
             costs: costs,
-            quality: quality
+            quality: quality,
+            providerInfo: providerInfo,
+            eventLog: log.isEmpty ? nil : log
         )
+    }
+
+    /// Record LLM token usage for this session (accumulated per-turn).
+    /// Negative counts are rejected so session totals stay monotonic and cost
+    /// metrics derived from them cannot be corrupted.
+    public func recordTokenUsage(inputTokens: Int, outputTokens: Int) {
+        guard inputTokens >= 0, outputTokens >= 0 else {
+            logger.warning("Ignoring negative LLM token usage (input: \(inputTokens), output: \(outputTokens))")
+            return
+        }
+        metrics.llmInputTokens += inputTokens
+        metrics.llmOutputTokens += outputTokens
+    }
+
+    /// Build a filtered event log from the in-memory event buffer, keeping only
+    /// events that are meaningful for post-session inspection.
+    private func buildEventLog() -> [SessionEventRecord] {
+        guard let startTime = sessionStartTime else { return [] }
+        return events.compactMap { recorded -> SessionEventRecord? in
+            let offset = recorded.timestamp.timeIntervalSince(startTime)
+            switch recorded.event {
+            // Stream failures: persist only a machine category, never the raw
+            // error text. localizedDescription can contain provider/request
+            // details, and this record is persisted and may be uploaded. The
+            // full error stays in debug-only logging.
+            case .sttStreamFailed(let error):
+                logger.debug("STT stream failed: \(error.localizedDescription)")
+                return SessionEventRecord(offsetSeconds: offset, type: "stt_error", detail: "")
+            case .llmStreamFailed(let error):
+                logger.debug("LLM stream failed: \(error.localizedDescription)")
+                return SessionEventRecord(offsetSeconds: offset, type: "llm_error", detail: "")
+            case .ttsStreamFailed(let error):
+                logger.debug("TTS stream failed: \(error.localizedDescription)")
+                return SessionEventRecord(offsetSeconds: offset, type: "tts_error", detail: "")
+            case .thermalStateChanged(let state):
+                let token: String
+                switch state {
+                case .nominal: token = "nominal"
+                case .fair: token = "fair"
+                case .serious: token = "serious"
+                case .critical: token = "critical"
+                @unknown default: token = "unknown"
+                }
+                return SessionEventRecord(offsetSeconds: offset, type: "thermal_change", detail: token)
+            case .contextCompressed(let from, let to):
+                return SessionEventRecord(offsetSeconds: offset, type: "context_compressed", detail: "\(from)|\(to)")
+            case .userInterrupted:
+                return SessionEventRecord(offsetSeconds: offset, type: "barge_in", detail: "")
+            case .adaptiveQualityAdjusted(let reason):
+                return SessionEventRecord(offsetSeconds: offset, type: "quality_adjusted", detail: reason)
+            default:
+                return nil
+            }
+        }
     }
 }
 
@@ -698,6 +763,81 @@ public struct MetricsSnapshot: Codable, Sendable {
     public let latencies: LatencyMetrics
     public let costs: CostMetrics
     public let quality: QualityMetrics
+    /// Provider and configuration snapshot captured at session start.
+    /// Nil on older persisted snapshots that pre-date this field.
+    public let providerInfo: SessionProviderInfo?
+    /// Key session events (errors, thermal changes, context compressions, barge-ins).
+    /// Nil when no notable events occurred or on older persisted snapshots.
+    public let eventLog: [SessionEventRecord]?
+
+    public init(
+        latencies: LatencyMetrics,
+        costs: CostMetrics,
+        quality: QualityMetrics,
+        providerInfo: SessionProviderInfo? = nil,
+        eventLog: [SessionEventRecord]? = nil
+    ) {
+        self.latencies = latencies
+        self.costs = costs
+        self.quality = quality
+        self.providerInfo = providerInfo
+        self.eventLog = eventLog
+    }
+}
+
+// MARK: - Provider Info
+
+/// Snapshot of which providers and models were actually used for a session.
+/// Captured at session start from live service instances, not from settings defaults.
+///
+/// Distinct from `MetricsExporter.ProviderInfo`, which is the thin stt/llm/tts/voice
+/// payload uploaded to the metrics endpoint. This richer type drives the History tab's
+/// Pipeline Configuration card.
+public struct SessionProviderInfo: Codable, Sendable {
+    /// Exact model identifier sent to the LLM API (e.g. "claude-3-5-haiku-20241022")
+    public let llmModel: String
+    /// Human-readable provider name derived from the model ID
+    public let llmProvider: String
+    /// Sampling temperature used for this session
+    public let llmTemperature: Float
+    /// Max tokens limit configured for this session
+    public let llmMaxTokens: Int
+    /// Service class name of the STT implementation that was active
+    public let sttProvider: String
+    /// Service class name of the TTS implementation that was active
+    public let ttsProvider: String
+    /// Voice identifier passed to the TTS provider
+    public let ttsVoiceId: String
+    /// Speaking rate multiplier (1.0 = normal)
+    public let ttsRate: Float
+    /// Whether barge-in (user interrupting AI speech) was enabled
+    public let bargeInEnabled: Bool
+    /// Milliseconds of continued speech required before confirming a barge-in
+    public let bargeInConfirmationMs: Int
+    /// Seconds of silence required to signal end of user utterance
+    public let silenceThresholdSeconds: Double
+    /// Length of the effective system prompt in characters
+    public let systemPromptCharCount: Int
+}
+
+// MARK: - Session Event Record
+
+/// A notable event that occurred during a session, stored for post-session inspection.
+public struct SessionEventRecord: Codable, Sendable {
+    /// Seconds elapsed since session start when this event occurred
+    public let offsetSeconds: Double
+    /// Machine-readable event category (e.g. "llm_error", "thermal_change")
+    public let type: String
+    /// PII-free machine value used by the UI to build a localized description.
+    /// Its meaning depends on `type`:
+    /// - stt_error/llm_error/tts_error: empty (raw error text is never persisted)
+    /// - thermal_change: the thermal state token ("nominal"/"fair"/"serious"/"critical")
+    /// - context_compressed: "<from>|<to>" token counts (e.g. "8000|4000")
+    /// - barge_in: empty
+    /// - quality_adjusted: an internal, non-PII reason string
+    /// Older snapshots may still carry free-form English prose here; the UI falls
+    /// back to showing it verbatim.
+    public let detail: String
 }
 
 public struct LatencyMetrics: Codable, Sendable {
