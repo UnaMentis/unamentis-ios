@@ -263,6 +263,14 @@ public final class SessionManager: ObservableObject {
     /// FOV context coordinator for foveated context management
     private var fovContextCoordinator: FOVSessionContextCoordinator?
 
+    /// Real timestamps for each entry in conversationHistory, index-aligned.
+    /// Used to persist accurate message timestamps instead of estimates.
+    private var messageTimestamps: [Date] = []
+
+    /// Provider and configuration snapshot captured at session start.
+    /// Passed to TelemetryEngine.exportMetrics() at session end.
+    private var sessionProviderInfo: ProviderInfo?
+
     /// Voice feedback for instant haptic/tone acknowledgments
     private let voiceFeedback = VoiceActivityFeedback()
 
@@ -396,6 +404,24 @@ public final class SessionManager: ObservableObject {
         self.ttsService = ttsService
         self.llmService = llmService
 
+        // Capture provider info from live service types and current config.
+        // type(of:) gives the concrete implementation name (e.g. "DeepgramSTTService"),
+        // which is the actual provider that ran, not whatever settings say.
+        sessionProviderInfo = ProviderInfo(
+            llmModel: config.llm.model,
+            llmProvider: Self.inferLLMProvider(from: config.llm.model),
+            llmTemperature: config.llm.temperature,
+            llmMaxTokens: config.llm.maxTokens,
+            sttProvider: Self.formatServiceTypeName(String(describing: type(of: sttService))),
+            ttsProvider: Self.formatServiceTypeName(String(describing: type(of: ttsService))),
+            ttsVoiceId: config.voice.voiceId,
+            ttsRate: config.voice.rate,
+            bargeInEnabled: config.enableInterruptions,
+            bargeInConfirmationMs: config.bargeInConfirmationMs,
+            silenceThresholdSeconds: config.silenceThreshold,
+            systemPromptCharCount: (systemPrompt ?? config.systemPrompt).count
+        )
+
         // Create and configure audio engine
         audioEngine = AudioEngine(
             config: config.audio,
@@ -414,6 +440,7 @@ public final class SessionManager: ObservableObject {
         conversationHistory = [
             LLMMessage(role: .system, content: effectiveSystemPrompt)
         ]
+        messageTimestamps = [Date()]  // system prompt timestamp
         
         // Start telemetry session with device metrics sampling
         await telemetry.startSession()
@@ -464,6 +491,7 @@ public final class SessionManager: ObservableObject {
 
             // Add a user message to trigger the lecture start
             conversationHistory.append(LLMMessage(role: .user, content: "Please begin the lecture now."))
+            messageTimestamps.append(Date())
 
             // Set timing for TTFT tracking
             currentTurnStartTime = Date()
@@ -555,7 +583,7 @@ public final class SessionManager: ObservableObject {
         stopMetricsUploadTimer()
         if previousState.isActive, let startTime = sessionStartTime {
             let duration = Date().timeIntervalSince(startTime)
-            let snapshot = await telemetry.exportMetrics()
+            let snapshot = await telemetry.exportMetrics(providerInfo: sessionProviderInfo)
             await metricsUploadService.upload(snapshot, sessionDuration: duration)
         }
 
@@ -567,6 +595,8 @@ public final class SessionManager: ObservableObject {
 
         // STEP 7: Clear all state completely
         conversationHistory.removeAll()
+        messageTimestamps.removeAll()
+        sessionProviderInfo = nil
         silenceStartTime = nil
         hasDetectedSpeech = false
         sentenceBuffer = ""
@@ -669,8 +699,9 @@ public final class SessionManager: ObservableObject {
         let endTime = Date()
         let duration = endTime.timeIntervalSince(startTime)
 
-        // Create a copy of conversation history for the background task
+        // Create a copy of conversation history and timestamps for the background task
         let historySnapshot = conversationHistory
+        let timestampSnapshot = messageTimestamps
         let configSnapshot = config
 
         logger.info("Persisting session with \(historySnapshot.count) messages, duration: \(duration)s")
@@ -690,11 +721,12 @@ public final class SessionManager: ObservableObject {
                 session.config = configData
             }
 
-            // Export and save metrics snapshot from telemetry
-            let metricsSnapshot = await telemetry.exportMetrics()
+            // Export and save metrics snapshot from telemetry, including provider info
+            // captured at session start (reflects what actually ran, not just settings).
+            let metricsSnapshot = await telemetry.exportMetrics(providerInfo: sessionProviderInfo)
             if let metricsData = try? JSONEncoder().encode(metricsSnapshot) {
                 session.metricsSnapshot = metricsData
-                logger.info("Saved metrics snapshot: e2eMedian=\(metricsSnapshot.latencies.e2eMedianMs)ms, totalCost=$\(metricsSnapshot.costs.totalSession)")
+                logger.info("Saved metrics snapshot: e2eMedian=\(metricsSnapshot.latencies.e2eMedianMs)ms, totalCost=$\(metricsSnapshot.costs.totalSession), llmModel=\(metricsSnapshot.providerInfo?.llmModel ?? "unknown")")
             }
 
             // Calculate and save total cost
@@ -712,8 +744,13 @@ public final class SessionManager: ObservableObject {
                 entry.id = UUID()
                 entry.content = message.content
                 entry.role = message.role.rawValue
-                // Estimate timestamp based on order (we don't track exact message times)
-                entry.timestamp = startTime.addingTimeInterval(Double(index) * 5.0)
+                // Use real timestamp when available; fall back to position-based estimate
+                // for sessions started before real-timestamp tracking was added.
+                if index < timestampSnapshot.count {
+                    entry.timestamp = timestampSnapshot[index]
+                } else {
+                    entry.timestamp = startTime.addingTimeInterval(Double(index) * 5.0)
+                }
                 entry.session = session
                 transcriptEntries.append(entry)
             }
@@ -730,7 +767,32 @@ public final class SessionManager: ObservableObject {
             logger.error("Failed to persist session: \(error.localizedDescription)")
         }
     }
-    
+
+    // MARK: - Provider Name Helpers
+
+    /// Derive the human-readable provider name from an LLM model identifier.
+    private static func inferLLMProvider(from model: String) -> String {
+        let m = model.lowercased()
+        if m.contains("claude") { return "Anthropic" }
+        if m.contains("gpt") || m.contains("o1-") || m.contains("o3-") || m.contains("o4-") { return "OpenAI" }
+        if m.contains("gemini") { return "Google" }
+        if m.contains("qwen") || m.contains("llama") || m.contains("mistral") { return "Self-Hosted" }
+        if m.contains("ministral") { return "Local MLX" }
+        return "Unknown"
+    }
+
+    /// Convert a Swift type name (e.g. "UnaMentis.DeepgramNova3STTService") into a
+    /// concise readable label by stripping module prefix and common suffixes.
+    private static func formatServiceTypeName(_ typeName: String) -> String {
+        let base = typeName.components(separatedBy: ".").last ?? typeName
+        for suffix in ["STTService", "TTSService", "LLMService", "Service"] {
+            if base.hasSuffix(suffix) {
+                return String(base.dropLast(suffix.count))
+            }
+        }
+        return base
+    }
+
     // MARK: - State Management
     
     private func setState(_ newState: SessionState) async {
@@ -1011,8 +1073,9 @@ public final class SessionManager: ObservableObject {
         }
         speechStartTime = nil  // Reset for next utterance
 
-        // Add to conversation history
+        // Add to conversation history with real timestamp
         conversationHistory.append(LLMMessage(role: .user, content: transcript))
+        messageTimestamps.append(Date())
 
         // Record event
         await telemetry.recordEvent(.userFinishedSpeaking(transcript: transcript))
@@ -1113,8 +1176,9 @@ public final class SessionManager: ObservableObject {
                 logger.info("LLM response complete (\(fullResponse.count) chars)")
                 logger.debug("LLM response complete: \(fullResponse.prefix(50))...")
 
-                // Add AI response to history
+                // Add AI response to history with real timestamp
                 self.conversationHistory.append(LLMMessage(role: .assistant, content: fullResponse))
+                self.messageTimestamps.append(Date())
 
                 // Signal that LLM streaming is complete; orchestrator will finish
                 // when all segments have been played
@@ -1148,6 +1212,10 @@ public final class SessionManager: ObservableObject {
                 }
                 if outputCost > 0 {
                     await self.telemetry.recordCost(.llmOutput, amount: outputCost, description: "LLM output (\(outputTokens) tokens)")
+                }
+                // Always record token counts even when cost is zero (e.g. self-hosted models)
+                if inputTokens > 0 || outputTokens > 0 {
+                    await self.telemetry.recordTokenUsage(inputTokens: inputTokens, outputTokens: outputTokens)
                 }
                 if inputCost > 0 || outputCost > 0 {
                     logger.info("Recorded LLM cost: input $\(inputCost) (\(inputTokens) tokens), output $\(outputCost) (\(outputTokens) tokens)")

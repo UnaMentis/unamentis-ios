@@ -164,6 +164,10 @@ public struct SessionMetrics: Sendable {
     public var ttsCost: Decimal
     public var llmCost: Decimal
 
+    // Token counts (tracked per-turn, accumulated over session)
+    public var llmInputTokens: Int
+    public var llmOutputTokens: Int
+
     // Counts
     public var turnsTotal: Int
     public var interruptions: Int
@@ -196,6 +200,8 @@ public struct SessionMetrics: Sendable {
         sttCost = 0
         ttsCost = 0
         llmCost = 0
+        llmInputTokens = 0
+        llmOutputTokens = 0
         turnsTotal = 0
         interruptions = 0
         thermalThrottleEvents = 0
@@ -650,8 +656,9 @@ public actor TelemetryEngine {
         )
     }
 
-    /// Export metrics as a snapshot for persistence/analysis
-    public func exportMetrics() -> MetricsSnapshot {
+    /// Export metrics as a snapshot for persistence/analysis.
+    /// - Parameter providerInfo: Provider/config snapshot captured at session start.
+    public func exportMetrics(providerInfo: ProviderInfo? = nil) -> MetricsSnapshot {
         let latencies = LatencyMetrics(
             sttMedianMs: Int(metrics.sttLatencies.median * 1000),
             sttP99Ms: Int(metrics.sttLatencies.percentile(99) * 1000),
@@ -668,8 +675,8 @@ public actor TelemetryEngine {
         let costs = CostMetrics(
             sttTotal: metrics.sttCost,
             ttsTotal: metrics.ttsCost,
-            llmInputTokens: 0, // Would need token tracking
-            llmOutputTokens: 0,
+            llmInputTokens: metrics.llmInputTokens,
+            llmOutputTokens: metrics.llmOutputTokens,
             llmTotal: metrics.llmCost,
             totalSession: metrics.totalCost
         )
@@ -684,11 +691,56 @@ public actor TelemetryEngine {
             errorsByStage: metrics.errorsByStage
         )
 
+        let log = buildEventLog()
+
         return MetricsSnapshot(
             latencies: latencies,
             costs: costs,
-            quality: quality
+            quality: quality,
+            providerInfo: providerInfo,
+            eventLog: log.isEmpty ? nil : log
         )
+    }
+
+    /// Record LLM token usage for this session (accumulated per-turn).
+    public func recordTokenUsage(inputTokens: Int, outputTokens: Int) {
+        metrics.llmInputTokens += inputTokens
+        metrics.llmOutputTokens += outputTokens
+    }
+
+    /// Build a filtered event log from the in-memory event buffer, keeping only
+    /// events that are meaningful for post-session inspection.
+    private func buildEventLog() -> [SessionEventRecord] {
+        guard let startTime = sessionStartTime else { return [] }
+        return events.compactMap { recorded -> SessionEventRecord? in
+            let offset = recorded.timestamp.timeIntervalSince(startTime)
+            switch recorded.event {
+            case .sttStreamFailed(let error):
+                return SessionEventRecord(offsetSeconds: offset, type: "stt_error", detail: error.localizedDescription)
+            case .llmStreamFailed(let error):
+                return SessionEventRecord(offsetSeconds: offset, type: "llm_error", detail: error.localizedDescription)
+            case .ttsStreamFailed(let error):
+                return SessionEventRecord(offsetSeconds: offset, type: "tts_error", detail: error.localizedDescription)
+            case .thermalStateChanged(let state):
+                let desc: String
+                switch state {
+                case .nominal: desc = "nominal"
+                case .fair: desc = "fair"
+                case .serious: desc = "serious"
+                case .critical: desc = "critical"
+                @unknown default: desc = "unknown(\(state.rawValue))"
+                }
+                return SessionEventRecord(offsetSeconds: offset, type: "thermal_change", detail: "Thermal state: \(desc)")
+            case .contextCompressed(let from, let to):
+                return SessionEventRecord(offsetSeconds: offset, type: "context_compressed", detail: "Context compressed \(from) → \(to) tokens")
+            case .userInterrupted:
+                return SessionEventRecord(offsetSeconds: offset, type: "barge_in", detail: "User interrupted AI speech")
+            case .adaptiveQualityAdjusted(let reason):
+                return SessionEventRecord(offsetSeconds: offset, type: "quality_adjusted", detail: reason)
+            default:
+                return nil
+            }
+        }
     }
 }
 
@@ -698,6 +750,69 @@ public struct MetricsSnapshot: Codable, Sendable {
     public let latencies: LatencyMetrics
     public let costs: CostMetrics
     public let quality: QualityMetrics
+    /// Provider and configuration snapshot captured at session start.
+    /// Nil on older persisted snapshots that pre-date this field.
+    public let providerInfo: ProviderInfo?
+    /// Key session events (errors, thermal changes, context compressions, barge-ins).
+    /// Nil when no notable events occurred or on older persisted snapshots.
+    public let eventLog: [SessionEventRecord]?
+
+    public init(
+        latencies: LatencyMetrics,
+        costs: CostMetrics,
+        quality: QualityMetrics,
+        providerInfo: ProviderInfo? = nil,
+        eventLog: [SessionEventRecord]? = nil
+    ) {
+        self.latencies = latencies
+        self.costs = costs
+        self.quality = quality
+        self.providerInfo = providerInfo
+        self.eventLog = eventLog
+    }
+}
+
+// MARK: - Provider Info
+
+/// Snapshot of which providers and models were actually used for a session.
+/// Captured at session start from live service instances, not from settings defaults.
+public struct ProviderInfo: Codable, Sendable {
+    /// Exact model identifier sent to the LLM API (e.g. "claude-3-5-haiku-20241022")
+    public let llmModel: String
+    /// Human-readable provider name derived from the model ID
+    public let llmProvider: String
+    /// Sampling temperature used for this session
+    public let llmTemperature: Float
+    /// Max tokens limit configured for this session
+    public let llmMaxTokens: Int
+    /// Service class name of the STT implementation that was active
+    public let sttProvider: String
+    /// Service class name of the TTS implementation that was active
+    public let ttsProvider: String
+    /// Voice identifier passed to the TTS provider
+    public let ttsVoiceId: String
+    /// Speaking rate multiplier (1.0 = normal)
+    public let ttsRate: Float
+    /// Whether barge-in (user interrupting AI speech) was enabled
+    public let bargeInEnabled: Bool
+    /// Milliseconds of continued speech required before confirming a barge-in
+    public let bargeInConfirmationMs: Int
+    /// Seconds of silence required to signal end of user utterance
+    public let silenceThresholdSeconds: Double
+    /// Length of the effective system prompt in characters
+    public let systemPromptCharCount: Int
+}
+
+// MARK: - Session Event Record
+
+/// A notable event that occurred during a session, stored for post-session inspection.
+public struct SessionEventRecord: Codable, Sendable {
+    /// Seconds elapsed since session start when this event occurred
+    public let offsetSeconds: Double
+    /// Machine-readable event category (e.g. "llm_error", "thermal_change")
+    public let type: String
+    /// Human-readable detail string with full context
+    public let detail: String
 }
 
 public struct LatencyMetrics: Codable, Sendable {
