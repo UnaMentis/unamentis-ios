@@ -27,10 +27,12 @@ public struct HistoryView: View {
                 if viewModel.sessions.isEmpty {
                     EmptyHistoryView()
                 } else {
-                    SessionListView(sessions: viewModel.sessions)
+                    SessionListView(sessions: viewModel.sessions) {
+                        await viewModel.refresh()
+                    }
                 }
             }
-            .navigationTitle("History")
+            .navigationTitle("history.title")
             #if os(iOS)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -43,21 +45,24 @@ public struct HistoryView: View {
                         } label: {
                             Image(systemName: "questionmark.circle")
                         }
-                        .accessibilityLabel("History help")
-                        .accessibilityHint("Learn about session history and metrics")
+                        .accessibilityLabel("history.help.label")
+                        .accessibilityHint("history.help.hint")
 
                         if !viewModel.sessions.isEmpty {
                             Menu {
-                                Button("Export All") {
+                                Button("history.action.exportAll") {
                                     viewModel.exportAllSessions()
                                 }
-                                Button("Clear History", role: .destructive) {
+                                .accessibilityHint("history.action.exportAll.hint")
+                                Button("history.action.clear", role: .destructive) {
                                     viewModel.showClearConfirmation = true
                                 }
+                                .accessibilityHint("history.action.clear.hint")
                             } label: {
                                 Image(systemName: "ellipsis.circle")
                             }
-                            .accessibilityLabel("History options")
+                            .accessibilityLabel("history.options.label")
+                            .accessibilityHint("history.options.hint")
                         }
                     }
                 }
@@ -67,16 +72,16 @@ public struct HistoryView: View {
                 HistoryHelpSheet()
             }
             .confirmationDialog(
-                "Clear History",
+                "history.clear.title",
                 isPresented: $viewModel.showClearConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Delete All Sessions", role: .destructive) {
+                Button("history.clear.confirm", role: .destructive) {
                     viewModel.clearHistory()
                 }
-                Button("Cancel", role: .cancel) {}
+                Button("common.cancel", role: .cancel) {}
             } message: {
-                Text("This will permanently delete all session history.")
+                Text("history.clear.message")
             }
             #if os(iOS)
             .sheet(isPresented: $viewModel.showExportSheet) {
@@ -113,9 +118,9 @@ struct ShareSheet: UIViewControllerRepresentable {
 struct EmptyHistoryView: View {
     var body: some View {
         ContentUnavailableView(
-            "No Sessions Yet",
+            "history.empty.title",
             systemImage: "clock.badge.questionmark",
-            description: Text("Your conversation history will appear here after your first session.")
+            description: Text("history.empty.description")
         )
     }
 }
@@ -124,6 +129,7 @@ struct EmptyHistoryView: View {
 
 struct SessionListView: View {
     let sessions: [SessionSummary]
+    var onRefresh: (() async -> Void)?
 
     var body: some View {
         List {
@@ -142,6 +148,7 @@ struct SessionListView: View {
         #if os(iOS)
         .listStyle(.insetGrouped)
         #endif
+        .refreshable { await onRefresh?() }
     }
 
     private var groupedSessions: [(Date, [SessionSummary])] {
@@ -155,13 +162,11 @@ struct SessionListView: View {
     private func formatDate(_ date: Date) -> String {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) {
-            return "Today"
+            return String(localized: "history.date.today")
         } else if calendar.isDateInYesterday(date) {
-            return "Yesterday"
+            return String(localized: "history.date.yesterday")
         } else {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            return formatter.string(from: date)
+            return date.formatted(.dateTime.year().month().day())
         }
     }
 }
@@ -174,7 +179,7 @@ struct SessionRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(session.topicName ?? "General Conversation")
+                Text(session.topicName ?? String(localized: "history.session.defaultTopic"))
                     .font(.headline)
                 Spacer()
                 Text(formatTime(session.startTime))
@@ -184,7 +189,7 @@ struct SessionRowView: View {
 
             HStack(spacing: 12) {
                 Label(formatDuration(session.duration), systemImage: "clock")
-                Label("\(session.turnCount) turns", systemImage: "message")
+                Label("history.session.turns \(session.turnCount)", systemImage: "message")
                 Label(formatCost(session.totalCost), systemImage: "dollarsign.circle")
                 if session.avgLatency > 0 {
                     Label(formatLatencyShort(session.avgLatency), systemImage: "bolt")
@@ -196,33 +201,39 @@ struct SessionRowView: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(session.topicName ?? "General Conversation")")
-        .accessibilityValue(
-            "Duration \(formatDuration(session.duration)), \(session.turnCount) turns, " +
-            "cost \(formatCost(session.totalCost))\(session.avgLatency > 0 ? ", avg latency \(formatLatencyShort(session.avgLatency))" : "")"
-        )
-        .accessibilityHint("Double-tap to view session details")
+        .accessibilityLabel(session.topicName ?? String(localized: "history.session.defaultTopic"))
+        .accessibilityValue(accessibilityValueText)
+        .accessibilityHint("history.session.a11y.hint")
+    }
+
+    /// Spoken summary of the row's metrics, including the latency status word that
+    /// the latency color conveys visually.
+    private var accessibilityValueText: String {
+        var parts = [
+            String(localized: "history.session.a11y.duration \(formatDuration(session.duration))"),
+            String(localized: "history.session.a11y.turns \(session.turnCount)"),
+            String(localized: "history.session.a11y.cost \(formatCost(session.totalCost))")
+        ]
+        if session.avgLatency > 0 {
+            parts.append(String(localized: "history.session.a11y.latency \(formatLatencyShort(session.avgLatency)) \(latencyStatusText(session.avgLatency))"))
+        }
+        return parts.joined(separator: ", ")
     }
 
     private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        date.formatted(date: .omitted, time: .shortened)
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
-        let minutes = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%d:%02d", minutes, secs)
+        Duration.seconds(Int(seconds)).formatted(.time(pattern: .minuteSecond))
     }
 
     private func formatCost(_ cost: Decimal) -> String {
-        String(format: "$%.2f", NSDecimalNumber(decimal: cost).doubleValue)
+        cost.formatted(.currency(code: "USD"))
     }
 
     private func formatLatencyShort(_ latency: TimeInterval) -> String {
-        let ms = Int(latency * 1000)
-        return "\(ms)ms"
+        String(localized: "history.latency.ms \(Int(latency * 1000))")
     }
 
     private func latencyColor(_ latency: TimeInterval) -> Color {
@@ -231,29 +242,33 @@ struct SessionRowView: View {
         if ms <= 500 { return .yellow }
         return .red
     }
+
+    private func latencyStatusText(_ latency: TimeInterval) -> String {
+        let ms = Int(latency * 1000)
+        if ms <= 300 { return String(localized: "history.latency.status.good") }
+        if ms <= 500 { return String(localized: "history.latency.status.fair") }
+        return String(localized: "history.latency.status.slow")
+    }
 }
 
 // MARK: - Session Detail View
 
 struct SessionDetailView: View {
     let session: SessionSummary
-    @StateObject private var detailViewModel: SessionDetailViewModel
+    @StateObject private var detailViewModel = SessionDetailViewModel()
     @State private var exportURL: URL?
     @State private var showShareSheet = false
 
-    init(session: SessionSummary) {
-        self.session = session
-        _detailViewModel = StateObject(wrappedValue: SessionDetailViewModel(sessionID: session.id))
-    }
+    private static let logger = Logger(label: "com.unamentis.ui.history.detail.view")
 
     var body: some View {
         ScrollView {
             if detailViewModel.isLoading {
-                ProgressView("Loading session details...")
+                ProgressView("history.detail.loading")
                     .padding(.top, 60)
                     .frame(maxWidth: .infinity)
             } else if let detail = detailViewModel.detail {
-                VStack(spacing: 16) {
+                LazyVStack(spacing: 16) {
                     SessionHeaderCard(detail: detail)
 
                     if let providerInfo = detail.metricsSnapshot?.providerInfo {
@@ -269,7 +284,7 @@ struct SessionDetailView: View {
                     }
 
                     if let quality = detail.metricsSnapshot?.quality {
-                        QualityMetricsCard(quality: quality)
+                        SessionQualityMetricsCard(quality: quality)
                     }
 
                     if let eventLog = detail.metricsSnapshot?.eventLog, !eventLog.isEmpty {
@@ -281,14 +296,14 @@ struct SessionDetailView: View {
                 .padding()
             } else {
                 ContentUnavailableView(
-                    "Could not load session",
+                    "history.detail.error.title",
                     systemImage: "exclamationmark.triangle",
-                    description: Text("Session data could not be read from storage.")
+                    description: Text("history.detail.error.description")
                 )
                 .padding(.top, 60)
             }
         }
-        .navigationTitle(session.topicName ?? "Session Details")
+        .navigationTitle(session.topicName ?? String(localized: "history.detail.title"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -297,17 +312,20 @@ struct SessionDetailView: View {
                     Button {
                         exportTranscript()
                     } label: {
-                        Label("Export Transcript", systemImage: "doc.text")
+                        Label("history.detail.export.transcript", systemImage: "doc.text")
                     }
+                    .accessibilityHint("history.detail.export.transcript.hint")
                     Button {
                         shareSessionSummary()
                     } label: {
-                        Label("Share Summary", systemImage: "square.and.arrow.up")
+                        Label("history.detail.share.summary", systemImage: "square.and.arrow.up")
                     }
+                    .accessibilityHint("history.detail.share.summary.hint")
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
-                .accessibilityLabel("Export options")
+                .accessibilityLabel("history.detail.export.label")
+                .accessibilityHint("history.detail.export.hint")
             }
         }
         .sheet(isPresented: $showShareSheet) {
@@ -317,7 +335,7 @@ struct SessionDetailView: View {
         }
         #endif
         .task {
-            await detailViewModel.load()
+            await detailViewModel.load(sessionID: session.id)
         }
     }
 
@@ -325,7 +343,7 @@ struct SessionDetailView: View {
         let detail = detailViewModel.detail
         let entries = detail?.transcript ?? []
         let transcriptText = entries.map { entry in
-            let role = entry.isUser ? "You" : "AI"
+            let role = String(localized: entry.isUser ? "history.role.you" : "history.role.ai")
             let time = HHmmssFormatter.string(from: entry.timestamp)
             return "[\(time)] \(role): \(entry.content)"
         }.joined(separator: "\n\n")
@@ -333,25 +351,26 @@ struct SessionDetailView: View {
         let snapshot = detail?.metricsSnapshot
         let provider = snapshot?.providerInfo
         let latencies = snapshot?.latencies
+        let topic = session.topicName ?? String(localized: "history.session.defaultTopic")
 
-        var header = """
-        Session: \(session.topicName ?? "General Conversation")
-        Date: \(mediumDateTimeFormatter.string(from: session.startTime))
-        Duration: \(hhmmssFromInterval(session.duration))
-        Turns: \(session.turnCount)
-        Cost: \(formatCostPrecise(session.totalCost))
-        """
+        var lines = [
+            String(localized: "history.export.session \(topic)"),
+            String(localized: "history.export.date \(formatExportDate(session.startTime))"),
+            String(localized: "history.export.duration \(hhmmssFromInterval(session.duration))"),
+            String(localized: "history.export.turns \(session.turnCount)"),
+            String(localized: "history.export.cost \(formatCostPrecise(session.totalCost))")
+        ]
 
         if let p = provider {
-            header += "\nLLM: \(p.llmModel) (\(p.llmProvider))"
-            header += "\nSTT: \(p.sttProvider)"
-            header += "\nTTS: \(p.ttsProvider)"
+            lines.append(String(localized: "history.export.llm \(p.llmModel) \(p.llmProvider)"))
+            lines.append(String(localized: "history.export.stt \(p.sttProvider)"))
+            lines.append(String(localized: "history.export.tts \(p.ttsProvider)"))
         }
         if let l = latencies {
-            header += "\nE2E Latency: \(l.e2eMedianMs)ms median / \(l.e2eP99Ms)ms P99"
+            lines.append(String(localized: "history.export.latency \(l.e2eMedianMs) \(l.e2eP99Ms)"))
         }
 
-        let content = header + "\n\n---\n\n" + transcriptText
+        let content = lines.joined(separator: "\n") + "\n\n---\n\n" + transcriptText
 
         let tempDir = FileManager.default.temporaryDirectory
         let fileName = "session_\(String(session.id.uuidString.prefix(8)))_transcript.txt"
@@ -362,7 +381,7 @@ struct SessionDetailView: View {
             exportURL = fileURL
             showShareSheet = true
         } catch {
-            print("Failed to export transcript: \(error)")
+            Self.logger.error("Failed to export transcript: \(error.localizedDescription)")
         }
     }
 
@@ -370,18 +389,21 @@ struct SessionDetailView: View {
         let snapshot = detailViewModel.detail?.metricsSnapshot
         let provider = snapshot?.providerInfo
         let latencies = snapshot?.latencies
+        let topic = session.topicName ?? String(localized: "history.session.defaultTopic")
 
-        var content = """
-        Learning Session Summary
-        Topic: \(session.topicName ?? "General Conversation")
-        Duration: \(hhmmssFromInterval(session.duration))
-        Date: \(mediumDateTimeFormatter.string(from: session.startTime))
-        Turns: \(session.turnCount)
-        Cost: \(formatCostPrecise(session.totalCost))
-        """
+        var lines = [
+            String(localized: "history.share.title"),
+            String(localized: "history.share.topic \(topic)"),
+            String(localized: "history.export.duration \(hhmmssFromInterval(session.duration))"),
+            String(localized: "history.export.date \(formatExportDate(session.startTime))"),
+            String(localized: "history.export.turns \(session.turnCount)"),
+            String(localized: "history.export.cost \(formatCostPrecise(session.totalCost))")
+        ]
 
-        if let p = provider { content += "\nModel: \(p.llmModel)" }
-        if let l = latencies { content += "\nE2E Latency: \(l.e2eMedianMs)ms median" }
+        if let p = provider { lines.append(String(localized: "history.share.model \(p.llmModel)")) }
+        if let l = latencies { lines.append(String(localized: "history.share.latency \(l.e2eMedianMs)")) }
+
+        let content = lines.joined(separator: "\n")
 
         let tempDir = FileManager.default.temporaryDirectory
         let fileURL = tempDir.appendingPathComponent("session_summary.txt")
@@ -391,29 +413,23 @@ struct SessionDetailView: View {
             exportURL = fileURL
             showShareSheet = true
         } catch {
-            print("Failed to share session: \(error)")
+            Self.logger.error("Failed to share session: \(error.localizedDescription)")
         }
     }
 
     private func hhmmssFromInterval(_ seconds: TimeInterval) -> String {
-        let h = Int(seconds) / 3600
-        let m = (Int(seconds) % 3600) / 60
-        let s = Int(seconds) % 60
-        return h > 0
-            ? String(format: "%d:%02d:%02d", h, m, s)
-            : String(format: "%d:%02d", m, s)
+        Duration.seconds(Int(seconds)).formatted(
+            .time(pattern: seconds >= 3600 ? .hourMinuteSecond : .minuteSecond)
+        )
     }
 
-    private var mediumDateTimeFormatter: DateFormatter {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f
+    private func formatExportDate(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
     }
 
     private func formatCostPrecise(_ cost: Decimal) -> String {
-        let v = NSDecimalNumber(decimal: cost).doubleValue
-        return v < 0.001 ? String(format: "$%.6f", v) : String(format: "$%.4f", v)
+        let digits = cost < Decimal(0.001) ? 6 : 4
+        return cost.formatted(.currency(code: "USD").precision(.fractionLength(digits)))
     }
 }
 
@@ -430,7 +446,7 @@ fileprivate extension View {
 }
 
 private struct InfoRow: View {
-    let label: String
+    let label: LocalizedStringKey
     let value: String
     var valueColor: Color = .primary
     var labelWidth: CGFloat = 130
@@ -447,13 +463,14 @@ private struct InfoRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        // Combine reads the localized label Text and the verbatim value Text
+        // together for VoiceOver.
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)")
     }
 }
 
 private struct SectionDividerLabel: View {
-    let text: String
+    let text: LocalizedStringKey
 
     var body: some View {
         Text(text)
@@ -472,7 +489,7 @@ private struct SessionHeaderCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Session", systemImage: "clock.fill")
+                Label("history.detail.header", systemImage: "clock.fill")
                     .font(.headline)
                 Spacer()
                 Text(durationString(detail.duration))
@@ -481,79 +498,73 @@ private struct SessionHeaderCard: View {
 
             Divider()
 
-            InfoRow(label: "Topic", value: detail.topicName ?? "General Conversation")
+            InfoRow(label: "history.detail.topic", value: detail.topicName ?? String(localized: "history.session.defaultTopic"))
             if let curriculum = detail.curriculumName {
-                InfoRow(label: "Curriculum", value: curriculum)
+                InfoRow(label: "history.detail.curriculum", value: curriculum)
             }
-            InfoRow(label: "Started", value: fullDateTimeString(detail.startTime))
+            InfoRow(label: "history.detail.started", value: fullDateTimeString(detail.startTime))
             if let endTime = detail.endTime {
-                InfoRow(label: "Ended", value: fullDateTimeString(endTime))
+                InfoRow(label: "history.detail.ended", value: fullDateTimeString(endTime))
             }
-            InfoRow(label: "Session ID", value: detail.id.uuidString.lowercased())
+            InfoRow(label: "history.detail.sessionId", value: detail.id.uuidString.lowercased())
         }
         .cardStyle()
     }
 
     private func durationString(_ t: TimeInterval) -> String {
-        let h = Int(t) / 3600
-        let m = (Int(t) % 3600) / 60
-        let s = Int(t) % 60
-        return h > 0
-            ? String(format: "%d:%02d:%02d", h, m, s)
-            : String(format: "%d:%02d", m, s)
+        Duration.seconds(Int(t)).formatted(
+            .time(pattern: t >= 3600 ? .hourMinuteSecond : .minuteSecond)
+        )
     }
 
     private func fullDateTimeString(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .medium
-        return f.string(from: date)
+        date.formatted(date: .abbreviated, time: .standard)
     }
 }
 
 // MARK: - Pipeline Config Card
 
 private struct PipelineConfigCard: View {
-    let providerInfo: ProviderInfo
+    let providerInfo: SessionProviderInfo
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Pipeline Configuration", systemImage: "cpu")
+            Label("history.pipeline.title", systemImage: "cpu")
                 .font(.headline)
 
             Divider()
 
-            SectionDividerLabel(text: "LLM")
-            InfoRow(label: "Model", value: providerInfo.llmModel)
-            InfoRow(label: "Provider", value: providerInfo.llmProvider)
-            InfoRow(label: "Temperature", value: String(format: "%.2f", providerInfo.llmTemperature))
-            InfoRow(label: "Max Tokens", value: providerInfo.llmMaxTokens.formatted())
+            SectionDividerLabel(text: "history.pipeline.section.llm")
+            InfoRow(label: "history.pipeline.model", value: providerInfo.llmModel)
+            InfoRow(label: "history.pipeline.provider", value: providerInfo.llmProvider)
+            InfoRow(label: "history.pipeline.temperature", value: Double(providerInfo.llmTemperature).formatted(.number.precision(.fractionLength(2))))
+            InfoRow(label: "history.pipeline.maxTokens", value: providerInfo.llmMaxTokens.formatted())
 
             Divider()
 
-            SectionDividerLabel(text: "Speech Recognition")
-            InfoRow(label: "Provider", value: providerInfo.sttProvider)
-            InfoRow(label: "Silence Threshold", value: String(format: "%.1fs", providerInfo.silenceThresholdSeconds))
+            SectionDividerLabel(text: "history.pipeline.section.stt")
+            InfoRow(label: "history.pipeline.provider", value: providerInfo.sttProvider)
+            InfoRow(label: "history.pipeline.silenceThreshold", value: String(localized: "history.unit.seconds \(providerInfo.silenceThresholdSeconds.formatted(.number.precision(.fractionLength(1))))"))
 
             Divider()
 
-            SectionDividerLabel(text: "Speech Synthesis")
-            InfoRow(label: "Provider", value: providerInfo.ttsProvider)
-            InfoRow(label: "Voice ID", value: providerInfo.ttsVoiceId)
-            InfoRow(label: "Rate", value: String(format: "%.2fx", providerInfo.ttsRate))
+            SectionDividerLabel(text: "history.pipeline.section.tts")
+            InfoRow(label: "history.pipeline.provider", value: providerInfo.ttsProvider)
+            InfoRow(label: "history.pipeline.voiceId", value: providerInfo.ttsVoiceId)
+            InfoRow(label: "history.pipeline.rate", value: String(localized: "history.unit.rate \(Double(providerInfo.ttsRate).formatted(.number.precision(.fractionLength(2))))"))
 
             Divider()
 
-            SectionDividerLabel(text: "Barge-in")
-            InfoRow(label: "Enabled", value: providerInfo.bargeInEnabled ? "Yes" : "No")
+            SectionDividerLabel(text: "history.pipeline.section.bargeIn")
+            InfoRow(label: "history.pipeline.enabled", value: String(localized: providerInfo.bargeInEnabled ? "common.yes" : "common.no"))
             if providerInfo.bargeInEnabled {
-                InfoRow(label: "Confirmation", value: "\(providerInfo.bargeInConfirmationMs)ms")
+                InfoRow(label: "history.pipeline.confirmation", value: String(localized: "history.latency.ms \(providerInfo.bargeInConfirmationMs)"))
             }
 
             Divider()
 
-            SectionDividerLabel(text: "System Prompt")
-            InfoRow(label: "Length", value: "\(providerInfo.systemPromptCharCount.formatted()) characters")
+            SectionDividerLabel(text: "history.pipeline.section.systemPrompt")
+            InfoRow(label: "history.pipeline.length", value: String(localized: "history.pipeline.charCount \(providerInfo.systemPromptCharCount)"))
         }
         .cardStyle()
     }
@@ -566,60 +577,60 @@ private struct LatencyBreakdownCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Latency Breakdown", systemImage: "bolt.fill")
+            Label("history.latency.title", systemImage: "bolt.fill")
                 .font(.headline)
 
             Divider()
 
             HStack {
-                Text("Stage")
+                Text("history.latency.column.stage")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text("Median")
+                Text("history.latency.column.median")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 72, alignment: .trailing)
-                Text("P99")
+                Text("history.latency.column.p99")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 72, alignment: .trailing)
             }
 
-            LatencyRow(
-                stage: "STT Emission",
+            SessionLatencyRow(
+                stage: String(localized: "history.latency.stage.stt"),
                 medianMs: latencies.sttMedianMs,
                 p99Ms: latencies.sttP99Ms,
                 okThreshold: 150, warnThreshold: 300
             )
-            LatencyRow(
-                stage: "LLM First Token",
+            SessionLatencyRow(
+                stage: String(localized: "history.latency.stage.llm"),
                 medianMs: latencies.llmMedianMs,
                 p99Ms: latencies.llmP99Ms,
                 okThreshold: 200, warnThreshold: 400
             )
-            LatencyRow(
-                stage: "TTS First Byte",
+            SessionLatencyRow(
+                stage: String(localized: "history.latency.stage.tts"),
                 medianMs: latencies.ttsMedianMs,
                 p99Ms: latencies.ttsP99Ms,
                 okThreshold: 100, warnThreshold: 200
             )
-            LatencyRow(
-                stage: "End-to-End Turn",
+            SessionLatencyRow(
+                stage: String(localized: "history.latency.stage.e2e"),
                 medianMs: latencies.e2eMedianMs,
                 p99Ms: latencies.e2eP99Ms,
                 okThreshold: 300, warnThreshold: 500
             )
             if let ttfaMedian = latencies.ttfaMedianMs, let ttfaP99 = latencies.ttfaP99Ms {
-                LatencyRow(
-                    stage: "TTFA",
+                SessionLatencyRow(
+                    stage: String(localized: "history.latency.stage.ttfa"),
                     medianMs: ttfaMedian,
                     p99Ms: ttfaP99,
                     okThreshold: 400, warnThreshold: 700
                 )
             }
 
-            Text("Target: E2E <500ms median, <1000ms P99")
+            Text("history.latency.target")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)
@@ -628,7 +639,7 @@ private struct LatencyBreakdownCard: View {
     }
 }
 
-private struct LatencyRow: View {
+private struct SessionLatencyRow: View {
     let stage: String
     let medianMs: Int
     let p99Ms: Int
@@ -650,11 +661,30 @@ private struct LatencyRow: View {
                 .frame(width: 72, alignment: .trailing)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(stage): \(medianMs) milliseconds median, \(p99Ms) milliseconds P99")
+        .accessibilityLabel(String(localized: "history.latency.a11y.label \(stage) \(medianMs) \(p99Ms)"))
+        .accessibilityValue(statusText)
+    }
+
+    /// Localized status word matching the latency color, so VoiceOver conveys the
+    /// same good/fair/slow state the color shows visually. Reflects the worse of
+    /// the median and P99 figures.
+    private var statusText: String {
+        switch max(statusRank(medianMs), statusRank(p99Ms)) {
+        case 0: return String(localized: "history.latency.status.good")
+        case 1: return String(localized: "history.latency.status.fair")
+        default: return String(localized: "history.latency.status.slow")
+        }
+    }
+
+    private func statusRank(_ ms: Int) -> Int {
+        guard ms > 0 else { return 0 }
+        if ms <= okThreshold { return 0 }
+        if ms <= warnThreshold { return 1 }
+        return 2
     }
 
     private func msString(_ ms: Int) -> String {
-        ms == 0 ? "--" : "\(ms)ms"
+        ms == 0 ? "--" : String(localized: "history.latency.ms \(ms)")
     }
 
     private func colorFor(_ ms: Int) -> Color {
@@ -673,72 +703,73 @@ private struct CostBreakdownCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Cost Breakdown", systemImage: "dollarsign.circle.fill")
+            Label("history.cost.title", systemImage: "dollarsign.circle.fill")
                 .font(.headline)
 
             Divider()
 
-            InfoRow(label: "STT", value: costString(costs.sttTotal))
-            InfoRow(label: "TTS", value: costString(costs.ttsTotal))
-            InfoRow(label: "LLM", value: costString(costs.llmTotal))
+            InfoRow(label: "history.cost.stt", value: costString(costs.sttTotal))
+            InfoRow(label: "history.cost.tts", value: costString(costs.ttsTotal))
+            InfoRow(label: "history.cost.llm", value: costString(costs.llmTotal))
             InfoRow(
-                label: "LLM Tokens",
-                value: "\(costs.llmInputTokens.formatted()) in / \(costs.llmOutputTokens.formatted()) out"
+                label: "history.cost.tokens",
+                value: String(localized: "history.cost.tokens.value \(costs.llmInputTokens) \(costs.llmOutputTokens)")
             )
 
             Divider()
 
             HStack {
-                Text("Session Total")
+                Text("history.cost.total")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Text(costString(costs.totalSession))
                     .font(.subheadline.weight(.semibold))
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Session total: \(costString(costs.totalSession))")
 
             if duration > 0 {
                 let rate = NSDecimalNumber(decimal: costs.totalSession).doubleValue * 3600.0 / duration
-                InfoRow(label: "Hourly Rate", value: String(format: "$%.2f/hr", rate), valueColor: .secondary)
+                InfoRow(
+                    label: "history.cost.hourly",
+                    value: String(localized: "history.cost.perHour \(Decimal(rate).formatted(.currency(code: "USD")))"),
+                    valueColor: .secondary
+                )
             }
         }
         .cardStyle()
     }
 
     private func costString(_ cost: Decimal) -> String {
-        let v = NSDecimalNumber(decimal: cost).doubleValue
-        if v == 0 { return "$0.0000" }
-        if v < 0.001 { return String(format: "$%.6f", v) }
-        return String(format: "$%.4f", v)
+        let digits: Int = (cost > 0 && cost < Decimal(0.001)) ? 6 : 4
+        return cost.formatted(.currency(code: "USD").precision(.fractionLength(digits)))
     }
 }
 
 // MARK: - Quality Metrics Card
 
-private struct QualityMetricsCard: View {
+private struct SessionQualityMetricsCard: View {
     let quality: QualityMetrics
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Quality Metrics", systemImage: "chart.bar.fill")
+            Label("history.quality.title", systemImage: "chart.bar.fill")
                 .font(.headline)
 
             Divider()
 
-            InfoRow(label: "Total Turns", value: "\(quality.turnsTotal)")
-            InfoRow(label: "Interruptions", value: "\(quality.interruptions)")
+            InfoRow(label: "history.quality.turns", value: quality.turnsTotal.formatted())
+            InfoRow(label: "history.quality.interruptions", value: quality.interruptions.formatted())
             if quality.turnsTotal > 0 && quality.interruptions > 0 {
-                let rate = Float(quality.interruptions) / Float(quality.turnsTotal) * 100
-                InfoRow(label: "Interrupt Rate", value: String(format: "%.1f%%", rate))
+                let rate = Double(quality.interruptions) / Double(quality.turnsTotal)
+                InfoRow(label: "history.quality.interruptRate", value: rate.formatted(.percent.precision(.fractionLength(1))))
             }
 
             Divider()
 
             let totalErrors = quality.errorsTotal ?? 0
             InfoRow(
-                label: "Total Errors",
-                value: "\(totalErrors)",
+                label: "history.quality.errors",
+                value: totalErrors.formatted(),
                 valueColor: totalErrors > 0 ? .red : .primary
             )
 
@@ -746,8 +777,8 @@ private struct QualityMetricsCard: View {
                 let sorted = byStage.sorted(by: { $0.key < $1.key })
                 ForEach(0..<sorted.count, id: \.self) { i in
                     InfoRow(
-                        label: "  \(sorted[i].key.uppercased())",
-                        value: "\(sorted[i].value) errors",
+                        label: "history.quality.errorStage \(sorted[i].key.uppercased())",
+                        value: String(localized: "history.quality.errorCount \(sorted[i].value)"),
                         valueColor: sorted[i].value > 0 ? .red : .secondary
                     )
                 }
@@ -756,13 +787,13 @@ private struct QualityMetricsCard: View {
             Divider()
 
             InfoRow(
-                label: "Thermal Events",
-                value: "\(quality.thermalThrottleEvents)",
+                label: "history.quality.thermal",
+                value: quality.thermalThrottleEvents.formatted(),
                 valueColor: quality.thermalThrottleEvents > 0 ? .orange : .primary
             )
             InfoRow(
-                label: "Network Drops",
-                value: "\(quality.networkDegradations)",
+                label: "history.quality.network",
+                value: quality.networkDegradations.formatted(),
                 valueColor: quality.networkDegradations > 0 ? .orange : .primary
             )
         }
@@ -777,7 +808,7 @@ private struct EventLogCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Event Log (\(events.count))", systemImage: "list.bullet.clipboard")
+            Label("history.eventLog.title \(events.count)", systemImage: "list.bullet.clipboard")
                 .font(.headline)
 
             Divider()
@@ -814,14 +845,14 @@ private struct EventLogRow: View {
                 }
                 .frame(width: 90, alignment: .leading)
 
-            Text(record.detail)
+            Text(localizedDetail(record))
                 .font(.caption)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(offsetString(record.offsetSeconds)): \(eventLabel(record.type)): \(record.detail)")
+        .accessibilityLabel(String(localized: "history.eventLog.a11y \(offsetString(record.offsetSeconds)) \(eventLabel(record.type)) \(localizedDetail(record))"))
     }
 
     private func offsetString(_ seconds: Double) -> String {
@@ -832,14 +863,49 @@ private struct EventLogRow: View {
 
     private func eventLabel(_ type: String) -> String {
         switch type {
-        case "stt_error": return "STT Error"
-        case "llm_error": return "LLM Error"
-        case "tts_error": return "TTS Error"
-        case "thermal_change": return "Thermal"
-        case "context_compressed": return "Ctx Compress"
-        case "barge_in": return "Barge-in"
-        case "quality_adjusted": return "Quality Adj"
+        case "stt_error": return String(localized: "history.event.label.sttError")
+        case "llm_error": return String(localized: "history.event.label.llmError")
+        case "tts_error": return String(localized: "history.event.label.ttsError")
+        case "thermal_change": return String(localized: "history.event.label.thermal")
+        case "context_compressed": return String(localized: "history.event.label.contextCompressed")
+        case "barge_in": return String(localized: "history.event.label.bargeIn")
+        case "quality_adjusted": return String(localized: "history.event.label.qualityAdjusted")
         default: return type.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    /// Build the localized, PII-free detail text from the record's `type` and
+    /// structured `detail` token. Older records that stored free-form prose fall
+    /// back to showing that text verbatim.
+    private func localizedDetail(_ record: SessionEventRecord) -> String {
+        switch record.type {
+        case "stt_error": return String(localized: "history.event.detail.sttError")
+        case "llm_error": return String(localized: "history.event.detail.llmError")
+        case "tts_error": return String(localized: "history.event.detail.ttsError")
+        case "thermal_change":
+            return String(localized: "history.event.detail.thermal \(thermalStateLabel(record.detail))")
+        case "context_compressed":
+            let parts = record.detail.split(separator: "|")
+            if parts.count == 2, let from = Int(parts[0]), let to = Int(parts[1]) {
+                return String(localized: "history.event.detail.contextCompressed \(from) \(to)")
+            }
+            return record.detail
+        case "barge_in": return String(localized: "history.event.detail.bargeIn")
+        case "quality_adjusted":
+            return record.detail.isEmpty
+                ? String(localized: "history.event.detail.qualityAdjusted.generic")
+                : String(localized: "history.event.detail.qualityAdjusted \(record.detail)")
+        default: return record.detail
+        }
+    }
+
+    private func thermalStateLabel(_ token: String) -> String {
+        switch token {
+        case "nominal": return String(localized: "history.thermal.nominal")
+        case "fair": return String(localized: "history.thermal.fair")
+        case "serious": return String(localized: "history.thermal.serious")
+        case "critical": return String(localized: "history.thermal.critical")
+        default: return token
         }
     }
 
@@ -863,18 +929,20 @@ private struct FullTranscriptCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Full Transcript (\(entries.count) messages)", systemImage: "text.quote")
+            Label("history.transcript.title \(entries.count)", systemImage: "text.quote")
                 .font(.headline)
 
             Divider()
 
             if entries.isEmpty {
-                Text("No transcript entries")
+                Text("history.detail.transcript.empty")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(entries) { entry in
-                    TranscriptEntryRow(entry: entry, sessionStart: sessionStart)
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(entries) { entry in
+                        TranscriptEntryRow(entry: entry, sessionStart: sessionStart)
+                    }
                 }
             }
         }
@@ -892,7 +960,7 @@ private struct TranscriptEntryRow: View {
                 Image(systemName: entry.isUser ? "person.fill" : "cpu")
                     .font(.caption)
                     .foregroundStyle(entry.isUser ? .blue : .purple)
-                Text(entry.isUser ? "You" : "AI")
+                Text(entry.isUser ? "history.role.you" : "history.role.ai")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(entry.isUser ? .blue : .purple)
                 Text(HHmmssFormatter.string(from: entry.timestamp))
@@ -917,10 +985,11 @@ private struct TranscriptEntryRow: View {
                 }
         }
         .padding(.bottom, 6)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(entry.isUser ? "You" : "AI") at \(HHmmssFormatter.string(from: entry.timestamp)): \(entry.content)"
-        )
+        // Role + time is the accessibility label; the spoken content is the value,
+        // so VoiceOver announces who spoke separately from what was said.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "history.transcript.a11y.role \(String(localized: entry.isUser ? "history.role.you" : "history.role.ai")) \(HHmmssFormatter.string(from: entry.timestamp))"))
+        .accessibilityValue(entry.content)
     }
 
     private func offsetString(_ date: Date) -> String {
@@ -948,76 +1017,72 @@ final class SessionDetailViewModel: ObservableObject {
     @Published private(set) var detail: SessionDetail?
     @Published private(set) var isLoading = false
 
-    private let sessionID: UUID
     private let persistence = PersistenceController.shared
     private let logger = Logger(label: "com.unamentis.ui.history.detail")
 
-    init(sessionID: UUID) {
-        self.sessionID = sessionID
-    }
-
-    func load() async {
+    /// Load the full detail for a session. Runs the Core Data fetch on a
+    /// background context via `perform` (the established pattern in this app);
+    /// `SessionDetail` is `Sendable`, so the result returns to the main actor
+    /// without an extra `Task.detached` hop.
+    func load(sessionID: UUID) async {
         guard detail == nil, !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
 
-        let targetID = sessionID
         let ctx = persistence.newBackgroundContext()
 
-        detail = await Task.detached(priority: .userInitiated) { [logger] in
-            await ctx.perform { () -> SessionDetail? in
-                let request = Session.fetchRequest()
-                request.predicate = NSPredicate(format: "id == %@", targetID as CVarArg)
-                request.fetchLimit = 1
-                request.relationshipKeyPathsForPrefetching = ["topic", "topic.curriculum", "transcript"]
+        detail = await ctx.perform { [logger] () -> SessionDetail? in
+            let request = Session.fetchRequest()
+            request.predicate = NSPredicate(format: "id == %@", sessionID as CVarArg)
+            request.fetchLimit = 1
+            request.relationshipKeyPathsForPrefetching = ["topic", "topic.curriculum", "transcript"]
 
-                guard let session = try? ctx.fetch(request).first,
-                      let sid = session.id,
-                      let startTime = session.startTime else {
-                    logger.warning("Session not found: \(targetID)")
-                    return nil
-                }
+            guard let session = try? ctx.fetch(request).first,
+                  let sid = session.id,
+                  let startTime = session.startTime else {
+                logger.warning("Session not found: \(sessionID)")
+                return nil
+            }
 
-                let topicName = session.topic?.title
-                let curriculumName = session.topic?.curriculum?.name
+            let topicName = session.topic?.title
+            let curriculumName = session.topic?.curriculum?.name
 
-                var metricsSnapshot: MetricsSnapshot?
-                if let data = session.metricsSnapshot {
-                    metricsSnapshot = try? JSONDecoder().decode(MetricsSnapshot.self, from: data)
-                }
+            var metricsSnapshot: MetricsSnapshot?
+            if let data = session.metricsSnapshot {
+                metricsSnapshot = try? JSONDecoder().decode(MetricsSnapshot.self, from: data)
+            }
 
-                var sessionConfig: SessionConfig?
-                if let data = session.config {
-                    sessionConfig = try? JSONDecoder().decode(SessionConfig.self, from: data)
-                }
+            var sessionConfig: SessionConfig?
+            if let data = session.config {
+                sessionConfig = try? JSONDecoder().decode(SessionConfig.self, from: data)
+            }
 
-                let rawEntries = (session.transcript?.array as? [TranscriptEntry]) ?? []
-                let transcriptEntries: [TranscriptDetailEntry] = rawEntries.compactMap { entry in
-                    guard let eid = entry.id,
-                          let content = entry.content,
-                          let role = entry.role,
-                          let ts = entry.timestamp else { return nil }
-                    return TranscriptDetailEntry(
-                        id: eid,
-                        isUser: role == "user",
-                        content: content,
-                        timestamp: ts
-                    )
-                }
-
-                return SessionDetail(
-                    id: sid,
-                    startTime: startTime,
-                    endTime: session.endTime,
-                    duration: session.duration,
-                    topicName: topicName,
-                    curriculumName: curriculumName,
-                    metricsSnapshot: metricsSnapshot,
-                    sessionConfig: sessionConfig,
-                    transcript: transcriptEntries
+            let rawEntries = (session.transcript?.array as? [TranscriptEntry]) ?? []
+            let transcriptEntries: [TranscriptDetailEntry] = rawEntries.compactMap { entry in
+                guard let eid = entry.id,
+                      let content = entry.content,
+                      let role = entry.role,
+                      let ts = entry.timestamp else { return nil }
+                return TranscriptDetailEntry(
+                    id: eid,
+                    isUser: role == "user",
+                    content: content,
+                    timestamp: ts
                 )
             }
-        }.value
+
+            return SessionDetail(
+                id: sid,
+                startTime: startTime,
+                endTime: session.endTime,
+                duration: session.duration,
+                topicName: topicName,
+                curriculumName: curriculumName,
+                metricsSnapshot: metricsSnapshot,
+                sessionConfig: sessionConfig,
+                transcript: transcriptEntries
+            )
+        }
     }
 }
 
@@ -1042,7 +1107,7 @@ struct SessionDetail: Sendable {
     let transcript: [TranscriptDetailEntry]
 }
 
-struct SessionSummary: Identifiable {
+struct SessionSummary: Identifiable, Sendable {
     let id: UUID
     let startTime: Date
     let duration: TimeInterval
@@ -1053,7 +1118,7 @@ struct SessionSummary: Identifiable {
     let transcriptPreview: [TranscriptPreview]
 }
 
-struct TranscriptPreview: Identifiable {
+struct TranscriptPreview: Identifiable, Sendable {
     let id = UUID()
     let isUser: Bool
     let content: String
@@ -1074,63 +1139,70 @@ class HistoryViewModel: ObservableObject {
 
     init() {}
 
+    /// Initial load for the History tab. The gate only suppresses repeat work
+    /// once a load has succeeded, so a transient failure on first appearance can
+    /// still be retried, and `refresh()` provides an explicit force-reload path.
     func loadAsync() async {
         guard !hasLoaded else { return }
+        await loadFromCoreDataAsync()
         hasLoaded = true
+    }
+
+    /// Force a reload regardless of the initial-load gate (pull-to-refresh, or
+    /// after a new session is recorded while the tab is already on screen).
+    func refresh() async {
         await loadFromCoreDataAsync()
     }
 
     private func loadFromCoreDataAsync() async {
         let ctx = persistence.newBackgroundContext()
 
-        let summaries: [SessionSummary] = await Task.detached(priority: .userInitiated) { [logger] in
-            await ctx.perform { () -> [SessionSummary] in
-                let request = Session.fetchRequest()
-                request.sortDescriptors = [NSSortDescriptor(keyPath: \Session.startTime, ascending: false)]
-                request.fetchLimit = 100
-                request.relationshipKeyPathsForPrefetching = ["topic", "transcript"]
+        let summaries: [SessionSummary] = await ctx.perform { [logger] () -> [SessionSummary] in
+            let request = Session.fetchRequest()
+            request.sortDescriptors = [NSSortDescriptor(keyPath: \Session.startTime, ascending: false)]
+            request.fetchLimit = 100
+            request.relationshipKeyPathsForPrefetching = ["topic", "transcript"]
 
-                do {
-                    let rows = try ctx.fetch(request)
-                    logger.info("Fetched \(rows.count) sessions from Core Data")
+            do {
+                let rows = try ctx.fetch(request)
+                logger.info("Fetched \(rows.count) sessions from Core Data")
 
-                    return rows.compactMap { session -> SessionSummary? in
-                        guard let id = session.id, let startTime = session.startTime else { return nil }
+                return rows.compactMap { session -> SessionSummary? in
+                    guard let id = session.id, let startTime = session.startTime else { return nil }
 
-                        let topicName = session.topic?.title
-                        let entries = (session.transcript?.array as? [TranscriptEntry]) ?? []
-                        let preview = entries.prefix(3).compactMap { entry -> TranscriptPreview? in
-                            guard let content = entry.content, let role = entry.role else { return nil }
-                            return TranscriptPreview(isUser: role == "user", content: String(content.prefix(100)))
-                        }
-
-                        var avgLatency: TimeInterval = 0
-                        if let data = session.metricsSnapshot,
-                           let snap = try? JSONDecoder().decode(MetricsSnapshot.self, from: data) {
-                            avgLatency = TimeInterval(snap.latencies.e2eMedianMs) / 1000.0
-                        } else if let data = session.metricsSnapshot,
-                                  let legacy = try? JSONDecoder().decode(SessionMetricsData.self, from: data),
-                                  let lat = legacy.avgLatency {
-                            avgLatency = lat
-                        }
-
-                        return SessionSummary(
-                            id: id,
-                            startTime: startTime,
-                            duration: session.duration,
-                            topicName: topicName,
-                            turnCount: entries.count,
-                            totalCost: session.totalCost as Decimal? ?? 0,
-                            avgLatency: avgLatency,
-                            transcriptPreview: preview
-                        )
+                    let topicName = session.topic?.title
+                    let entries = (session.transcript?.array as? [TranscriptEntry]) ?? []
+                    let preview = entries.prefix(3).compactMap { entry -> TranscriptPreview? in
+                        guard let content = entry.content, let role = entry.role else { return nil }
+                        return TranscriptPreview(isUser: role == "user", content: String(content.prefix(100)))
                     }
-                } catch {
-                    logger.error("Fetch error: \(error)")
-                    return []
+
+                    var avgLatency: TimeInterval = 0
+                    if let data = session.metricsSnapshot,
+                       let snap = try? JSONDecoder().decode(MetricsSnapshot.self, from: data) {
+                        avgLatency = TimeInterval(snap.latencies.e2eMedianMs) / 1000.0
+                    } else if let data = session.metricsSnapshot,
+                              let legacy = try? JSONDecoder().decode(SessionMetricsData.self, from: data),
+                              let lat = legacy.avgLatency {
+                        avgLatency = lat
+                    }
+
+                    return SessionSummary(
+                        id: id,
+                        startTime: startTime,
+                        duration: session.duration,
+                        topicName: topicName,
+                        turnCount: entries.count,
+                        totalCost: session.totalCost as Decimal? ?? 0,
+                        avgLatency: avgLatency,
+                        transcriptPreview: preview
+                    )
                 }
+            } catch {
+                logger.error("Fetch error: \(error)")
+                return []
             }
-        }.value
+        }
 
         self.sessions = summaries
     }
@@ -1160,6 +1232,18 @@ class HistoryViewModel: ObservableObject {
                             "timestamp": entry.timestamp?.ISO8601Format() ?? ""
                         ]
                     }
+                }
+                // Embed the full observability snapshot (provider info, latency
+                // breakdown, costs/tokens, event log) and the session config so
+                // the all-sessions export carries the same detail the History UI
+                // shows. Stored blobs are already JSON, so re-parse them in place.
+                if let data = session.metricsSnapshot,
+                   let metrics = try? JSONSerialization.jsonObject(with: data) {
+                    dict["metrics"] = metrics
+                }
+                if let data = session.config,
+                   let config = try? JSONSerialization.jsonObject(with: data) {
+                    dict["config"] = config
                 }
                 return dict
             }
@@ -1204,68 +1288,104 @@ struct HistoryHelpSheet: View {
         NavigationStack {
             List {
                 Section {
-                    Text("Review your past learning sessions. Each entry shows when you studied, how long, and key metrics.")
+                    Text("history.help.intro")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 4)
                 }
 
-                Section("Understanding Metrics") {
-                    HistoryHelpRow(icon: "clock.fill", iconColor: .green, title: "Duration",
-                        description: "Total time spent in the session.")
-                    HistoryHelpRow(icon: "message.fill", iconColor: .blue, title: "Turns",
-                        description: "Number of conversation exchanges. You speak, then the AI responds.")
-                    HistoryHelpRow(icon: "dollarsign.circle.fill", iconColor: .orange, title: "Cost",
-                        description: "Estimated API usage costs. On-device and self-hosted options are free.")
-                    HistoryHelpRow(icon: "bolt.fill", iconColor: .purple, title: "Latency",
-                        description: "End-to-end response time. Target: under 500ms median.")
+                Section("history.help.section.metrics") {
+                    HistoryHelpRow(
+                        icon: "clock.fill",
+                        iconColor: .green,
+                        title: "history.help.duration.title",
+                        description: "history.help.duration.desc"
+                    )
+                    HistoryHelpRow(
+                        icon: "message.fill",
+                        iconColor: .blue,
+                        title: "history.help.turns.title",
+                        description: "history.help.turns.desc"
+                    )
+                    HistoryHelpRow(
+                        icon: "dollarsign.circle.fill",
+                        iconColor: .orange,
+                        title: "history.help.cost.title",
+                        description: "history.help.cost.desc"
+                    )
+                    HistoryHelpRow(
+                        icon: "bolt.fill",
+                        iconColor: .purple,
+                        title: "history.help.latency.title",
+                        description: "history.help.latency.desc"
+                    )
                 }
 
-                Section("Target Metrics") {
+                Section("history.help.section.targets") {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("E2E Latency (median)"); Spacer()
-                            Text("< 500ms").foregroundStyle(.green)
+                            Text("history.help.target.median"); Spacer()
+                            Text("history.help.target.median.value").foregroundStyle(.green)
                         }
                         HStack {
-                            Text("E2E Latency (P99)"); Spacer()
-                            Text("< 1000ms").foregroundStyle(.green)
+                            Text("history.help.target.p99"); Spacer()
+                            Text("history.help.target.p99.value").foregroundStyle(.green)
                         }
                         HStack {
-                            Text("Cost per hour"); Spacer()
-                            Text("< $0.50").foregroundStyle(.green)
+                            Text("history.help.target.cost"); Spacer()
+                            Text("history.help.target.cost.value").foregroundStyle(.green)
                         }
                     }
                     .font(.subheadline)
                 }
 
-                Section("Detail View Sections") {
-                    HistoryHelpRow(icon: "cpu", iconColor: .indigo, title: "Pipeline Config",
-                        description: "Exact models and providers that actually ran, not just what was configured.")
-                    HistoryHelpRow(icon: "bolt.fill", iconColor: .yellow, title: "Latency Breakdown",
-                        description: "Per-stage median and P99 for STT, LLM, TTS, end-to-end, and TTFA.")
-                    HistoryHelpRow(icon: "dollarsign.circle.fill", iconColor: .orange, title: "Cost Breakdown",
-                        description: "Per-provider costs with token counts and estimated hourly rate.")
-                    HistoryHelpRow(icon: "list.bullet.clipboard", iconColor: .purple, title: "Event Log",
-                        description: "Errors, thermal events, barge-ins, and context compressions with timestamps.")
-                    HistoryHelpRow(icon: "text.quote", iconColor: .blue, title: "Full Transcript",
-                        description: "Complete conversation with real timestamps and session offsets.")
+                Section("history.help.section.detail") {
+                    HistoryHelpRow(
+                        icon: "cpu",
+                        iconColor: .indigo,
+                        title: "history.help.pipeline.title",
+                        description: "history.help.pipeline.desc"
+                    )
+                    HistoryHelpRow(
+                        icon: "bolt.fill",
+                        iconColor: .yellow,
+                        title: "history.help.latencyBreakdown.title",
+                        description: "history.help.latencyBreakdown.desc"
+                    )
+                    HistoryHelpRow(
+                        icon: "dollarsign.circle.fill",
+                        iconColor: .orange,
+                        title: "history.help.costBreakdown.title",
+                        description: "history.help.costBreakdown.desc"
+                    )
+                    HistoryHelpRow(
+                        icon: "list.bullet.clipboard",
+                        iconColor: .purple,
+                        title: "history.help.eventLog.title",
+                        description: "history.help.eventLog.desc"
+                    )
+                    HistoryHelpRow(
+                        icon: "text.quote",
+                        iconColor: .blue,
+                        title: "history.help.transcript.title",
+                        description: "history.help.transcript.desc"
+                    )
                 }
 
-                Section("Exporting Data") {
-                    Text("Export your session history as JSON for backup or analysis. Use the menu button to export all sessions. On individual sessions, use the share button to export the full transcript.")
+                Section("history.help.section.export") {
+                    Text("history.help.export.desc")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 4)
                 }
             }
-            .navigationTitle("History Help")
+            .navigationTitle("history.help.title")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("common.done") { dismiss() }
                 }
             }
         }
@@ -1275,8 +1395,8 @@ struct HistoryHelpSheet: View {
 private struct HistoryHelpRow: View {
     let icon: String
     let iconColor: Color
-    let title: String
-    let description: String
+    let title: LocalizedStringKey
+    let description: LocalizedStringKey
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -1294,8 +1414,8 @@ private struct HistoryHelpRow: View {
             }
         }
         .padding(.vertical, 2)
+        // Combine reads the localized title and description Texts together.
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title): \(description)")
     }
 }
 

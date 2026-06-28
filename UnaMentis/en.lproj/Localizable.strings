@@ -22,6 +22,8 @@
 "common.delete" = "Delete";
 "common.save" = "Save";
 "common.error" = "Error";
+"common.yes" = "Yes";
+"common.no" = "No";
 
 // MARK: - Tab Bar
 
@@ -89,6 +91,186 @@
 "history.empty.description" = "Your completed voice sessions will appear here.";
 "history.session.duration %@" = "Duration: %@";
 "history.session.topics %lld" = "%lld topics covered";
+
+// History toolbar and actions
+"history.help.label" = "History help";
+"history.help.hint" = "Learn about session history and metrics";
+"history.options.label" = "History options";
+"history.options.hint" = "Export or clear your session history";
+"history.action.exportAll" = "Export All";
+"history.action.exportAll.hint" = "Export all sessions as a JSON file";
+"history.action.clear" = "Clear History";
+"history.action.clear.hint" = "Delete all saved sessions";
+"history.clear.title" = "Clear History";
+"history.clear.confirm" = "Delete All Sessions";
+"history.clear.message" = "This will permanently delete all session history.";
+
+// History list and rows
+"history.date.today" = "Today";
+"history.date.yesterday" = "Yesterday";
+"history.session.defaultTopic" = "General Conversation";
+"history.session.turns %lld" = "%lld turns";
+"history.session.a11y.hint" = "Double-tap to view session details";
+"history.session.a11y.duration %@" = "Duration %@";
+"history.session.a11y.turns %lld" = "%lld turns";
+"history.session.a11y.cost %@" = "cost %@";
+"history.session.a11y.latency %@ %@" = "average latency %@, %@";
+"history.latency.ms %lld" = "%lldms";
+"history.latency.status.good" = "Good";
+"history.latency.status.fair" = "Fair";
+"history.latency.status.slow" = "Slow";
+"history.role.you" = "You";
+"history.role.ai" = "AI";
+
+// Session detail
+"history.detail.title" = "Session Details";
+"history.detail.loading" = "Loading session details...";
+"history.detail.error.title" = "Could not load session";
+"history.detail.error.description" = "Session data could not be read from storage.";
+"history.detail.export.transcript" = "Export Transcript";
+"history.detail.export.transcript.hint" = "Create a text file with the full session transcript";
+"history.detail.share.summary" = "Share Summary";
+"history.detail.share.summary.hint" = "Create a short shareable summary of this session";
+"history.detail.export.label" = "Export options";
+"history.detail.export.hint" = "Export the transcript or share a session summary";
+"history.detail.header" = "Session";
+"history.detail.topic" = "Topic";
+"history.detail.curriculum" = "Curriculum";
+"history.detail.started" = "Started";
+"history.detail.ended" = "Ended";
+"history.detail.sessionId" = "Session ID";
+"history.detail.transcript.empty" = "No transcript entries";
+
+// Pipeline configuration card
+"history.pipeline.title" = "Pipeline Configuration";
+"history.pipeline.section.llm" = "LLM";
+"history.pipeline.section.stt" = "Speech Recognition";
+"history.pipeline.section.tts" = "Speech Synthesis";
+"history.pipeline.section.bargeIn" = "Barge-in";
+"history.pipeline.section.systemPrompt" = "System Prompt";
+"history.pipeline.model" = "Model";
+"history.pipeline.provider" = "Provider";
+"history.pipeline.temperature" = "Temperature";
+"history.pipeline.maxTokens" = "Max Tokens";
+"history.pipeline.silenceThreshold" = "Silence Threshold";
+"history.pipeline.voiceId" = "Voice ID";
+"history.pipeline.rate" = "Rate";
+"history.pipeline.enabled" = "Enabled";
+"history.pipeline.confirmation" = "Confirmation";
+"history.pipeline.length" = "Length";
+"history.pipeline.charCount %lld" = "%lld characters";
+"history.unit.seconds %@" = "%@s";
+"history.unit.rate %@" = "%@x";
+
+// Latency breakdown card
+"history.latency.title" = "Latency Breakdown";
+"history.latency.column.stage" = "Stage";
+"history.latency.column.median" = "Median";
+"history.latency.column.p99" = "P99";
+"history.latency.stage.stt" = "STT Emission";
+"history.latency.stage.llm" = "LLM First Token";
+"history.latency.stage.tts" = "TTS First Byte";
+"history.latency.stage.e2e" = "End-to-End Turn";
+"history.latency.stage.ttfa" = "TTFA";
+"history.latency.target" = "Target: E2E <500ms median, <1000ms P99";
+"history.latency.a11y.label %@ %lld %lld" = "%@: %lld milliseconds median, %lld milliseconds P99";
+
+// Cost breakdown card
+"history.cost.title" = "Cost Breakdown";
+"history.cost.stt" = "STT";
+"history.cost.tts" = "TTS";
+"history.cost.llm" = "LLM";
+"history.cost.tokens" = "LLM Tokens";
+"history.cost.tokens.value %lld %lld" = "%lld in / %lld out";
+"history.cost.total" = "Session Total";
+"history.cost.hourly" = "Hourly Rate";
+"history.cost.perHour %@" = "%@/hr";
+
+// Quality metrics card
+"history.quality.title" = "Quality Metrics";
+"history.quality.turns" = "Total Turns";
+"history.quality.interruptions" = "Interruptions";
+"history.quality.interruptRate" = "Interrupt Rate";
+"history.quality.errors" = "Total Errors";
+"history.quality.errorStage %@" = "  %@";
+"history.quality.errorCount %lld" = "%lld errors";
+"history.quality.thermal" = "Thermal Events";
+"history.quality.network" = "Network Drops";
+
+// Event log card
+"history.eventLog.title %lld" = "Event Log (%lld)";
+"history.eventLog.a11y %@ %@ %@" = "%@: %@: %@";
+"history.event.label.sttError" = "STT Error";
+"history.event.label.llmError" = "LLM Error";
+"history.event.label.ttsError" = "TTS Error";
+"history.event.label.thermal" = "Thermal";
+"history.event.label.contextCompressed" = "Ctx Compress";
+"history.event.label.bargeIn" = "Barge-in";
+"history.event.label.qualityAdjusted" = "Quality Adj";
+"history.event.detail.sttError" = "Speech-to-text stream failed";
+"history.event.detail.llmError" = "Language model stream failed";
+"history.event.detail.ttsError" = "Text-to-speech stream failed";
+"history.event.detail.thermal %@" = "Thermal state: %@";
+"history.event.detail.contextCompressed %lld %lld" = "Context compressed %lld → %lld tokens";
+"history.event.detail.bargeIn" = "User interrupted AI speech";
+"history.event.detail.qualityAdjusted %@" = "Quality adjusted: %@";
+"history.event.detail.qualityAdjusted.generic" = "Adaptive quality adjusted";
+"history.thermal.nominal" = "Nominal";
+"history.thermal.fair" = "Fair";
+"history.thermal.serious" = "Serious";
+"history.thermal.critical" = "Critical";
+
+// Full transcript card
+"history.transcript.title %lld" = "Full Transcript (%lld messages)";
+"history.transcript.a11y.role %@ %@" = "%@ at %@";
+
+// Transcript and summary export files
+"history.export.session %@" = "Session: %@";
+"history.export.date %@" = "Date: %@";
+"history.export.duration %@" = "Duration: %@";
+"history.export.turns %lld" = "Turns: %lld";
+"history.export.cost %@" = "Cost: %@";
+"history.export.llm %@ %@" = "LLM: %@ (%@)";
+"history.export.stt %@" = "STT: %@";
+"history.export.tts %@" = "TTS: %@";
+"history.export.latency %lld %lld" = "E2E Latency: %lldms median / %lldms P99";
+"history.share.title" = "Learning Session Summary";
+"history.share.topic %@" = "Topic: %@";
+"history.share.model %@" = "Model: %@";
+"history.share.latency %lld" = "E2E Latency: %lldms median";
+
+// History help sheet
+"history.help.title" = "History Help";
+"history.help.intro" = "Review your past learning sessions. Each entry shows when you studied, how long, and key metrics.";
+"history.help.section.metrics" = "Understanding Metrics";
+"history.help.section.targets" = "Target Metrics";
+"history.help.section.detail" = "Detail View Sections";
+"history.help.section.export" = "Exporting Data";
+"history.help.duration.title" = "Duration";
+"history.help.duration.desc" = "Total time spent in the session.";
+"history.help.turns.title" = "Turns";
+"history.help.turns.desc" = "Number of conversation exchanges. You speak, then the AI responds.";
+"history.help.cost.title" = "Cost";
+"history.help.cost.desc" = "Estimated API usage costs. On-device and self-hosted options are free.";
+"history.help.latency.title" = "Latency";
+"history.help.latency.desc" = "End-to-end response time. Target: under 500ms median.";
+"history.help.target.median" = "E2E Latency (median)";
+"history.help.target.median.value" = "< 500ms";
+"history.help.target.p99" = "E2E Latency (P99)";
+"history.help.target.p99.value" = "< 1000ms";
+"history.help.target.cost" = "Cost per hour";
+"history.help.target.cost.value" = "< $0.50";
+"history.help.pipeline.title" = "Pipeline Config";
+"history.help.pipeline.desc" = "Exact models and providers that actually ran, not just what was configured.";
+"history.help.latencyBreakdown.title" = "Latency Breakdown";
+"history.help.latencyBreakdown.desc" = "Per-stage median and P99 for STT, LLM, TTS, end-to-end, and TTFA.";
+"history.help.costBreakdown.title" = "Cost Breakdown";
+"history.help.costBreakdown.desc" = "Per-provider costs with token counts and estimated hourly rate.";
+"history.help.eventLog.title" = "Event Log";
+"history.help.eventLog.desc" = "Errors, thermal events, barge-ins, and context compressions with timestamps.";
+"history.help.transcript.title" = "Full Transcript";
+"history.help.transcript.desc" = "Complete conversation with real timestamps and session offsets.";
+"history.help.export.desc" = "Export your session history as JSON for backup or analysis. Use the menu button to export all sessions. On individual sessions, use the share button to export the full transcript.";
 
 // MARK: - Analytics View
 

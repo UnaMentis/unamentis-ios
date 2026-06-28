@@ -269,7 +269,7 @@ public final class SessionManager: ObservableObject {
 
     /// Provider and configuration snapshot captured at session start.
     /// Passed to TelemetryEngine.exportMetrics() at session end.
-    private var sessionProviderInfo: ProviderInfo?
+    private var sessionProviderInfo: SessionProviderInfo?
 
     /// Voice feedback for instant haptic/tone acknowledgments
     private let voiceFeedback = VoiceActivityFeedback()
@@ -407,7 +407,7 @@ public final class SessionManager: ObservableObject {
         // Capture provider info from live service types and current config.
         // type(of:) gives the concrete implementation name (e.g. "DeepgramSTTService"),
         // which is the actual provider that ran, not whatever settings say.
-        sessionProviderInfo = ProviderInfo(
+        sessionProviderInfo = SessionProviderInfo(
             llmModel: config.llm.model,
             llmProvider: Self.inferLLMProvider(from: config.llm.model),
             llmTemperature: config.llm.temperature,
