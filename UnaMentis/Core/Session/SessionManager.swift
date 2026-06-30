@@ -1736,18 +1736,22 @@ extension SessionManager {
         await bargeInDetector?.phase
     }
 
-    /// Inject mock services so a full turn can be driven without starting the mic
-    /// or the audio engine. The TTS orchestrator and instant filler both no-op
-    /// when the audio engine is nil, so passing nil for tts/audio is fine: the
-    /// turn still runs at the LLM and conversation-history level.
+    /// Inject mock services so a full turn can be driven without starting the mic.
+    /// The TTS orchestrator and instant filler both no-op when the audio engine is
+    /// nil, so passing nil for tts/audio runs the turn only at the LLM and
+    /// conversation-history level. Passing a started AudioEngine plus a mock TTS
+    /// drives the complete engine path (LLM -> sentence split -> TTS orchestrator
+    /// -> playback completion -> back to userSpeaking) without the microphone.
     func _testInjectServices(
         llm: (any LLMService)?,
         stt: (any STTService)? = nil,
-        tts: (any TTSService)? = nil
+        tts: (any TTSService)? = nil,
+        audioEngine engine: AudioEngine? = nil
     ) {
         llmService = llm
         sttService = stt
         ttsService = tts
+        if let engine { audioEngine = engine }
     }
 
     /// Read-only view of the conversation history for assertions.
