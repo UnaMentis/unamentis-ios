@@ -617,4 +617,37 @@ final class AudioPlaybackOrchestratorTests: XCTestCase {
             XCTFail("expected PlaybackOrchestratorError.synthesisTimedOut, got \(String(describing: delegate.errors.first))")
         }
     }
+
+    func testSynthesisProducesNoAudio_surfacesErrorNotSilentSkip() async {
+        // The on-device engine can finish its stream after an internal failure
+        // having produced no audio. That must surface as an error, not be played as
+        // silence and skipped (which on device looked like "text, no voice").
+        await mockTTS.configureStreaming(chunks: 0)  // stream finishes with zero chunks
+        let config = PlaybackOrchestratorConfig(
+            prefetchDepth: 0,
+            interSegmentSilenceMs: 0,
+            retainBehindCount: 0,
+            bufferTimeoutSeconds: 2
+        )
+        let orch = makeOrchestrator(config: config)
+        let delegate = TestDelegate()
+        await orch.setDelegate(delegate)
+        await orch.loadSegments([TestSegment(index: 0, text: "hello world")])
+
+        await orch.startPlayback(from: 0)
+
+        var surfaced = false
+        for _ in 0..<60 {
+            if !delegate.errors.isEmpty { surfaced = true; break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        await orch.stopPlayback()
+
+        XCTAssertTrue(surfaced, "synthesis producing no audio must surface an error")
+        if let err = delegate.errors.first as? PlaybackOrchestratorError {
+            XCTAssertEqual(err, .synthesisProducedNoAudio)
+        } else {
+            XCTFail("expected PlaybackOrchestratorError.synthesisProducedNoAudio, got \(String(describing: delegate.errors.first))")
+        }
+    }
 }

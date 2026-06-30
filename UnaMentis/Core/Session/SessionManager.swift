@@ -1264,6 +1264,24 @@ public final class SessionManager: ObservableObject {
     }
 
     /// Handle processing errors with recovery back to listening state
+    /// Surface a TTS playback/synthesis failure reported by the orchestrator (for
+    /// example the on-device engine producing no audio). Without this the chat path
+    /// would show the AI's text with no audio and no error, exactly the silent
+    /// failure seen on device. The AI text is valid, so it is preserved; we briefly
+    /// show the error state so the failure is visible, then recover to listening.
+    func handleTTSPlaybackError(_ error: Error) async {
+        logger.error("🔇 TTS playback failed (no audio): \(error.localizedDescription)")
+        await telemetry.recordError(error, stage: .tts)
+        guard state != .error else { return }  // already surfacing
+        await setState(.error)
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        if state == .error {
+            hasDetectedSpeech = false
+            silenceStartTime = nil
+            await setState(.userSpeaking)
+        }
+    }
+
     private func handleProcessingError(_ message: String) async {
         logger.error("❌ Processing error: \(message)")
 
@@ -1708,9 +1726,9 @@ final class SessionOrchestratorDelegate: PlaybackOrchestratorDelegate {
     }
 
     nonisolated func orchestratorDidEncounterError(_ error: Error) async {
-        let errorMsg = error.localizedDescription
         await MainActor.run { [weak self] in
-            self?.logger.error("TTS orchestrator error: \(errorMsg)")
+            guard let self, let manager = self.sessionManager else { return }
+            Task { await manager.handleTTSPlaybackError(error) }
         }
     }
 }

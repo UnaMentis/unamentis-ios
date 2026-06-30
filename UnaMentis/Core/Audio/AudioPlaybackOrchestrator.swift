@@ -31,10 +31,17 @@ public enum PlaybackOrchestratorError: LocalizedError, Equatable {
     /// its stream; this turns that hang into a recoverable, surfaced error.
     case synthesisTimedOut(seconds: TimeInterval)
 
+    /// The TTS stream finished but produced no audio. The on-device engine can
+    /// fail mid-stream and end silently; this surfaces that as an error instead of
+    /// playing nothing with no indication.
+    case synthesisProducedNoAudio
+
     public var errorDescription: String? {
         switch self {
         case let .synthesisTimedOut(seconds):
             return "Speech synthesis did not produce audio within \(Int(seconds))s."
+        case .synthesisProducedNoAudio:
+            return "Speech synthesis produced no audio."
         }
     }
 }
@@ -504,10 +511,16 @@ public actor AudioPlaybackOrchestrator {
                 return nil  // timeout sentinel
             }
             defer { group.cancelAll() }
-            if let result = try await group.next(), let chunks = result {
-                return chunks
+            guard let result = try await group.next(), let chunks = result else {
+                throw PlaybackOrchestratorError.synthesisTimedOut(seconds: timeout)
             }
-            throw PlaybackOrchestratorError.synthesisTimedOut(seconds: timeout)
+            // A stream that finishes with no audio is a failure, not silence: the
+            // on-device engine can end its stream early after an internal error.
+            let totalBytes = chunks.reduce(0) { $0 + $1.audioData.count }
+            guard totalBytes > 0 else {
+                throw PlaybackOrchestratorError.synthesisProducedNoAudio
+            }
+            return chunks
         }
     }
 

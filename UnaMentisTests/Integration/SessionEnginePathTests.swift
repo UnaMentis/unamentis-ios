@@ -97,4 +97,30 @@ final class SessionEnginePathTests: XCTestCase {
         let users = manager._testConversationHistory.filter { $0.role == .user && $0.content == "only once please" }
         XCTAssertEqual(users.count, 1, "the duplicate completion must not produce a second turn")
     }
+
+    func testTTSFailureInChatSurfacesErrorNotSilent() async {
+        // Regression for the on-device "text appears, no audio, no error" failure:
+        // when TTS produces no audio, the chat path must surface an error rather
+        // than silently completing a voiceless turn. (The on-device engine fault
+        // itself is separate; this guarantees the failure is never silent.)
+        let mockLLM = MockLLMService()
+        await mockLLM.configure(summaryResponse: "Here is the answer.")
+        let mockTTS = MockTTSService()
+        await mockTTS.configureStreaming(chunks: 0)  // synthesis yields no audio
+
+        let manager = SessionManager(telemetry: telemetry)
+        manager._testInjectServices(llm: mockLLM, tts: mockTTS, audioEngine: audioEngine)
+        await manager._testForceState(.userSpeaking)
+
+        await manager.injectUserUtterance("tell me something")
+
+        // The TTS failure must surface: the session briefly enters .error rather
+        // than silently finishing a voiceless turn.
+        var sawError = false
+        for _ in 0..<300 {  // ~3s, covers the brief surfaced-error window
+            if manager.state == .error { sawError = true; break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(sawError, "a TTS failure in chat must surface an error, not fail silently")
+    }
 }
