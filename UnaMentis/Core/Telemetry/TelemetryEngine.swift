@@ -275,6 +275,20 @@ public actor TelemetryEngine {
     private var events: [RecordedEvent] = []
     private let maxEventBuffer = 1000
 
+    /// Per-type error aggregates for the History error drill-down, keyed by
+    /// "stage|type|message" so a repeated error becomes one entry with a count.
+    /// Local-only; surfaced via MetricsSnapshot.errorLog, never uploaded.
+    private struct ErrorAggregate {
+        let stage: String
+        let type: String
+        let message: String
+        var count: Int
+        let firstOffsetSeconds: Double
+        var lastOffsetSeconds: Double
+    }
+    private var errorAggregates: [String: ErrorAggregate] = [:]
+    private let maxErrorAggregates = 50
+
     /// Device metrics sampling task
     private var deviceMetricsSamplingTask: Task<Void, Never>?
 
@@ -337,6 +351,7 @@ public actor TelemetryEngine {
         sessionStartTime = Date()
         metrics = SessionMetrics()
         events.removeAll()
+        errorAggregates.removeAll()
 
         // Reset rate limiting state
         lastEventTimes.removeAll()
@@ -479,6 +494,27 @@ public actor TelemetryEngine {
     public func recordError(_ error: Error, stage: TelemetryErrorStage) {
         incrementErrorCounter(stage)
         logger.error("Error [\(stage.rawValue)]: \(error.localizedDescription)")
+        captureErrorDetail(error, stage: stage)
+    }
+
+    /// Aggregate an error's detail for the on-device History drill-down. Grouped
+    /// by stage + type + message so a repeated error is one entry with a count.
+    /// Local-only (surfaced via MetricsSnapshot.errorLog, never uploaded).
+    private func captureErrorDetail(_ error: Error, stage: TelemetryErrorStage) {
+        let type = String(describing: Swift.type(of: error))
+        let message = String(error.localizedDescription.prefix(500))
+        let offset = sessionStartTime.map { Date().timeIntervalSince($0) } ?? 0
+        let key = "\(stage.rawValue)|\(type)|\(message)"
+        if var existing = errorAggregates[key] {
+            existing.count += 1
+            existing.lastOffsetSeconds = offset
+            errorAggregates[key] = existing
+        } else if errorAggregates.count < maxErrorAggregates {
+            errorAggregates[key] = ErrorAggregate(
+                stage: stage.rawValue, type: type, message: message,
+                count: 1, firstOffsetSeconds: offset, lastOffsetSeconds: offset
+            )
+        }
     }
 
     /// Increment the typed error counters for a pipeline stage
@@ -553,6 +589,7 @@ public actor TelemetryEngine {
     public func reset() {
         metrics = SessionMetrics()
         events.removeAll()
+        errorAggregates.removeAll()
         sessionStartTime = nil
         deviceMetricsHistory.removeAll()
 
@@ -692,14 +729,29 @@ public actor TelemetryEngine {
         )
 
         let log = buildEventLog()
+        let errorLog = buildErrorLog()
 
         return MetricsSnapshot(
             latencies: latencies,
             costs: costs,
             quality: quality,
             providerInfo: providerInfo,
-            eventLog: log.isEmpty ? nil : log
+            eventLog: log.isEmpty ? nil : log,
+            errorLog: errorLog.isEmpty ? nil : errorLog
         )
+    }
+
+    /// Build the per-type error log (most frequent first) for the History
+    /// drill-down. Local-only; not part of the uploaded payload.
+    private func buildErrorLog() -> [ErrorLogRecord] {
+        errorAggregates.values
+            .map {
+                ErrorLogRecord(
+                    stage: $0.stage, type: $0.type, message: $0.message, count: $0.count,
+                    firstOffsetSeconds: $0.firstOffsetSeconds, lastOffsetSeconds: $0.lastOffsetSeconds
+                )
+            }
+            .sorted { $0.count > $1.count }
     }
 
     /// Record LLM token usage for this session (accumulated per-turn).
@@ -769,19 +821,63 @@ public struct MetricsSnapshot: Codable, Sendable {
     /// Key session events (errors, thermal changes, context compressions, barge-ins).
     /// Nil when no notable events occurred or on older persisted snapshots.
     public let eventLog: [SessionEventRecord]?
+    /// Per-type error detail captured for on-device debugging, grouped by stage +
+    /// error type + message with counts. LOCAL-ONLY: this is persisted in the
+    /// device's Core Data snapshot but is deliberately excluded from the uploaded
+    /// metrics payload (see MetricsUploadService.transformToServerFormat, which
+    /// uploads only aggregate counts), because messages can contain provider or
+    /// request detail. Nil when no errors occurred or on older snapshots.
+    public let errorLog: [ErrorLogRecord]?
 
     public init(
         latencies: LatencyMetrics,
         costs: CostMetrics,
         quality: QualityMetrics,
         providerInfo: SessionProviderInfo? = nil,
-        eventLog: [SessionEventRecord]? = nil
+        eventLog: [SessionEventRecord]? = nil,
+        errorLog: [ErrorLogRecord]? = nil
     ) {
         self.latencies = latencies
         self.costs = costs
         self.quality = quality
         self.providerInfo = providerInfo
         self.eventLog = eventLog
+        self.errorLog = errorLog
+    }
+}
+
+/// One aggregated error type seen during a session, for the History error
+/// drill-down. Grouped so a single error repeated N times shows as one entry with
+/// `count == N` rather than N rows. LOCAL-ONLY (never uploaded).
+public struct ErrorLogRecord: Codable, Sendable, Identifiable {
+    /// Pipeline stage rawValue (stt/llm/tts/network).
+    public let stage: String
+    /// Swift error type name (e.g. "KyutaiPocketModelError").
+    public let type: String
+    /// Error message (localizedDescription). Local-only; not uploaded.
+    public let message: String
+    /// How many times this exact error occurred in the session.
+    public let count: Int
+    /// Session-relative time (seconds) of the first and last occurrence.
+    public let firstOffsetSeconds: Double
+    public let lastOffsetSeconds: Double
+
+    public var id: String { "\(stage)|\(type)|\(message)" }
+
+    public init(
+        stage: String,
+        type: String,
+        message: String,
+        count: Int,
+        firstOffsetSeconds: Double,
+        lastOffsetSeconds: Double
+    ) {
+        self.stage = stage
+        self.type = type
+        self.message = message
+        self.count = count
+        self.firstOffsetSeconds = firstOffsetSeconds
+        self.lastOffsetSeconds = lastOffsetSeconds
     }
 }
 

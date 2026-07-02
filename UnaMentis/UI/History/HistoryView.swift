@@ -284,7 +284,7 @@ struct SessionDetailView: View {
                     }
 
                     if let quality = detail.metricsSnapshot?.quality {
-                        SessionQualityMetricsCard(quality: quality)
+                        SessionQualityMetricsCard(quality: quality, errorLog: detail.metricsSnapshot?.errorLog)
                     }
 
                     if let eventLog = detail.metricsSnapshot?.eventLog, !eventLog.isEmpty {
@@ -370,7 +370,12 @@ struct SessionDetailView: View {
             lines.append(String(localized: "history.export.latency \(l.e2eMedianMs) \(l.e2eP99Ms)"))
         }
 
-        let content = lines.joined(separator: "\n") + "\n\n---\n\n" + transcriptText
+        var content = lines.joined(separator: "\n") + "\n\n---\n\n" + transcriptText
+
+        // Include the error log in the session export so it can be shared/saved too.
+        if let errorLog = detail?.metricsSnapshot?.errorLog, !errorLog.isEmpty {
+            content += "\n\n---\n\n" + SessionErrorDetailView.buildText(errorLog)
+        }
 
         let tempDir = FileManager.default.temporaryDirectory
         let fileName = "session_\(String(session.id.uuidString.prefix(8)))_transcript.txt"
@@ -749,6 +754,7 @@ private struct CostBreakdownCard: View {
 
 private struct SessionQualityMetricsCard: View {
     let quality: QualityMetrics
+    var errorLog: [ErrorLogRecord]?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -767,11 +773,26 @@ private struct SessionQualityMetricsCard: View {
             Divider()
 
             let totalErrors = quality.errorsTotal ?? 0
-            InfoRow(
-                label: "history.quality.errors",
-                value: totalErrors.formatted(),
-                valueColor: totalErrors > 0 ? .red : .primary
-            )
+            if totalErrors > 0 {
+                // Tappable: drill into the per-type error detail / log.
+                NavigationLink {
+                    SessionErrorDetailView(errorLog: errorLog, errorsByStage: quality.errorsByStage)
+                } label: {
+                    HStack {
+                        Text("history.quality.errors")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text(totalErrors.formatted())
+                            .foregroundStyle(.red)
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .accessibilityHint(Text(verbatim: "Shows the error types and lets you share the log"))
+            } else {
+                InfoRow(label: "history.quality.errors", value: totalErrors.formatted())
+            }
 
             if let byStage = quality.errorsByStage, !byStage.isEmpty {
                 let sorted = byStage.sorted(by: { $0.key < $1.key })
@@ -798,6 +819,137 @@ private struct SessionQualityMetricsCard: View {
             )
         }
         .cardStyle()
+    }
+}
+
+// MARK: - Error Detail View
+
+/// First/last occurrence summary for an aggregated error record.
+private func errorOffsetSummary(_ record: ErrorLogRecord) -> String {
+    String(format: "first @ %.1fs · last @ %.1fs", record.firstOffsetSeconds, record.lastOffsetSeconds)
+}
+
+/// Drill-down for a session's errors: a list of distinct error TYPES with how
+/// many times each occurred and the message, plus a share/export to a text file
+/// (Files, AirDrop, etc.). Error detail is captured locally only; it is never
+/// uploaded. Older sessions that pre-date detail capture show only per-stage counts.
+struct SessionErrorDetailView: View {
+    let errorLog: [ErrorLogRecord]?
+    let errorsByStage: [String: Int]?
+
+    @State private var exportURL: URL?
+    @State private var showShareSheet = false
+
+    private var records: [ErrorLogRecord] { errorLog ?? [] }
+
+    var body: some View {
+        List {
+            if !records.isEmpty {
+                Section {
+                    ForEach(records) { ErrorLogRow(record: $0) }
+                } header: {
+                    Text(verbatim: records.count == 1 ? "1 error type" : "\(records.count) error types")
+                } footer: {
+                    Text("Captured on this device for debugging. Not uploaded. Use the share button to save the full log.")
+                }
+            } else if let byStage = errorsByStage, byStage.values.contains(where: { $0 > 0 }) {
+                Section {
+                    ForEach(byStage.sorted { $0.value > $1.value }, id: \.key) { stage, count in
+                        HStack {
+                            Text(verbatim: stage.uppercased())
+                            Spacer()
+                            Text(verbatim: "\(count)").foregroundStyle(.red).monospacedDigit()
+                        }
+                    }
+                } footer: {
+                    Text("Detailed error messages were not captured for this session.")
+                }
+            } else {
+                ContentUnavailableView("No Errors", systemImage: "checkmark.circle",
+                                       description: Text("This session recorded no errors."))
+            }
+        }
+        .navigationTitle("Errors")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !records.isEmpty {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        shareErrorLog()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Share error log")
+                }
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let url = exportURL {
+                ShareSheet(items: [url])
+            }
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    private func shareErrorLog() {
+        let text = Self.buildText(records)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("unamentis-session-errors.txt")
+        do {
+            try text.data(using: .utf8)?.write(to: url, options: .atomic)
+            exportURL = url
+            showShareSheet = true
+        } catch {
+            // Best effort: if the temp write fails there is nothing to share.
+        }
+    }
+    #endif
+
+    /// Build a plain-text error log for sharing/export.
+    static func buildText(_ records: [ErrorLogRecord]) -> String {
+        var lines: [String] = [
+            "UnaMentis session error log",
+            records.count == 1 ? "1 error type" : "\(records.count) error types",
+            ""
+        ]
+        for record in records {
+            lines.append("[\(record.stage.uppercased())] \(record.type)  ×\(record.count)")
+            lines.append("  \(record.message)")
+            lines.append("  " + errorOffsetSummary(record))
+            lines.append("")
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+private struct ErrorLogRow: View {
+    let record: ErrorLogRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(verbatim: record.stage.uppercased())
+                    .font(.caption2).bold()
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.red.opacity(0.15))
+                    .clipShape(Capsule())
+                Text(verbatim: record.type)
+                    .font(.subheadline).bold()
+                Spacer()
+                Text(verbatim: "×\(record.count)")
+                    .font(.subheadline).foregroundStyle(.red).monospacedDigit()
+            }
+            Text(verbatim: record.message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            Text(verbatim: errorOffsetSummary(record))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 2)
     }
 }
 

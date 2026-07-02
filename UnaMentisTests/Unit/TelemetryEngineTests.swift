@@ -202,6 +202,37 @@ final class TelemetryEngineTests: XCTestCase {
         XCTAssertEqual(snapshot.costs.sttTotal, Decimal(string: "0.01")!)
     }
 
+    func testErrorLog_aggregatesByTypeWithCounts() async {
+        await telemetry.startSession()
+        let loadError = NSError(domain: "test", code: 1,
+                                userInfo: [NSLocalizedDescriptionKey: "Engine load failed"])
+        let llmError = NSError(domain: "test", code: 2,
+                               userInfo: [NSLocalizedDescriptionKey: "LLM timeout"])
+        // Same TTS error three times, one distinct LLM error.
+        await telemetry.recordError(loadError, stage: .tts)
+        await telemetry.recordError(loadError, stage: .tts)
+        await telemetry.recordError(loadError, stage: .tts)
+        await telemetry.recordError(llmError, stage: .llm)
+
+        let snapshot = await telemetry.exportMetrics()
+
+        XCTAssertEqual(snapshot.quality.errorsTotal, 4, "total count still increments per error")
+        let log = snapshot.errorLog ?? []
+        XCTAssertEqual(log.count, 2, "a repeated error collapses into one type entry")
+        // Sorted by count descending: the TTS error (x3) leads.
+        XCTAssertEqual(log.first?.count, 3)
+        XCTAssertEqual(log.first?.stage, "tts")
+        XCTAssertEqual(log.first?.message, "Engine load failed")
+        XCTAssertEqual(log.last?.count, 1)
+        XCTAssertEqual(log.last?.stage, "llm")
+    }
+
+    func testErrorLog_isNilWhenNoErrors() async {
+        await telemetry.startSession()
+        let snapshot = await telemetry.exportMetrics()
+        XCTAssertNil(snapshot.errorLog, "no errors means no error log")
+    }
+
     // MARK: - Array Extension Tests
 
     func testStandardDeviation_emptyArray_returnsZero() {
