@@ -15,7 +15,7 @@ import Foundation
 /// - 24kHz high-quality output
 /// - 1.84% WER (best in class for on-device)
 /// - ~200ms time to first audio
-/// - MIT licensed (code and weights)
+/// - Pocket TTS by Kyutai Labs, licensed CC-BY-4.0 (https://github.com/kyutai-labs/pocket-tts)
 public struct KyutaiPocketTTSConfig: Codable, Sendable, Equatable {
 
     // MARK: - Voice Selection
@@ -428,6 +428,16 @@ public enum KyutaiPocketModelInfo {
 
     /// License type
     public static let license: String = "CC-BY-4.0"
+
+    /// Original model creator (the source lab).
+    public static let creator: String = "Kyutai Labs"
+
+    /// Canonical source repository for attribution (CC-BY-4.0 requires it).
+    public static let sourceURL: String = "https://github.com/kyutai-labs/pocket-tts"
+
+    /// Attribution line. The model is by Kyutai Labs; UnaMentis ported it to iOS.
+    public static let attribution: String =
+        "Pocket TTS by Kyutai Labs, licensed CC-BY-4.0. Ported to iOS for UnaMentis."
 
     /// Model parameters
     public static let parameters: Int = 117_856_642

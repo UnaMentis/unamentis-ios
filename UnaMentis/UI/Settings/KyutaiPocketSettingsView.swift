@@ -588,11 +588,18 @@ struct KyutaiPocketSettingsView: View {
             InfoRow(label: "Word Error Rate", value: String(format: "%.2f%%", KyutaiPocketModelInfo.wordErrorRate * 100))
             InfoRow(label: "Typical Latency", value: "~\(KyutaiPocketModelInfo.typicalLatencyMS) ms")
             InfoRow(label: "Min iOS Version", value: KyutaiPocketModelInfo.minimumIOSVersion)
+            InfoRow(label: "Creator", value: KyutaiPocketModelInfo.creator)
             InfoRow(label: "License", value: KyutaiPocketModelInfo.license)
+            if let url = URL(string: KyutaiPocketModelInfo.sourceURL) {
+                Link(destination: url) {
+                    Label("Source Repository", systemImage: "link")
+                }
+            }
         } header: {
             Text("Model Information")
         } footer: {
-            Text("Pocket TTS is a 100M parameter model from Kyutai (MIT license). Models are bundled with the app for instant use.")
+            // CC-BY-4.0 requires attribution to the creator.
+            Text("\(KyutaiPocketModelInfo.attribution) Models are bundled with the app for instant, on-device use.")
         }
     }
 }
