@@ -18,6 +18,16 @@ iOS-specific documentation for the UnaMentis voice AI learning platform.
 
 ---
 
+## Design Concepts
+
+| Document | Description |
+|----------|-------------|
+| [design/MULTI_VOICE_ORCHESTRATION_CONCEPT.md](design/MULTI_VOICE_ORCHESTRATION_CONCEPT.md) | Concept paper: multi-voice orchestration, staged dialogue, learner profile |
+| [design/MULTI_VOICE_CONCEPT_EVALUATION.md](design/MULTI_VOICE_CONCEPT_EVALUATION.md) | Evaluation of the concept against the current codebase |
+| [design/MULTI_VOICE_IMPLEMENTATION_PLAN.md](design/MULTI_VOICE_IMPLEMENTATION_PLAN.md) | Phased implementation plan with design decisions |
+
+---
+
 ## iOS Testing
 
 | Document | Description |
