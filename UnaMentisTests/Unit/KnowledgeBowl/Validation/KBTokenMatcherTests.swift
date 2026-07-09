@@ -1,5 +1,5 @@
 //
-//  KBTokenMatcherTests.swift
+//  EvalTokenMatcherTests.swift
 //  UnaMentisTests
 //
 //  Comprehensive unit tests for token-based similarity (Jaccard & Dice)
@@ -10,12 +10,12 @@ import XCTest
 @testable import UnaMentis
 
 @available(iOS 18.0, *)
-final class KBTokenMatcherTests: XCTestCase {
-    var matcher: KBTokenMatcher!
+final class EvalTokenMatcherTests: XCTestCase {
+    var matcher: EvalTokenMatcher!
 
     override func setUp() async throws {
         try await super.setUp()
-        matcher = KBTokenMatcher()
+        matcher = EvalTokenMatcher()
     }
 
     override func tearDown() async throws {

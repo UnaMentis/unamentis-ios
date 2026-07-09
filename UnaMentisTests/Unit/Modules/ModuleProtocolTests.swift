@@ -11,10 +11,42 @@ final class ModuleProtocolTests: XCTestCase {
 
     // MARK: - Test Module Implementation
 
-    /// A test module that implements ModuleProtocol for testing
+    /// Builds a minimal manifest for a test module. Capabilities default to
+    /// empty so the derived feature booleans are all false unless overridden.
+    static func makeManifest(
+        id: String = "test-module",
+        name: String = "Test Module",
+        version: String = "1.0.0",
+        capabilities: Set<String> = [],
+        requiresHostCapabilities: [String] = []
+    ) -> ModuleManifest {
+        ModuleManifest(
+            specVersion: "0.1.0",
+            id: id,
+            name: name,
+            version: version,
+            engine: .custom,
+            surfaces: [.phone],
+            capabilities: capabilities,
+            requiresHostCapabilities: requiresHostCapabilities,
+            optionalHostCapabilities: [],
+            voiceCoverage: VoiceCoverage(declared: 0.0),
+            serverTiers: [0],
+            locales: ["en-US"],
+            contentPacks: ContentPacks(bundled: [], compatibleSchemas: []),
+            privacy: Privacy(
+                collectsAudio: false,
+                storesTranscripts: false,
+                sharesWithMentor: .never
+            ),
+            minPlatform: MinPlatform(ios: "18.0")
+        )
+    }
+
+    /// A test module that implements ModuleProtocol for testing. Its id, name,
+    /// and version derive from the manifest per the manifest-based protocol.
     struct TestModule: ModuleProtocol {
-        let id: String
-        let name: String
+        let manifest: ModuleManifest
         let shortDescription: String
         let longDescription: String
         let iconName: String
@@ -28,8 +60,7 @@ final class ModuleProtocolTests: XCTestCase {
             iconName: String = "star",
             themeColor: Color = .blue
         ) {
-            self.id = id
-            self.name = name
+            self.manifest = ModuleProtocolTests.makeManifest(id: id, name: name)
             self.shortDescription = shortDescription
             self.longDescription = longDescription
             self.iconName = iconName
@@ -47,18 +78,18 @@ final class ModuleProtocolTests: XCTestCase {
         }
     }
 
-    /// A test module with custom feature flags
+    /// A test module with all capability-derived feature flags on.
     struct FullFeaturedModule: ModuleProtocol {
-        let id = "full-featured"
-        let name = "Full Featured"
+        let manifest = ModuleProtocolTests.makeManifest(
+            id: "full-featured",
+            name: "Full Featured",
+            version: "2.0.0",
+            capabilities: ["team.local", "training.speed", "sim.opponent"]
+        )
         let shortDescription = "Has all features"
         let longDescription = "A module with all features enabled"
         let iconName = "star.fill"
         let themeColor = Color.orange
-        let supportsTeamMode = true
-        let supportsSpeedTraining = true
-        let supportsCompetitionSim = true
-        let version = "2.0.0"
 
         @MainActor
         func makeRootView() -> AnyView {
@@ -286,5 +317,77 @@ final class ModuleProtocolTests: XCTestCase {
 
         XCTAssertEqual(dict[module1], "First")
         XCTAssertEqual(dict[module2], "Second")
+    }
+
+    // MARK: - Manifest-Derived Metadata Tests
+
+    func testModule_idDerivesFromManifest() {
+        let module = TestModule(id: "derived-id")
+        XCTAssertEqual(module.id, "derived-id")
+        XCTAssertEqual(module.id, module.manifest.id)
+    }
+
+    func testModule_nameDerivesFromManifest() {
+        let module = TestModule(name: "Derived Name")
+        XCTAssertEqual(module.name, "Derived Name")
+        XCTAssertEqual(module.name, module.manifest.name)
+    }
+
+    func testModule_versionDerivesFromManifest() {
+        let module = FullFeaturedModule()
+        XCTAssertEqual(module.version, "2.0.0")
+        XCTAssertEqual(module.version, module.manifest.version)
+    }
+
+    func testModule_teamModeDerivesFromCapability() {
+        let team = TestModuleWithCapabilities(capabilities: ["team.sync"])
+        XCTAssertTrue(team.supportsTeamMode)
+
+        let noTeam = TestModuleWithCapabilities(capabilities: [])
+        XCTAssertFalse(noTeam.supportsTeamMode)
+    }
+
+    func testSpecializedModule_preservesManifest() {
+        let original = FullFeaturedModule()
+        let wrapped = SpecializedModule(original)
+        XCTAssertEqual(wrapped.manifest, original.manifest)
+    }
+
+    // MARK: - Lifecycle Default Tests
+
+    @MainActor
+    func testModule_lifecycleDefaults_areNoOps() async throws {
+        let module = TestModule()
+        // Default no-op lifecycle should complete without throwing. The host is
+        // the shared ScriptedModuleHost harness (its former inline TestHost).
+        let harness = ScriptedModuleHost.make()
+        defer { harness.tearDown() }
+        try await module.initialize(host: harness.host)
+        await module.start()
+        await module.pause()
+        await module.resume()
+        await module.stop()
+    }
+
+    // MARK: - Extra Test Types
+
+    /// A module whose capabilities can be set directly, for capability-derived
+    /// property tests.
+    struct TestModuleWithCapabilities: ModuleProtocol {
+        let manifest: ModuleManifest
+        let shortDescription = "Caps"
+        let longDescription = "Capability test module"
+        let iconName = "star"
+        let themeColor = Color.blue
+
+        init(capabilities: Set<String>) {
+            self.manifest = ModuleProtocolTests.makeManifest(
+                id: "caps-\(capabilities.sorted().joined(separator: "-"))",
+                capabilities: capabilities
+            )
+        }
+
+        @MainActor func makeRootView() -> AnyView { AnyView(Text("Root")) }
+        @MainActor func makeDashboardView() -> AnyView { AnyView(Text("Dash")) }
     }
 }

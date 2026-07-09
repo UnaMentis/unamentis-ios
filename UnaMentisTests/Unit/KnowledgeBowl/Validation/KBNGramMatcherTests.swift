@@ -1,5 +1,5 @@
 //
-//  KBNGramMatcherTests.swift
+//  EvalNGramMatcherTests.swift
 //  UnaMentisTests
 //
 //  Comprehensive unit tests for n-gram similarity matching
@@ -10,12 +10,12 @@ import XCTest
 @testable import UnaMentis
 
 @available(iOS 18.0, *)
-final class KBNGramMatcherTests: XCTestCase {
-    var matcher: KBNGramMatcher!
+final class EvalNGramMatcherTests: XCTestCase {
+    var matcher: EvalNGramMatcher!
 
     override func setUp() async throws {
         try await super.setUp()
-        matcher = KBNGramMatcher()
+        matcher = EvalNGramMatcher()
     }
 
     override func tearDown() async throws {

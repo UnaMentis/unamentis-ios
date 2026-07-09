@@ -1,5 +1,5 @@
 //
-//  KBLinguisticMatcherTests.swift
+//  EvalLinguisticMatcherTests.swift
 //  UnaMentisTests
 //
 //  Comprehensive unit tests for linguistic matching (lemmatization)
@@ -10,12 +10,12 @@ import XCTest
 @testable import UnaMentis
 
 @available(iOS 18.0, *)
-final class KBLinguisticMatcherTests: XCTestCase {
-    var matcher: KBLinguisticMatcher!
+final class EvalLinguisticMatcherTests: XCTestCase {
+    var matcher: EvalLinguisticMatcher!
 
     override func setUp() async throws {
         try await super.setUp()
-        matcher = KBLinguisticMatcher()
+        matcher = EvalLinguisticMatcher()
     }
 
     override func tearDown() async throws {

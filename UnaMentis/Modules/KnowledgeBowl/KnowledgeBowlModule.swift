@@ -17,8 +17,37 @@ import Logging
 /// Implements the ModuleProtocol to provide Knowledge Bowl-specific
 /// training features within the UnaMentis app.
 public struct KnowledgeBowlModule: ModuleProtocol {
-    public let id = "knowledge-bowl"
-    public let name = "Knowledge Bowl"
+    /// The single source of truth for this module's metadata, capabilities,
+    /// surfaces, and host requirements (MODULE_SDK_SPEC.md section 3). The
+    /// legacy display properties (id, name, version, capability booleans) are
+    /// derived from this manifest by the ModuleProtocol extension.
+    public let manifest = ModuleManifest(
+        specVersion: "0.1.0",
+        id: "knowledge-bowl",
+        name: "Knowledge Bowl",
+        version: "1.0.0",
+        engine: .quizMatch,
+        surfaces: [.phone, .watch],
+        capabilities: ["team.local", "training.speed", "sim.opponent", "voice.buzz"],
+        requiresHostCapabilities: [],
+        optionalHostCapabilities: [],
+        voiceCoverage: VoiceCoverage(declared: 0.65),
+        serverTiers: [0, 1],
+        locales: ["en-US"],
+        contentPacks: ContentPacks(
+            bundled: ["kb-sample-questions"],
+            compatibleSchemas: ["canonical-question/1"]
+        ),
+        privacy: Privacy(
+            collectsAudio: true,
+            storesTranscripts: false,
+            sharesWithMentor: .optIn
+        ),
+        minPlatform: MinPlatform(ios: "18.0")
+    )
+
+    // Descriptive copy not carried by the manifest. Kept here so the module
+    // owns its own text.
     public let shortDescription = "Academic competition prep across 12 subject domains"
     public let longDescription = """
         Prepare for Knowledge Bowl competitions with directed study, \
@@ -28,10 +57,6 @@ public struct KnowledgeBowlModule: ModuleProtocol {
         """
     public let iconName = "brain.head.profile"
     public let themeColor = Color.purple
-    public let supportsTeamMode = true
-    public let supportsSpeedTraining = true
-    public let supportsCompetitionSim = true
-    public let version = "1.0.0"
 
     private static let logger = Logger(label: "com.unamentis.modules.knowledgebowl")
 
@@ -75,5 +100,6 @@ struct KBDashboardSummary: View {
 }
 
 // MARK: - Models and Engine
-// Models are defined in Models/KBQuestion.swift with Sendable conformance
-// Practice Engine is defined in Engine/KBPracticeEngine.swift
+// Models live in Core/KnowledgeBowl/ and Shared/KnowledgeBowl/; session
+// machinery lives in Services/KnowledgeBowl/ and the generic QuizMatchEngine
+// in Core/Modules/Engines/QuizMatch/.

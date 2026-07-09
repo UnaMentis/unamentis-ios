@@ -62,6 +62,53 @@ final class KnowledgeBowlModuleTests: XCTestCase {
         XCTAssertEqual(module.version, "1.0.0")
     }
 
+    // MARK: - Manifest Tests
+
+    func testModule_manifest_hasCorrectIdentity() {
+        let manifest = KnowledgeBowlModule().manifest
+        XCTAssertEqual(manifest.id, "knowledge-bowl")
+        XCTAssertEqual(manifest.name, "Knowledge Bowl")
+        XCTAssertEqual(manifest.version, "1.0.0")
+    }
+
+    func testModule_manifest_usesQuizMatchEngine() {
+        XCTAssertEqual(KnowledgeBowlModule().manifest.engine, .quizMatch)
+    }
+
+    func testModule_manifest_declaresPhoneAndWatchSurfaces() {
+        let manifest = KnowledgeBowlModule().manifest
+        XCTAssertTrue(manifest.supports(.phone))
+        XCTAssertTrue(manifest.supports(.watch))
+        XCTAssertFalse(manifest.supports(.audioOnly))
+    }
+
+    func testModule_manifest_hasExpectedCapabilities() {
+        let caps = KnowledgeBowlModule().manifest.capabilities
+        XCTAssertEqual(caps, ["team.local", "training.speed", "sim.opponent", "voice.buzz"])
+    }
+
+    func testModule_featureBooleansDeriveFromCapabilities() {
+        let module = KnowledgeBowlModule()
+        XCTAssertTrue(module.supportsTeamMode)         // team.local
+        XCTAssertTrue(module.supportsSpeedTraining)    // training.speed
+        XCTAssertTrue(module.supportsCompetitionSim)   // sim.opponent
+    }
+
+    func testModule_manifest_declaresBundledPack() {
+        let packs = KnowledgeBowlModule().manifest.contentPacks
+        XCTAssertEqual(packs.bundled, ["kb-sample-questions"])
+        XCTAssertEqual(packs.compatibleSchemas, ["canonical-question/1"])
+    }
+
+    func testModule_manifest_voiceCoverage() {
+        XCTAssertEqual(KnowledgeBowlModule().manifest.voiceCoverage.declared, 0.65, accuracy: 0.001)
+    }
+
+    func testModule_manifest_requiresNoUnmetHostCapabilities() {
+        // KB requires no host capabilities, so the current build supports it.
+        XCTAssertTrue(HostCapabilities.supports(KnowledgeBowlModule().manifest))
+    }
+
     @MainActor
     func testModule_makeRootView_returnsAnyView() {
         let module = KnowledgeBowlModule()

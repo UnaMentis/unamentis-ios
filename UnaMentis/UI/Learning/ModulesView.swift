@@ -14,35 +14,10 @@ struct LaunchedModuleIdentifier: Identifiable {
     let id: String
 }
 
-/// Represents a bundled module that ships with the app
-struct BundledModule: Identifiable {
-    let id: String
-    let name: String
-    let description: String
-    let iconName: String
-    let themeColorHex: String
-    let supportsTeamMode: Bool
-    let supportsSpeedTraining: Bool
-    let supportsCompetitionSim: Bool
-
-    var themeColor: Color {
-        Color(hex: themeColorHex) ?? .purple
-    }
-
-    /// All bundled modules that ship with the app
-    static let all: [BundledModule] = [
-        BundledModule(
-            id: "knowledge-bowl",
-            name: "Knowledge Bowl",
-            description: "Academic competition training with 12 domains. Practice for oral rounds, written tests, and full competition simulation.",
-            iconName: "brain.head.profile",
-            themeColorHex: "#8B5CF6",  // Purple
-            supportsTeamMode: true,
-            supportsSpeedTraining: true,
-            supportsCompetitionSim: true
-        )
-    ]
-}
+// Installed (compiled-in) modules now come from ModuleCatalog.shared, the
+// single registration point (MODULE_SDK_SPEC.md section 4.3). The old
+// `BundledModule` static array and `moduleViewForId` switch are gone; adding a
+// module is one entry in ModuleCatalog, not an edit here.
 
 /// View displaying available specialized training modules
 @MainActor
@@ -55,9 +30,14 @@ struct ModulesView: View {
     @State private var isLoading = true
     @State private var serverError: String?  // Renamed from errorMessage to clarify it's server-specific
     @State private var selectedModule: ModuleSummary?
-    @State private var selectedBundledModule: BundledModule?
+    @State private var selectedInstalledModule: SpecializedModule?
     @State private var showingModuleDetail = false
     @State private var launchedModule: LaunchedModuleIdentifier?
+
+    /// Compiled-in modules from the single registration point.
+    private var installedModules: [SpecializedModule] {
+        ModuleCatalog.shared.modules
+    }
 
     private static let logger = Logger(label: "com.unamentis.modules.view")
 
@@ -81,17 +61,17 @@ struct ModulesView: View {
                     )
                 }
             }
-            .sheet(item: $selectedBundledModule) { module in
+            .sheet(item: $selectedInstalledModule) { module in
                 NavigationStack {
-                    BundledModuleDetailSheet(
+                    InstalledModuleDetailSheet(
                         module: module,
-                        onLaunch: { launchBundledModule(module) }
+                        onLaunch: { launchInstalledModule(module) }
                     )
                 }
             }
             .fullScreenCover(item: $launchedModule) { module in
                 NavigationStack {
-                    moduleViewForId(module.id)
+                    ModuleCatalog.shared.rootView(for: module.id)
                         .toolbar {
                             ToolbarItem(placement: .cancellationAction) {
                                 Button("Close") {
@@ -103,33 +83,20 @@ struct ModulesView: View {
             }
     }
 
-    /// Returns the appropriate view for a module ID
-    @ViewBuilder
-    private func moduleViewForId(_ moduleId: String) -> some View {
-        switch moduleId {
-        case "knowledge-bowl":
-            KBDashboardView()
-        default:
-            ContentUnavailableView(
-                "Module Not Found",
-                systemImage: "questionmark.circle",
-                description: Text("This module is not available.")
-            )
-        }
-    }
-
     // MARK: - Views
 
     @ViewBuilder
     private var moduleListView: some View {
         List {
-            // Bundled modules section - ALWAYS shown, no server required
+            // Installed (compiled-in) modules section - ALWAYS shown, no server
+            // required. Driven by ModuleCatalog.shared, the single registration
+            // point (MODULE_SDK_SPEC.md section 4.3).
             Section {
-                ForEach(BundledModule.all) { module in
-                    BundledModuleRow(module: module)
+                ForEach(installedModules) { module in
+                    InstalledModuleRow(module: module)
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            selectedBundledModule = module
+                            selectedInstalledModule = module
                         }
                 }
             } header: {
@@ -142,8 +109,8 @@ struct ModulesView: View {
             if !moduleRegistry.allDownloaded.isEmpty {
                 Section {
                     ForEach(moduleRegistry.allDownloaded, id: \.id) { module in
-                        // Skip if this is a bundled module (avoid duplicates)
-                        if !BundledModule.all.contains(where: { $0.id == module.id }) {
+                        // Skip if this is an installed module (avoid duplicates)
+                        if !installedModules.contains(where: { $0.id == module.id }) {
                             DownloadedModuleRow(module: module)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
@@ -164,9 +131,9 @@ struct ModulesView: View {
 
             // Available modules from server (only if connected)
             if !availableModules.isEmpty {
-                // Filter out bundled modules to avoid duplicates
+                // Filter out installed modules to avoid duplicates
                 let serverOnlyModules = availableModules.filter { serverModule in
-                    !BundledModule.all.contains { $0.id == serverModule.id }
+                    !installedModules.contains { $0.id == serverModule.id }
                 }
 
                 if !serverOnlyModules.isEmpty {
@@ -272,8 +239,8 @@ struct ModulesView: View {
         isLoading = false
     }
 
-    private func launchBundledModule(_ module: BundledModule) {
-        Self.logger.info("Launching bundled module: \(module.name)")
+    private func launchInstalledModule(_ module: SpecializedModule) {
+        Self.logger.info("Launching installed module: \(module.name)")
         launchedModule = LaunchedModuleIdentifier(id: module.id)
     }
 
@@ -586,10 +553,11 @@ struct FeatureRow: View {
     }
 }
 
-// MARK: - Bundled Module Row
+// MARK: - Installed Module Row
 
-struct BundledModuleRow: View {
-    let module: BundledModule
+/// Row for a compiled-in module from ModuleCatalog.
+struct InstalledModuleRow: View {
+    let module: SpecializedModule
 
     var body: some View {
         HStack(spacing: 16) {
@@ -614,7 +582,7 @@ struct BundledModuleRow: View {
                         .font(.caption)
                 }
 
-                Text(module.description)
+                Text(module.shortDescription)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -643,10 +611,11 @@ struct BundledModuleRow: View {
     }
 }
 
-// MARK: - Bundled Module Detail Sheet
+// MARK: - Installed Module Detail Sheet
 
-struct BundledModuleDetailSheet: View {
-    let module: BundledModule
+/// Detail sheet for a compiled-in module from ModuleCatalog.
+struct InstalledModuleDetailSheet: View {
+    let module: SpecializedModule
     let onLaunch: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -674,7 +643,7 @@ struct BundledModuleDetailSheet: View {
                             .foregroundStyle(.green)
                     }
 
-                    Text(module.description)
+                    Text(module.longDescription)
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

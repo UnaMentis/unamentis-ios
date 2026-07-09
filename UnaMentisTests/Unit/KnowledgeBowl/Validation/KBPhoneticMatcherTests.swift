@@ -1,5 +1,5 @@
 //
-//  KBPhoneticMatcherTests.swift
+//  EvalPhoneticMatcherTests.swift
 //  UnaMentisTests
 //
 //  Comprehensive unit tests for phonetic matching (Double Metaphone)
@@ -10,12 +10,12 @@ import XCTest
 @testable import UnaMentis
 
 @available(iOS 18.0, *)
-final class KBPhoneticMatcherTests: XCTestCase {
-    var matcher: KBPhoneticMatcher!
+final class EvalPhoneticMatcherTests: XCTestCase {
+    var matcher: EvalPhoneticMatcher!
 
     override func setUp() async throws {
         try await super.setUp()
-        matcher = KBPhoneticMatcher()
+        matcher = EvalPhoneticMatcher()
     }
 
     override func tearDown() async throws {

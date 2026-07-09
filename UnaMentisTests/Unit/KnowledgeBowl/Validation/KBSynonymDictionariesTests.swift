@@ -2,8 +2,13 @@
 //  KBSynonymDictionariesTests.swift
 //  UnaMentisTests
 //
-//  Comprehensive unit tests for synonym dictionaries
-//  Target: 100+ test cases covering places, scientific, historical, mathematics
+//  Comprehensive unit tests for the Knowledge Bowl synonym bundle.
+//  Target: 100+ test cases covering places, scientific, historical, mathematics.
+//
+//  After Phase 4, the KB synonym dictionaries live on the host SynonymResource
+//  (SynonymResource.knowledgeBowl) supplied by the strictness profile, and the
+//  matching is category-scoped by AnswerCategory. These tests exercise that
+//  moved bundle directly.
 //
 
 import XCTest
@@ -11,11 +16,11 @@ import XCTest
 
 @available(iOS 18.0, *)
 final class KBSynonymDictionariesTests: XCTestCase {
-    var matcher: KBSynonymMatcher!
+    var matcher: SynonymResource!
 
     override func setUp() async throws {
         try await super.setUp()
-        matcher = KBSynonymMatcher()
+        matcher = .knowledgeBowl
     }
 
     override func tearDown() async throws {
