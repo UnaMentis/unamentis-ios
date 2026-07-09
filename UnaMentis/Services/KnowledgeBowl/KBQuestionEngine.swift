@@ -32,13 +32,35 @@ final class KBQuestionEngine {
 
     // MARK: - Loading
 
-    /// Load questions from the bundled JSON file
+    /// Load questions from the bundled JSON file.
+    ///
+    /// Phase 3 migration (MODULE_SDK_SPEC.md section 5.3): questions now load
+    /// through the host ContentStore, which owns the bundled pack
+    /// "kb-sample-questions" and its integrity/schema handling, rather than KB
+    /// reaching into the app bundle directly. The bundled-file fallback stays so
+    /// question loading still works in contexts without a configured host (unit
+    /// tests, previews) and if the pack is somehow unavailable.
     func loadBundledQuestions() async throws {
         isLoading = true
         loadError = nil
 
         defer { isLoading = false }
 
+        // Preferred path: load via the host ContentStore.
+        let store = ModuleCatalog.shared.host.content
+        let packs = await store.packs(matching: PackQuery(schema: "canonical-question/1"))
+        if let pack = packs.first(where: { $0.packId == "kb-sample-questions" }) {
+            do {
+                let loaded = try await store.items(KBQuestion.self, from: pack, query: .all)
+                questions = loaded
+                logger.info("Loaded \(loaded.count) questions via ContentStore pack \(pack.packId)")
+                return
+            } catch {
+                logger.warning("ContentStore load failed, falling back to bundle: \(error.localizedDescription)")
+            }
+        }
+
+        // Fallback: read the bundled file directly.
         guard let url = Bundle.main.url(forResource: "kb-sample-questions", withExtension: "json") else {
             let error = KBQuestionError.bundleNotFound
             loadError = error

@@ -108,6 +108,13 @@ struct KBQuestion: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - Pack Item Conformance
+
+// A KBQuestion is a canonical-question pack item, so the host ContentStore can
+// decode KB questions from a pack without knowing KB's types
+// (MODULE_SDK_SPEC.md section 5.3).
+extension KBQuestion: PackItem {}
+
 // MARK: - Answer Model
 
 /// Answer with primary response and acceptable alternatives

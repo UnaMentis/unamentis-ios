@@ -680,8 +680,12 @@ public class AppState: ObservableObject {
 
     // MARK: - Core Services
 
-    /// Telemetry engine for metrics tracking
-    public let telemetry = TelemetryEngine()
+    /// Telemetry engine for metrics tracking.
+    ///
+    /// The single app-global engine, shared with the module host so module
+    /// telemetry (`host.telemetry`) and the module-session error log land in the
+    /// same place as core session telemetry (MODULE_SDK_SPEC.md section 5.6).
+    public let telemetry = ModuleHostRuntime.telemetryEngine
 
     /// API key manager
     public let apiKeys = APIKeyManager.shared

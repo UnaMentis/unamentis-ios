@@ -81,6 +81,10 @@ public enum TelemetryErrorStage: String, Sendable, CaseIterable {
     case llm
     case tts
     case network
+    /// Errors surfaced by a registered module session (MODULE_SDK_SPEC.md
+    /// section 5.9). Routed here so module sessions appear in the session
+    /// error-log drill-down alongside core sessions.
+    case module
 }
 
 /// Categories for cost tracking
@@ -352,6 +356,7 @@ public actor TelemetryEngine {
         metrics = SessionMetrics()
         events.removeAll()
         errorAggregates.removeAll()
+        moduleEvents.removeAll()
 
         // Reset rate limiting state
         lastEventTimes.removeAll()
@@ -482,6 +487,39 @@ public actor TelemetryEngine {
         case .ttsChunkCompleted: return "ttsChunkCompleted"
         default: return "other"
         }
+    }
+
+    // MARK: - Module Telemetry (MODULE_SDK_SPEC.md section 5.6)
+
+    /// One module telemetry event, carrying the module dimension.
+    ///
+    /// Recorded by `ModuleTelemetryService` so module activity lands in the same
+    /// engine as core session telemetry rather than a private per-module silo.
+    /// The buffer is bounded and read back by the SDK's telemetry tests.
+    public struct ModuleTelemetryRecord: Sendable {
+        public let name: String
+        public let module: String
+        public let detail: String
+        public let timestamp: Date
+    }
+
+    private var moduleEvents: [ModuleTelemetryRecord] = []
+    private let maxModuleEvents = 500
+
+    /// Record a module telemetry event stamped with its module ID.
+    /// The module dimension is preserved so cross-module analysis stays possible.
+    public func recordModuleEvent(name: String, module: String, detail: String) {
+        let record = ModuleTelemetryRecord(name: name, module: module, detail: detail, timestamp: Date())
+        moduleEvents.append(record)
+        if moduleEvents.count > maxModuleEvents {
+            moduleEvents.removeFirst(moduleEvents.count - maxModuleEvents)
+        }
+        logger.debug("Module event [\(module)]: \(name) \(detail)")
+    }
+
+    /// Module telemetry events recorded this session, most recent last.
+    public var recentModuleEvents: [ModuleTelemetryRecord] {
+        moduleEvents
     }
 
     /// Record an error
