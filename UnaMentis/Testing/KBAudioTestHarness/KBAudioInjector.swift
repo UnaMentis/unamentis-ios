@@ -86,10 +86,11 @@ actor KBAudioInjector {
     func injectAndTranscribeOnDevice(
         buffer: AVAudioPCMBuffer
     ) async throws -> TranscriptionResult {
-        // Use AppleSpeechSTTService (not KBOnDeviceSTT) because:
+        // Use AppleSpeechSTTService directly because:
         // - AppleSpeechSTTService only receives audio via sendAudio() - no internal audio engine
-        // - KBOnDeviceSTT creates its own AVAudioEngine which fails in Simulator
         // - AppleSpeechSTTService has simulator-specific handling for server-based recognition
+        // KB production listening flows through the host VoiceSession, which
+        // drives this same provider from the unified AudioEngine.
         let sttService = AppleSpeechSTTService()
         return try await injectAndTranscribe(buffer: buffer, using: sttService)
     }

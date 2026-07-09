@@ -400,6 +400,36 @@ public final class SessionManager: ObservableObject {
             throw SessionError.maintenanceMode
         }
 
+        // The voice pipeline is exclusive: a core session and a module
+        // VoiceSession (MODULE_SDK_SPEC.md section 5.1) may never capture or
+        // play concurrently. Claim the pipeline (typed error if a module
+        // session holds it); released in stopSession or on a failed start.
+        try await VoicePipelineOwnership.shared.claim(.coreSession)
+        do {
+            try await performSessionStart(
+                sttService: sttService,
+                ttsService: ttsService,
+                llmService: llmService,
+                vadService: vadService,
+                systemPrompt: systemPrompt,
+                lectureMode: lectureMode
+            )
+        } catch {
+            await VoicePipelineOwnership.shared.release(.coreSession)
+            throw error
+        }
+    }
+
+    /// The body of startSession, split out so a failed start releases the
+    /// exclusive voice pipeline claim exactly once.
+    private func performSessionStart(
+        sttService: any STTService,
+        ttsService: any TTSService,
+        llmService: any LLMService,
+        vadService: any VADService,
+        systemPrompt: String?,
+        lectureMode: Bool
+    ) async throws {
         logger.info("SessionManager.startSession called (lectureMode: \(lectureMode))")
         logger.info("  LLM service type: \(type(of: llmService))")
         logger.info("  TTS service type: \(type(of: ttsService))")
@@ -622,6 +652,10 @@ public final class SessionManager: ObservableObject {
             aiResponse = ""
             audioLevel = -60.0
         }
+
+        // STEP 8: Hand the exclusive voice pipeline back (no-op if this
+        // session never claimed it).
+        await VoicePipelineOwnership.shared.release(.coreSession)
 
         logger.info("Session stopped - all services, tasks, and state cleared")
     }

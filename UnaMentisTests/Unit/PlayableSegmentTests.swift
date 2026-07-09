@@ -134,8 +134,9 @@ final class ReadingChunkDataSegmentTests: XCTestCase {
     }
 }
 
-// NOTE: KBTextSegment tests are omitted because KBVoiceCoordinator.swift is
-// excluded from the build in project.yml (Modules/KnowledgeBowl/Services/**).
+// NOTE: KBTextSegment was deleted in the VoiceSession migration (Phase 2).
+// Knowledge Bowl playback now flows through the host VoiceSession, whose
+// single-utterance segment is covered by UnifiedVoiceSessionServiceTests.
 
 // MARK: - SessionSentenceSegment Tests
 
