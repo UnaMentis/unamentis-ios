@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import Speech
 import SwiftUI
 
 // MARK: - Oral Session View
@@ -643,6 +644,17 @@ struct KBOralSessionView: View {
 
 // MARK: - Oral Session View Model
 
+/// Knowledge Bowl oral practice, rendered over the generic QuizMatchEngine
+/// (MODULE_SDK_SPEC.md section 6.1, migration Phase 5).
+///
+/// The view model no longer runs the session state machine: the engine owns
+/// question presentation, conference timing, answer capture, evaluation,
+/// scoring, and progress/telemetry emission, driven by KB's format descriptor
+/// (KBQuizMatchAdapter). This class renders engine events into published UI
+/// state, forwards user intents (taps and voice commands) to engine commands,
+/// keeps KB's own on-disk session history (KBSessionManager), and owns the
+/// module-side concerns: voice pipeline acquisition, permissions, hands-free
+/// audio feedback, and watch session registration.
 @MainActor
 final class KBOralSessionViewModel: ObservableObject {
     // MARK: - Published State
@@ -660,6 +672,7 @@ final class KBOralSessionViewModel: ObservableObject {
     // STT State
     @Published var transcript = ""
     @Published var isListening = false
+    @Published var sttError: String?
 
     // Conference State
     @Published var conferenceTimeRemaining: TimeInterval = 0
@@ -673,25 +686,38 @@ final class KBOralSessionViewModel: ObservableObject {
     @Published var voiceCommandFeedback: String = ""
     @Published var lastRecognizedCommand: VoiceCommand?
 
-    // Response Time Tracking
-    private var questionStartTime: Date?
-
     // MARK: - Services
 
-    private let tts = KBOnDeviceTTS()
-    private let stt = KBOnDeviceSTT()
-    private let validator: KBAnswerValidator
+    /// The host voice pipeline session (MODULE_SDK_SPEC.md section 5.1,
+    /// capability "voice.session/1"). Knowledge Bowl owns no STT, TTS, VAD,
+    /// or audio engine; the view model acquires the exclusive VoiceSession
+    /// (with descriptor-derived endpointing) and hands it to the engine.
+    private var voice: (any VoiceSession)?
+
+    /// The generic quiz-match engine driving this session. Constructed at
+    /// session start from KB's format descriptor and the selected questions.
+    private var engine: QuizMatchEngine?
+
     private let sessionManager = KBSessionManager()
+
+    /// The host-registered session (MODULE_SDK_SPEC.md section 5.9). Registering
+    /// makes this KB oral session appear on the watch (title, progress, elapsed)
+    /// with working pause/stop, feeds module telemetry, and routes session
+    /// errors into the session error-log drill-down. Nil until the session
+    /// starts.
+    private var registeredSession: RegisteredSession?
 
     // Voice-First Services (see docs/design/HANDS_FREE_FIRST_DESIGN.md)
     private let commandRecognizer = VoiceCommandRecognizer()
     private let voiceFeedback = VoiceActivityFeedback()
 
-    /// Create answer validator
-    /// Note: On-device LLM validation disabled (OnDeviceLLMService excluded from build)
-    private static func createValidator() -> KBAnswerValidator {
-        return KBAnswerValidator()
-    }
+    /// The strictness profile KB evaluates oral answers at. Preserves the prior
+    /// behavior of the module-local validator, which ran at `.standard` (the
+    /// KBAnswerValidator default) regardless of region. The regional strictness
+    /// on KBRegionalConfig was never applied at this call site; wiring it in is a
+    /// deliberate follow-up, tracked separately, not part of this behavior-
+    /// preserving lift.
+    private let evaluationStrictness: KBValidationStrictness = .standard
 
     // MARK: - Configuration
 
@@ -700,14 +726,12 @@ final class KBOralSessionViewModel: ObservableObject {
 
     // MARK: - Tasks
 
-    private var conferenceTask: Task<Void, Never>?
-    private var sttStreamTask: Task<Void, Never>?
-    private var ttsProgressTask: Task<Void, Never>?
+    private var engineEventTask: Task<Void, Never>?
+    private var voiceEventTask: Task<Void, Never>?
     private var voiceCommandTask: Task<Void, Never>?
 
-    // Silence tracking for auto-submit
-    private var silenceStartTime: Date?
-    private let autoSubmitSilenceThreshold: TimeInterval = 2.5
+    /// Guard so watch stop, user End, and engine match-end teardown compose.
+    private var hasFinished = false
 
     // MARK: - Computed Properties
 
@@ -733,11 +757,19 @@ final class KBOralSessionViewModel: ObservableObject {
         self.regionalConfig = config.region.config
         self.session = KBSession(config: config)
         self.conferenceTimeRemaining = config.region.config.conferenceTime
-        self.validator = Self.createValidator()
 
         // Register session with manager for lifecycle management
         Task {
             _ = await sessionManager.startSession(questions: questions, config: config)
+        }
+    }
+
+    deinit {
+        // Safety net: if the view model goes away without endSession (view
+        // dismissed mid-session), hand the exclusive voice pipeline back.
+        let session = voice
+        Task {
+            await session?.release()
         }
     }
 
@@ -749,15 +781,25 @@ final class KBOralSessionViewModel: ObservableObject {
 
         isPrewarming = true
 
-        // Set up TTS observation using Combine
-        setupTTSObservation()
-
-        // Pre-warm TTS engine to avoid cold-start delay on first question
-        NSLog("⏱️ [KBOralSession] prepareServices() - pre-warming TTS...")
-        await tts.prewarm()
+        // Acquire the exclusive host voice session, configured from KB's
+        // format descriptor (endpointing, conference, buzz mode). Acquisition
+        // prewarms the configured on-device TTS so the first question reads
+        // without delay.
+        if voice == nil {
+            do {
+                let descriptor = KBQuizMatchAdapter.descriptor(for: regionalConfig)
+                voice = try await ModuleCatalog.shared.host.voice.acquire(
+                    config: descriptor.voicePipelineConfig()
+                )
+                startVoiceEventMonitoring()
+            } catch {
+                NSLog("[KBOralSession] Voice pipeline unavailable: \(error.localizedDescription)")
+                sttError = error.localizedDescription
+            }
+        }
 
         // Check if STT is available
-        hasPermissions = KBOnDeviceSTT.isAvailable
+        hasPermissions = AppleSpeechSTTService.isAvailable
 
         isPrewarming = false
 
@@ -765,24 +807,17 @@ final class KBOralSessionViewModel: ObservableObject {
         NSLog("⏱️ [KBOralSession] prepareServices() COMPLETE - took %.1fms", prepareTime)
     }
 
-    private func setupTTSObservation() {
-        // Poll TTS state periodically to update progress
-        ttsProgressTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 100_000_000)  // Poll every 100ms
-
-                guard let self = self else { break }
-
-                // Read TTS state
-                let progress = await tts.progress
-                let speaking = await tts.isSpeaking
-
-                self.ttsProgress = progress
-                self.isSpeaking = speaking
-
-                // Stop polling when not speaking
-                if !speaking {
-                    try? await Task.sleep(nanoseconds: 500_000_000)  // Pause longer when idle
+    /// Mirror real-time voice events (partial transcripts) into published
+    /// state. The engine does not consume `voice.events` (single-consumer
+    /// stream); live partials remain a view-model concern.
+    private func startVoiceEventMonitoring() {
+        voiceEventTask?.cancel()
+        guard let voice else { return }
+        voiceEventTask = Task { @MainActor [weak self] in
+            for await event in voice.events {
+                guard let self else { break }
+                if case .partialTranscript(let text) = event, self.isListening {
+                    self.transcript = text
                 }
             }
         }
@@ -790,7 +825,7 @@ final class KBOralSessionViewModel: ObservableObject {
 
     private func requestPermissionsIfNeeded() async -> Bool {
         print("[KB] Oral session: requesting speech authorization...")
-        let authStatus = await KBOnDeviceSTT.requestAuthorization()
+        let authStatus = await AppleSpeechSTTService.requestAuthorization()
         let speechAuth = authStatus == .authorized
         print("[KB] Oral session: speech auth = \(speechAuth)")
 
@@ -803,237 +838,157 @@ final class KBOralSessionViewModel: ObservableObject {
         return hasPermissions
     }
 
-    // MARK: - Session Control
+    // MARK: - Engine Setup
 
-    func startSession() async {
-        let sessionStart = CFAbsoluteTimeGetCurrent()
-        NSLog("⏱️ [KBOralSession] startSession() START - USER TAPPED START")
-
-        // Request permissions before starting
-        NSLog("⏱️ [KBOralSession] startSession() - requesting permissions...")
-        let hasPerms = await requestPermissionsIfNeeded()
-        let permTime = (CFAbsoluteTimeGetCurrent() - sessionStart) * 1000
-        NSLog("⏱️ [KBOralSession] startSession() - permissions took %.1fms, result = \(hasPerms)", permTime)
-
-        guard hasPerms else {
-            NSLog("⏱️ [KBOralSession] startSession() - permissions not granted, returning")
-            return
+    /// Build the quiz-match engine for this session: KB's regional rules as a
+    /// format descriptor, the selected questions as engine questions, and the
+    /// host services the engine emits progress and telemetry through.
+    private func makeEngine() -> QuizMatchEngine {
+        let descriptor = KBQuizMatchAdapter.descriptor(for: regionalConfig)
+        let strictness = evaluationStrictness
+        let engineQuestions = questions.map {
+            KBQuizMatchAdapter.engineQuestion(from: $0, strictness: strictness)
         }
-
-        // Start voice command monitoring (Hands-Free First)
-        startVoiceCommandMonitoring()
-        voiceFeedback.announceActivityStarted("Oral Practice")
-
-        NSLog("⏱️ [KBOralSession] startSession() - starting reading question...")
-        state = .readingQuestion
-        await readCurrentQuestion()
-
-        let totalTime = (CFAbsoluteTimeGetCurrent() - sessionStart) * 1000
-        NSLog("⏱️ [KBOralSession] startSession() COMPLETE - TOTAL TIME FROM TAP TO AUDIO: %.1fms", totalTime)
-    }
-
-    func endSession() async {
-        conferenceTask?.cancel()
-        ttsProgressTask?.cancel()
-        stopVoiceCommandMonitoring()
-
-        await tts.stop()
-
-        // Cancel STT streaming task
-        sttStreamTask?.cancel()
-        await stt.cancelStreaming()
-
-        session.endTime = Date()
-        session.isComplete = true
-        state = .completed
-
-        // Announce completion (Hands-Free First)
-        let score = session.correctCount
-        let total = session.attempts.count
-        voiceFeedback.announceActivityCompleted("Session complete. \(score) of \(total) correct.")
-
-        // Save completed session via session manager
-        do {
-            // Capture values locally to avoid Sendable issues
-            let localAttempts = session.attempts
-            let localEndTime = session.endTime
-            // Sync local session state to manager before completing
-            await sessionManager.updateSession { managerSession in
-                managerSession.attempts = localAttempts
-                managerSession.endTime = localEndTime
-                managerSession.isComplete = true
+        let host = ModuleCatalog.shared.host
+        let context = QuizMatchHostContext(
+            moduleId: KBProgressAdapter.moduleID,
+            evaluation: host.evaluation,
+            progress: host.progress,
+            telemetry: host.telemetry
+        )
+        return QuizMatchEngine(
+            descriptor: descriptor,
+            options: QuizMatchSessionOptions(questionCount: engineQuestions.count),
+            host: context,
+            provider: { index in
+                index < engineQuestions.count ? engineQuestions[index] : nil
             }
-            try await sessionManager.completeSession()
-            print("[KB] Oral session saved via manager: \(session.id)")
-        } catch {
-            print("[KB] Failed to save oral session: \(error)")
-        }
+        )
     }
 
-    // MARK: - Question Flow
-
-    private func readCurrentQuestion() async {
-        let readStart = CFAbsoluteTimeGetCurrent()
-        NSLog("⏱️ [KBOralSession] readCurrentQuestion() START")
-
-        guard let question = currentQuestion else {
-            await endSession()
-            return
-        }
-
-        state = .readingQuestion
-
-        // Speak the question
-        NSLog("⏱️ [KBOralSession] readCurrentQuestion() - calling tts.speakQuestion()")
-        NSLog("🔵 Question text: '\(question.text.prefix(50))...'")
-        await tts.speakQuestion(question)
-        let readTime = (CFAbsoluteTimeGetCurrent() - readStart) * 1000
-        NSLog("⏱️ [KBOralSession] readCurrentQuestion() COMPLETE - TOTAL TIME: %.1fms", readTime)
-
-        // Start conference time
-        await startConferenceTime()
-    }
-
-    private func startConferenceTime() async {
-        conferenceTimeRemaining = regionalConfig.conferenceTime
-        conferenceProgress = 1.0
-        state = .conferenceTime
-
-        // Announce conference time start (Hands-Free First)
-        let totalSeconds = Int(regionalConfig.conferenceTime)
-        voiceFeedback.announceCountdownStart(seconds: totalSeconds, context: "Conference time")
-
-        // Track which milestones have been announced
-        var announcedMilestones: Set<Int> = []
-
-        conferenceTask = Task {
-            let totalTime = regionalConfig.conferenceTime
-
-            while conferenceTimeRemaining > 0 && !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1 second
-
-                await MainActor.run { [weak self] in
-                    guard let self = self else { return }
-                    self.conferenceTimeRemaining -= 0.1
-                    self.conferenceProgress = max(0, self.conferenceTimeRemaining / totalTime)
-
-                    // Audio countdown milestones (Hands-Free First)
-                    let secondsRemaining = Int(self.conferenceTimeRemaining.rounded())
-
-                    // Announce milestones: 15s, 10s
-                    if secondsRemaining == 15 && !announcedMilestones.contains(15) {
-                        announcedMilestones.insert(15)
-                        self.voiceFeedback.announceCountdownMilestone(seconds: 15)
-                    } else if secondsRemaining == 10 && !announcedMilestones.contains(10) {
-                        announcedMilestones.insert(10)
-                        self.voiceFeedback.announceCountdownMilestone(seconds: 10)
-                    }
-
-                    // Countdown ticks for final 5 seconds
-                    if secondsRemaining <= 5 && secondsRemaining > 0 && !announcedMilestones.contains(secondsRemaining) {
-                        announcedMilestones.insert(secondsRemaining)
-                        self.voiceFeedback.playCountdownTick()
-                    }
-                }
-            }
-
-            if !Task.isCancelled {
-                await MainActor.run { [weak self] in
-                    guard let self = self else { return }
-                    // Announce ready to answer
-                    self.voiceFeedback.announceCountdownComplete(context: "Ready to answer")
-                    Task {
-                        await self.startListeningPhase()
-                    }
-                }
+    /// Render engine events into published state and hands-free feedback.
+    private func startEngineEventMonitoring(_ engine: QuizMatchEngine) {
+        engineEventTask?.cancel()
+        engineEventTask = Task { @MainActor [weak self] in
+            for await event in engine.events {
+                guard let self else { break }
+                await self.handle(event)
             }
         }
     }
 
-    func skipConference() async {
-        conferenceTask?.cancel()
-        await startListeningPhase()
-    }
+    private func handle(_ event: QuizMatchEvent) async {
+        switch event {
+        case .matchStarted:
+            break
 
-    private func startListeningPhase() async {
-        transcript = ""
-        questionStartTime = Date()  // Start timing from when user can answer
-        state = .listeningForAnswer
+        case .questionPresented(let index, _):
+            currentQuestionIndex = index
+            if index > 0 {
+                // Announce question number (Hands-Free First)
+                voiceFeedback.announceNextQuestion(number: index + 1, total: questions.count)
+            }
+            state = .readingQuestion
+            isSpeaking = true
+            ttsProgress = 0.1
+            await TTFAInstrumentation.shared.markActivation(.kbOral)
 
-        // Auto-start listening when entering the listening phase
-        await toggleListening()
-    }
+        case .questionReadingFinished:
+            isSpeaking = false
+            ttsProgress = 1.0
 
-    // MARK: - Voice Input
+        case .speakFailed(let message):
+            // Surface synthesis failures instead of silently playing nothing.
+            NSLog("[KBOralSession] TTS failed: \(message)")
+            sttError = message
+            ttsProgress = 0
+            isSpeaking = false
+            // Feed the error into the session error-log drill-down (section 5.9).
+            registeredSession?.reportError(KBOralSessionError.narrationFailed(message))
 
-    @Published var sttError: String?
+        case .conferenceStarted(let seconds):
+            conferenceTimeRemaining = seconds
+            conferenceProgress = 1.0
+            state = .conferenceTime
+            // Announce conference time start (Hands-Free First)
+            voiceFeedback.announceCountdownStart(seconds: Int(seconds), context: "Conference time")
 
-    func toggleListening() async {
-        if isListening {
-            // Stop listening
-            sttStreamTask?.cancel()
-            try? await stt.stopStreaming()
+        case .conferenceTick(let remaining, let progress):
+            conferenceTimeRemaining = remaining
+            conferenceProgress = progress
+
+        case .conferenceMilestone(let secondsRemaining):
+            voiceFeedback.announceCountdownMilestone(seconds: secondsRemaining)
+
+        case .conferenceCountdownTick:
+            voiceFeedback.playCountdownTick()
+
+        case .conferenceEnded(let skipped):
+            if !skipped {
+                voiceFeedback.announceCountdownComplete(context: "Ready to answer")
+            }
+
+        case .answerWindowOpened:
+            // Mirrors the old startListeningPhase: fresh transcript, then the
+            // listening screen (auto-listen follows from the engine).
+            transcript = ""
+            state = .listeningForAnswer
+
+        case .listeningStarted:
+            sttError = nil
+            isListening = true
+
+        case .listeningStopped:
+            // User stopped listening; keep the partial transcript.
             isListening = false
-        } else {
-            // Start listening
-            do {
-                // Create dummy audio format (actual audio captured by STT service internally)
-                let audioFormat = AVAudioFormat(
-                    commonFormat: .pcmFormatFloat32,
-                    sampleRate: 16000,
-                    channels: 1,
-                    interleaved: false
-                )!
 
-                let stream = try await stt.startStreaming(audioFormat: audioFormat)
-                isListening = true
-                sttError = nil
+        case .answerCaptured(let text):
+            transcript = text
+            isListening = false
 
-                // Create task to consume stream
-                sttStreamTask = Task { @MainActor [weak self] in
-                    for await result in stream {
-                        guard let self = self else { break }
+        case .listenFailed(let message):
+            print("[KB] STT Error: \(message)")
+            isListening = false
+            sttError = "Speech recognition unavailable. Please try on a physical device."
+            // Feed into the session error-log drill-down (section 5.9).
+            registeredSession?.reportError(KBOralSessionError.listenFailed(message))
 
-                        // Update transcript
-                        self.transcript = result.transcript
+        case .evaluated(_, let judgment):
+            recordEvaluatedAttempt(judgment)
 
-                        // Stop listening when we get a final result
-                        if result.isFinal {
-                            self.isListening = false
-                            break
-                        }
-                    }
-                }
-            } catch {
-                // Handle error gracefully
-                print("[KB] STT Error: \(error)")
-                sttError = "Speech recognition unavailable. Please try on a physical device."
-                isListening = false
-            }
+        case .answerSkipped:
+            // Marked as skipped by voice command; no attempt is recorded.
+            lastAnswerCorrect = false
+            state = .showingFeedback
+            voiceFeedback.announceIncorrect(correctAnswer: currentQuestion?.answer.allValidAnswers.first)
+
+        case .scoreChanged, .reboundOffered,
+             .bonusStarted, .bonusPartPresented, .bonusPartEvaluated, .bonusCompleted,
+             .paused, .resumed:
+            // Solo KB practice: session totals derive from recorded attempts;
+            // rebound/bonus mechanics are not part of this format's flow.
+            break
+
+        case .matchEnded:
+            finishSession()
         }
     }
 
-    func submitAnswer() async {
-        // Stop STT streaming
-        sttStreamTask?.cancel()
-        try? await stt.stopStreaming()
-        isListening = false
-
+    /// Fold an engine judgment into KB's session model and on-disk history.
+    /// The engine already emitted the host AttemptRecord, the mastery
+    /// observation, and the module.attempt telemetry event; what remains here
+    /// is KB-shaped: the KBQuestionAttempt for stats screens and store.
+    private func recordEvaluatedAttempt(_ judgment: QuizMatchJudgment) {
         guard let question = currentQuestion else { return }
-
-        // Validate answer
-        let result = await validator.validate(userAnswer: transcript, question: question)
-
-        // Calculate response time from when user could start answering
-        let responseTime = questionStartTime.map { Date().timeIntervalSince($0) } ?? 0
+        let result = KBEvaluationBridge.kbResult(from: judgment.evaluation)
 
         let attempt = KBQuestionAttempt(
             questionId: question.id,
             domain: question.domain,
-            userAnswer: transcript,
-            responseTime: responseTime,
+            userAnswer: judgment.answerText,
+            responseTime: Double(judgment.responseTimeMs) / 1000,
             wasCorrect: result.isCorrect,
-            pointsEarned: result.isCorrect ? regionalConfig.oralPointsPerCorrect : 0,
+            pointsEarned: judgment.pointsAwarded,
             roundType: .oral,
             matchType: result.matchType
         )
@@ -1042,10 +997,13 @@ final class KBOralSessionViewModel: ObservableObject {
         session.attempts.append(attempt)
         lastAnswerCorrect = result.isCorrect
 
-        // Also record with session manager for persistence
+        // Also record with session manager for KB's own on-disk history.
         Task {
             await sessionManager.recordAttempt(attempt)
         }
+
+        // Push updated progress to the watch.
+        updateRegisteredProgress()
 
         // Audio and haptic feedback (Hands-Free First)
         if result.isCorrect {
@@ -1055,6 +1013,166 @@ final class KBOralSessionViewModel: ObservableObject {
         }
 
         state = .showingFeedback
+    }
+
+    // MARK: - Session Control
+
+    func startSession() async {
+        let sessionStart = CFAbsoluteTimeGetCurrent()
+        NSLog("⏱️ [KBOralSession] startSession() START - USER TAPPED START")
+
+        // Request permissions before starting
+        let hasPerms = await requestPermissionsIfNeeded()
+        let permTime = (CFAbsoluteTimeGetCurrent() - sessionStart) * 1000
+        NSLog("⏱️ [KBOralSession] startSession() - permissions took %.1fms, result = \(hasPerms)", permTime)
+
+        guard hasPerms else {
+            NSLog("⏱️ [KBOralSession] startSession() - permissions not granted, returning")
+            return
+        }
+
+        // Register as a first-class app session so this oral practice shows on
+        // the watch with working pause/stop and feeds telemetry + the error log
+        // (MODULE_SDK_SPEC.md section 5.9).
+        beginRegisteredSession()
+
+        // Start voice command monitoring (Hands-Free First)
+        startVoiceCommandMonitoring()
+        voiceFeedback.announceActivityStarted("Oral Practice")
+
+        // Hand the acquired voice session to the engine and start the match.
+        let engine = makeEngine()
+        self.engine = engine
+        startEngineEventMonitoring(engine)
+        await engine.start(voice: voice)
+
+        let totalTime = (CFAbsoluteTimeGetCurrent() - sessionStart) * 1000
+        NSLog("⏱️ [KBOralSession] startSession() COMPLETE - took %.1fms", totalTime)
+    }
+
+    /// Register this oral session with the host so it becomes a first-class app
+    /// session on the watch and in telemetry (MODULE_SDK_SPEC.md section 5.9).
+    /// Watch pause/stop route back into the existing session controls.
+    private func beginRegisteredSession() {
+        guard registeredSession == nil else { return }
+        let descriptor = ModuleSessionDescriptor(
+            module: KBProgressAdapter.moduleID,
+            title: "Knowledge Bowl Oral Practice",
+            activityKind: ModuleActivityKind("oral"),
+            controls: .voicePractice,
+            totalUnits: questions.count
+        )
+        registeredSession = ModuleCatalog.shared.host.sessionRegistration.begin(
+            descriptor,
+            onPause: { [weak self] in
+                // Pause narration/listening; watch pause maps to skipping the
+                // current listen window without ending the session.
+                self?.voiceCommandFeedback = "Paused"
+            },
+            onResume: { [weak self] in
+                self?.voiceCommandFeedback = ""
+            },
+            onMute: nil,
+            onStop: { [weak self] in
+                guard let self else { return }
+                Task { await self.endSession() }
+            }
+        )
+    }
+
+    /// Push current progress to the registered session (and thus the watch).
+    private func updateRegisteredProgress() {
+        registeredSession?.update(progress: ModuleSessionProgress(
+            completedUnits: session.attempts.count
+        ))
+    }
+
+    func endSession() async {
+        if let engine {
+            // Engine emits matchEnded, which drives finishSession().
+            await engine.stop()
+        } else {
+            finishSession()
+        }
+    }
+
+    /// Final teardown, driven by the engine's matchEnded event (or directly
+    /// when the session never started the engine).
+    private func finishSession() {
+        guard !hasFinished else { return }
+        hasFinished = true
+
+        stopVoiceCommandMonitoring()
+        voiceEventTask?.cancel()
+        voiceEventTask = nil
+        engineEventTask?.cancel()
+
+        // Hand the exclusive pipeline back.
+        let voiceSession = voice
+        voice = nil
+        Task { await voiceSession?.release() }
+        isListening = false
+        isSpeaking = false
+
+        session.endTime = Date()
+        session.isComplete = true
+        state = .completed
+
+        // End the registered session: clears the watch handler, pushes idle,
+        // and emits end telemetry (MODULE_SDK_SPEC.md section 5.9).
+        registeredSession?.end(summary: ModuleSessionSummary(
+            completedUnits: session.attempts.count,
+            duration: session.duration
+        ))
+        registeredSession = nil
+
+        // Announce completion (Hands-Free First)
+        let score = session.correctCount
+        let total = session.attempts.count
+        voiceFeedback.announceActivityCompleted("Session complete. \(score) of \(total) correct.")
+
+        // Save completed session via session manager
+        let localAttempts = session.attempts
+        let localEndTime = session.endTime
+        let sessionId = session.id
+        Task {
+            do {
+                // Sync local session state to manager before completing
+                await sessionManager.updateSession { managerSession in
+                    managerSession.attempts = localAttempts
+                    managerSession.endTime = localEndTime
+                    managerSession.isComplete = true
+                }
+                try await sessionManager.completeSession()
+                print("[KB] Oral session saved via manager: \(sessionId)")
+            } catch {
+                print("[KB] Failed to save oral session: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Question Flow (engine commands)
+
+    func skipConference() async {
+        await engine?.skipConference()
+    }
+
+    // MARK: - Voice Input
+
+    func toggleListening() async {
+        guard let engine else { return }
+        if isListening {
+            // Stop listening (cancels the in-flight listen; transcript kept)
+            await engine.stopListening()
+        } else {
+            // Start listening for one utterance. Endpointing (silence
+            // threshold, max duration) is the acquired pipeline config.
+            await engine.startListening()
+        }
+    }
+
+    func submitAnswer() async {
+        await engine?.submitAnswer(transcript)
     }
 
     // MARK: - Voice Command Handling (Hands-Free First)
@@ -1155,7 +1273,7 @@ final class KBOralSessionViewModel: ObservableObject {
 
         case (.readingQuestion, .skip):
             // Skip TTS and go to conference time
-            await tts.stop()
+            await engine?.skipReading()
 
         case (.conferenceTime, .ready):
             await skipConference()
@@ -1164,10 +1282,8 @@ final class KBOralSessionViewModel: ObservableObject {
             await submitAnswer()
 
         case (.listeningForAnswer, .skip):
-            // Mark as skipped and move to feedback
-            lastAnswerCorrect = false
-            state = .showingFeedback
-            voiceFeedback.announceIncorrect(correctAnswer: currentQuestion?.answer.allValidAnswers.first)
+            // Mark as skipped and move to feedback (engine emits answerSkipped)
+            await engine?.markSkipped()
 
         case (.showingFeedback, .next):
             await nextQuestion()
@@ -1184,14 +1300,25 @@ final class KBOralSessionViewModel: ObservableObject {
     func nextQuestion() async {
         transcript = ""
         lastAnswerCorrect = nil
+        // The engine advances or, past the last question, ends the match
+        // (matchEnded then drives finishSession).
+        await engine?.next()
+    }
+}
 
-        if currentQuestionIndex < questions.count - 1 {
-            currentQuestionIndex += 1
-            // Announce question number (Hands-Free First)
-            voiceFeedback.announceNextQuestion(number: currentQuestionIndex + 1, total: questions.count)
-            await readCurrentQuestion()
-        } else {
-            await endSession()
+// MARK: - Oral Session Errors
+
+/// Module-side errors this session reports into the host error log.
+enum KBOralSessionError: LocalizedError {
+    case narrationFailed(String)
+    case listenFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .narrationFailed(let message):
+            return "Question narration failed: \(message)"
+        case .listenFailed(let message):
+            return "Answer capture failed: \(message)"
         }
     }
 }

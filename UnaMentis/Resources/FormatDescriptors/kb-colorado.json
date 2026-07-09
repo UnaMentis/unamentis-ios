@@ -1,0 +1,13 @@
+{
+  "formatId": "kb-colorado",
+  "engine": "quiz-match/1",
+  "phases": ["written", "oral"],
+  "buzz": { "mode": "team", "lockout": false, "recognitionRequired": false },
+  "scoring": { "correct": 5, "incorrect": 0, "power": null, "bonus": null },
+  "rebound": { "enabled": true, "order": "next-team" },
+  "conference": { "seconds": 15, "verbalAllowed": false },
+  "written": { "questions": 60, "choices": ["A", "B", "C", "D"], "timeLimitSec": 900 },
+  "oral": { "questions": 50, "answerSilenceSec": 2.5, "maxUtteranceSec": 60, "answerTimeoutSec": null },
+  "questionForm": "short",
+  "evaluation": { "profile": "kb-standard", "tiers": ["textExact", "textFuzzy"] }
+}
