@@ -1,0 +1,45 @@
+name: Architecture Visualization
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: architecture-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  visualize:
+    name: Generate & Deploy Architecture Viz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the Activity lens (hotspots, ownership, coupling) is
+          # derived from git log; a shallow clone would truthfully report
+          # partial data instead of the repo's real 250+ commit history.
+          fetch-depth: 0
+
+      # Single-repo mode on purpose (no config input): the v2 engine then emits
+      # the full lens set (coverage ledger, activity, flow, capabilities, rules,
+      # findings) which multi-repo mode does not yet carry.
+      - uses: sirfifer/solution-explorer@main
+        with:
+          deploy-to: cloudflare
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          cloudflare-project-name: um-ios-arch
+
+      - name: Verify Cloudflare deployment
+        run: |
+          echo "Verifying Cloudflare Pages deployment is reachable..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://um-ios-arch.pages.dev || echo "000")
+          if [ "$STATUS" = "000" ]; then
+            echo "::error::Could not reach Cloudflare deployment (network error or timeout)"
+            exit 1
+          fi
+          echo "Deployment reachable (HTTP $STATUS)"
