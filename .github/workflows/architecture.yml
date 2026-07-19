@@ -30,7 +30,11 @@ jobs:
       - uses: sirfifer/solution-explorer@main
         with:
           deploy-to: cloudflare
-          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # UMSE_CLOUDFLARE_API_TOKEN is the token created specifically for the
+          # UnaMentis demo deploys (account-level Pages Edit on the account that
+          # owns um-ios-arch). The older CLOUDFLARE_API_TOKEN secret is left
+          # untouched for whatever else may still use it.
+          cloudflare-api-token: ${{ secrets.UMSE_CLOUDFLARE_API_TOKEN }}
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           cloudflare-project-name: um-ios-arch
 
