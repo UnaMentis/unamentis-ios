@@ -1,0 +1,1 @@
+{"by_kind": {"component": 189, "enrichment": 189, "file": 646, "symbol": 8142}, "fields": ["ref_kind", "ref_id", "name", "path", "component", "text"], "shard_size": 2000, "shards": ["search-0000.json", "search-0001.json", "search-0002.json", "search-0003.json", "search-0004.json"], "total": 9166, "version": 1}
