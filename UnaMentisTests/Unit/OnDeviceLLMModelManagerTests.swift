@@ -372,19 +372,19 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
         return url
     }
 
-    func testSHA256OfKnownContent() throws {
+    func testSHA256OfKnownContent() async throws {
         // Well-known vector: SHA256("hello world")
         let url = try makeTempFile(containing: Data("hello world".utf8))
 
-        let digest = try OnDeviceLLMModelManager.sha256Hex(ofFileAt: url)
+        let digest = try await OnDeviceLLMModelManager.sha256Hex(ofFileAt: url)
 
         XCTAssertEqual(digest, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
     }
 
-    func testSHA256OfEmptyFile() throws {
+    func testSHA256OfEmptyFile() async throws {
         let url = try makeTempFile(containing: Data())
 
-        let digest = try OnDeviceLLMModelManager.sha256Hex(ofFileAt: url)
+        let digest = try await OnDeviceLLMModelManager.sha256Hex(ofFileAt: url)
 
         XCTAssertEqual(digest, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
     }
@@ -392,7 +392,7 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
     /// The real models reach 3.11 GB and are hashed a chunk at a time. This proves
     /// the chunked read produces the same digest as hashing the bytes in one shot,
     /// including when the length is not a multiple of the chunk size.
-    func testSHA256SpansMultipleChunksAndMatchesOneShot() throws {
+    func testSHA256SpansMultipleChunksAndMatchesOneShot() async throws {
         let length = OnDeviceLLMModelManager.hashChunkSize * 3 + 7
         var bytes = Data(count: length)
         for index in 0..<length {
@@ -400,48 +400,55 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
         }
         let url = try makeTempFile(containing: bytes)
 
-        let streamed = try OnDeviceLLMModelManager.sha256Hex(ofFileAt: url)
+        let streamed = try await OnDeviceLLMModelManager.sha256Hex(ofFileAt: url)
         let oneShot = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
 
         XCTAssertEqual(streamed, oneShot, "Chunked hashing must equal one-shot hashing")
     }
 
-    func testSHA256ThrowsForMissingFile() {
+    func testSHA256ThrowsForMissingFile() async {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("does-not-exist-\(UUID().uuidString)")
 
-        XCTAssertThrowsError(try OnDeviceLLMModelManager.sha256Hex(ofFileAt: missing))
+        do {
+            _ = try await OnDeviceLLMModelManager.sha256Hex(ofFileAt: missing)
+            XCTFail("Hashing a missing file must throw")
+        } catch {
+            // Expected.
+        }
     }
 
-    func testVerifyFileSucceedsAndKeepsFileOnMatch() throws {
+    func testVerifyFileSucceedsAndKeepsFileOnMatch() async throws {
         let url = try makeTempFile(containing: Data("hello world".utf8))
         let expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
 
-        XCTAssertNoThrow(try OnDeviceLLMModelManager.verifyFile(at: url, expectedSHA256: expected))
+        try await OnDeviceLLMModelManager.verifyFile(at: url, expectedSHA256: expected)
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: url.path),
             "A file that passes verification must be left in place"
         )
     }
 
-    func testVerifyFileAcceptsUppercaseExpectedHash() throws {
+    func testVerifyFileAcceptsUppercaseExpectedHash() async throws {
         let url = try makeTempFile(containing: Data("hello world".utf8))
         let expected = "B94D27B9934D3E08A52E52D7DA7DABFAC484EFE37A5380EE9088F7ACE2EFCDE9"
 
-        XCTAssertNoThrow(try OnDeviceLLMModelManager.verifyFile(at: url, expectedSHA256: expected))
+        try await OnDeviceLLMModelManager.verifyFile(at: url, expectedSHA256: expected)
     }
 
-    func testVerifyFileDeletesFileAndThrowsOnMismatch() throws {
+    func testVerifyFileDeletesFileAndThrowsOnMismatch() async throws {
         let url = try makeTempFile(containing: Data("hello world".utf8))
         // Correct-shaped but wrong digest, as a corrupted or substituted download would be.
         let wrong = String(repeating: "a", count: 64)
 
-        XCTAssertThrowsError(try OnDeviceLLMModelManager.verifyFile(at: url, expectedSHA256: wrong)) { error in
-            guard case OnDeviceLLMModelError.hashMismatch(let expected, let actual) = error else {
-                return XCTFail("Expected hashMismatch, got \(error)")
-            }
+        do {
+            try await OnDeviceLLMModelManager.verifyFile(at: url, expectedSHA256: wrong)
+            XCTFail("Expected hashMismatch to be thrown")
+        } catch OnDeviceLLMModelError.hashMismatch(let expected, let actual) {
             XCTAssertEqual(expected, wrong)
             XCTAssertEqual(actual, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
+        } catch {
+            XCTFail("Expected hashMismatch, got \(error)")
         }
 
         XCTAssertFalse(
@@ -450,16 +457,19 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
         )
     }
 
-    func testVerifyFileThrowsVerificationFailedForUnreadableFile() {
+    func testVerifyFileThrowsVerificationFailedForUnreadableFile() async {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("unreadable-\(UUID().uuidString)")
 
-        XCTAssertThrowsError(
-            try OnDeviceLLMModelManager.verifyFile(at: missing, expectedSHA256: String(repeating: "0", count: 64))
-        ) { error in
-            guard case OnDeviceLLMModelError.verificationFailed = error else {
-                return XCTFail("Expected verificationFailed, got \(error)")
-            }
+        do {
+            try await OnDeviceLLMModelManager.verifyFile(
+                at: missing, expectedSHA256: String(repeating: "0", count: 64)
+            )
+            XCTFail("Expected verificationFailed to be thrown")
+        } catch OnDeviceLLMModelError.verificationFailed {
+            // Expected.
+        } catch {
+            XCTFail("Expected verificationFailed, got \(error)")
         }
     }
 
@@ -477,20 +487,45 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
                 "\(model.rawValue) SHA256 must be hex"
             )
             XCTAssertTrue(seen.insert(hash).inserted, "\(model.rawValue) SHA256 must be unique")
+
+            // The download URL must resolve the pinned revision the hash
+            // describes, never the moving main branch: an upstream force-push
+            // would otherwise fail every download after the full transfer.
+            let revision = model.config.revision
+            XCTAssertEqual(revision.count, 40, "\(model.rawValue) revision must be a 40-char commit SHA")
+            XCTAssertTrue(revision.allSatisfy { $0.isHexDigit }, "\(model.rawValue) revision must be hex")
+            XCTAssertTrue(
+                model.config.downloadURL.path.contains("/resolve/\(revision)/"),
+                "\(model.rawValue) download URL must resolve the pinned revision"
+            )
         }
     }
 
-    func testIntegrityErrorDescriptions() {
+    /// Downloads stage at a sibling .unverified path and the verified hash is
+    /// recorded in a sibling .sha256 sidecar, both derived from the model
+    /// filename, so a file at modelPath always implies it passed verification.
+    func testStagingAndSidecarPathsDeriveFromModelFilename() async {
+        let manager = OnDeviceLLMModelManager.shared
+        let modelPath = await manager.modelPath
+        let staging = await manager.stagingModelPath
+        let sidecar = await manager.verifiedSidecarPath
+
+        XCTAssertEqual(staging.path, modelPath.path + ".unverified")
+        XCTAssertEqual(sidecar.path, modelPath.path + ".sha256")
+        XCTAssertEqual(staging.deletingLastPathComponent(), modelPath.deletingLastPathComponent())
+    }
+
+    func testIntegrityErrorDescriptions() throws {
         let mismatch = OnDeviceLLMModelError.hashMismatch(
             expected: String(repeating: "a", count: 64),
             actual: String(repeating: "b", count: 64)
         )
-        let mismatchText = try? XCTUnwrap(mismatch.errorDescription)
-        XCTAssertTrue(mismatchText?.contains("integrity") == true)
-        XCTAssertTrue(mismatchText?.contains("deleted") == true)
+        let mismatchText = try XCTUnwrap(mismatch.errorDescription)
+        XCTAssertTrue(mismatchText.contains("integrity"))
+        XCTAssertTrue(mismatchText.contains("deleted"))
 
         let failed = OnDeviceLLMModelError.verificationFailed("disk error")
-        let failedText = try? XCTUnwrap(failed.errorDescription)
-        XCTAssertTrue(failedText?.contains("disk error") == true)
+        let failedText = try XCTUnwrap(failed.errorDescription)
+        XCTAssertTrue(failedText.contains("disk error"))
     }
 }

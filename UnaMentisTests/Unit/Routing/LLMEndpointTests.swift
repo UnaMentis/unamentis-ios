@@ -156,7 +156,10 @@ final class LLMEndpointTests: XCTestCase {
         XCTAssertEqual(onDevice?.location, .onDevice)
         XCTAssertEqual(onDevice?.costPerInputToken, 0)
         XCTAssertEqual(onDevice?.costPerOutputToken, 0)
-        XCTAssertNil(onDevice?.connectionConfig?.modelPath)
+        // The registry entry must carry no connectionConfig at all: the GGUF is
+        // resolved at runtime by OnDeviceLLMModelManager, and asserting only on
+        // modelPath would pass vacuously through the nil config chain.
+        XCTAssertNil(onDevice?.connectionConfig)
     }
 
     // MARK: - Codable Tests
