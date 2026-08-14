@@ -420,7 +420,10 @@ public struct WorkingBuffer: Sendable {
             }
         }
 
-        // Misconception triggers (important for tutoring)
+        // Misconception triggers (important for tutoring). Rendered before the
+        // alternative explanations so that under a tight token budget the
+        // misconception warnings, the higher-value remediation content, are
+        // never displaced by fallback rephrasings.
         if !misconceptionTriggers.isEmpty && estimatedTokens < tokenBudget {
             let triggerText = "Watch for these common misconceptions:\n" +
                 misconceptionTriggers.map { "- If student says '\($0.triggerPhrase)': \($0.remediation)" }
@@ -428,6 +431,17 @@ public struct WorkingBuffer: Sendable {
             if estimatedTokens + triggerText.count / 4 <= tokenBudget {
                 parts.append(triggerText)
                 estimatedTokens += triggerText.count / 4
+            }
+        }
+
+        // Alternative explanations (curriculum-authored rephrasings the tutor can fall back on)
+        if !alternativeExplanations.isEmpty && estimatedTokens < tokenBudget {
+            let alternativesText = "Alternative explanations you can offer:\n" +
+                alternativeExplanations.map { "- [\($0.style.displayLabel)] \($0.content)" }
+                    .joined(separator: "\n")
+            if estimatedTokens + alternativesText.count / 4 <= tokenBudget {
+                parts.append(alternativesText)
+                estimatedTokens += alternativesText.count / 4
             }
         }
 
@@ -606,10 +620,37 @@ public struct GlossaryTerm: Sendable {
 
 /// Alternative explanation for a concept
 public struct AlternativeExplanation: Sendable {
-    public enum Style: String, Sendable {
+    /// Explanation styles, matching the UMCF alternativeExplanations style enum
+    public enum Style: String, Sendable, CaseIterable {
         case simpler
         case technical
         case analogy
+        case exampleBased = "example-based"
+
+        /// Resolve a raw UMCF style value, tolerating separator and casing variants
+        ///
+        /// Curriculum authors write these by hand, so "example_based" and "Example Based"
+        /// both appear in practice. An unrecognized or missing style falls back to
+        /// `simpler`, which keeps the authored content usable rather than discarding it.
+        public static func from(umcfStyle raw: String?) -> Style {
+            guard let raw = raw else { return .simpler }
+            let normalized = raw
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: "_", with: "-")
+                .replacingOccurrences(of: " ", with: "-")
+            return Style(rawValue: normalized) ?? .simpler
+        }
+
+        /// Human-readable label used when rendering the buffer for the LLM
+        public var displayLabel: String {
+            switch self {
+            case .simpler: return "Simpler"
+            case .technical: return "Technical"
+            case .analogy: return "Analogy"
+            case .exampleBased: return "Example-based"
+            }
+        }
     }
 
     public let style: Style

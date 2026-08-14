@@ -4,6 +4,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Resolve the Xcode toolchain environment (DEVELOPER_DIR on CLT-active machines)
+source "$SCRIPT_DIR/xcode-env.sh"
+
 echo "Running health check..."
 echo ""
 

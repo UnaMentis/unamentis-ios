@@ -332,10 +332,29 @@ public struct UMCFFeedback: Codable, Sendable {
 
 public struct UMCFMisconception: Codable, Sendable {
     public let id: UMCFIdentifier
+    /// Canonical UMCF field for detection phrases
+    public let triggerPhrases: [String]?
+    /// Legacy field name kept for older exports that used "trigger"
     public let trigger: [String]?
     public let misconception: String?
     public let correction: String?
+    /// Voice-optimized correction, preferred for spoken remediation when present
+    public let spokenCorrection: String?
     public let explanation: String?
+    public let severity: String?
+
+    /// Detection phrases from whichever field the source document used
+    ///
+    /// The canonical `triggerPhrases` wins when it carries any usable phrase. An
+    /// empty or blank-only canonical array falls through to the legacy `trigger`
+    /// field, so an export that emits both keys never loses its authored phrases.
+    public var detectionPhrases: [String] {
+        let usable = { (phrases: [String]?) -> [String] in
+            (phrases ?? []).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+        let canonical = usable(triggerPhrases)
+        return canonical.isEmpty ? usable(trigger) : canonical
+    }
 }
 
 public struct UMCFTutoringConfig: Codable, Sendable {
@@ -516,6 +535,9 @@ public actor UMCFParser {
                     context: context
                 )
             }
+
+            // Persist curriculum-authored reinforcement material for the FOV working buffer
+            ReinforcementDocumentBuilder.attach(to: topic, from: node, context: context)
 
             // Link to curriculum
             curriculum.addToTopics(topic)
@@ -756,6 +778,173 @@ public struct TranscriptData: Codable, Sendable {
     }
 }
 
+// MARK: - Reinforcement Data Storage
+
+/// Curriculum-authored reinforcement material for a topic
+///
+/// UMCF carries two kinds of "back-pocket" material that the tutor reaches for when a
+/// learner stalls or goes wrong: alternative explanations attached to transcript segments,
+/// and misconceptions attached to the content node. Neither has a dedicated Core Data
+/// entity, so the whole set is serialized into a single reinforcement Document per topic,
+/// mirroring how transcript data is stored on a transcript Document.
+public struct ReinforcementData: Codable, Sendable {
+
+    /// A single alternative explanation, retaining the segment it was authored against
+    public struct AlternativeExplanationEntry: Codable, Sendable {
+        /// UMCF transcript segment id this explanation belongs to
+        public let segmentId: String?
+        /// Raw UMCF style value (simpler, technical, analogy, example-based)
+        public let style: String?
+        public let content: String
+
+        public init(segmentId: String?, style: String?, content: String) {
+            self.segmentId = segmentId
+            self.style = style
+            self.content = content
+        }
+    }
+
+    /// A single misconception with its detection phrases and correction
+    public struct MisconceptionEntry: Codable, Sendable {
+        public let id: String?
+        /// The incorrect belief
+        public let misconception: String
+        /// Phrases that indicate the learner holds this misconception
+        public let triggerPhrases: [String]
+        /// The correct understanding
+        public let correction: String
+        /// Voice-optimized correction when the curriculum supplies one
+        public let spokenCorrection: String?
+        /// Why learners commonly hold this belief
+        public let explanation: String?
+
+        public init(
+            id: String?,
+            misconception: String,
+            triggerPhrases: [String],
+            correction: String,
+            spokenCorrection: String? = nil,
+            explanation: String? = nil
+        ) {
+            self.id = id
+            self.misconception = misconception
+            self.triggerPhrases = triggerPhrases
+            self.correction = correction
+            self.spokenCorrection = spokenCorrection
+            self.explanation = explanation
+        }
+    }
+
+    public let alternativeExplanations: [AlternativeExplanationEntry]
+    public let misconceptions: [MisconceptionEntry]
+
+    public init(
+        alternativeExplanations: [AlternativeExplanationEntry] = [],
+        misconceptions: [MisconceptionEntry] = []
+    ) {
+        self.alternativeExplanations = alternativeExplanations
+        self.misconceptions = misconceptions
+    }
+
+    /// True when the curriculum supplied no reinforcement material at all
+    public var isEmpty: Bool {
+        alternativeExplanations.isEmpty && misconceptions.isEmpty
+    }
+
+    /// Extract reinforcement material from a UMCF content node
+    /// - Parameter node: Content node being converted into a Topic
+    /// - Returns: Reinforcement data, possibly empty
+    public static func extract(from node: UMCFContentNode) -> ReinforcementData {
+        var alternatives: [AlternativeExplanationEntry] = []
+        for segment in node.transcript?.segments ?? [] {
+            for alternative in segment.alternativeExplanations ?? [] {
+                guard let content = alternative.content,
+                      !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    continue
+                }
+                alternatives.append(
+                    AlternativeExplanationEntry(
+                        segmentId: segment.id,
+                        style: alternative.style,
+                        content: content
+                    )
+                )
+            }
+        }
+
+        var misconceptions: [MisconceptionEntry] = []
+        for misconception in node.misconceptions ?? [] {
+            // The UMCF schema requires both misconception and correction. Entries missing
+            // either one cannot produce usable remediation, so they are skipped.
+            guard let statement = misconception.misconception,
+                  !statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let correction = misconception.correction,
+                  !correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continue
+            }
+            // A blank spokenCorrection must not replace a valid written
+            // correction downstream, so it is normalized to nil here.
+            let spokenCorrection = misconception.spokenCorrection.flatMap { spoken -> String? in
+                let trimmed = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : spoken
+            }
+            misconceptions.append(
+                MisconceptionEntry(
+                    id: misconception.id.value,
+                    misconception: statement,
+                    triggerPhrases: misconception.detectionPhrases,
+                    correction: correction,
+                    spokenCorrection: spokenCorrection,
+                    explanation: misconception.explanation
+                )
+            )
+        }
+
+        return ReinforcementData(
+            alternativeExplanations: alternatives,
+            misconceptions: misconceptions
+        )
+    }
+}
+
+// MARK: - Context Buffer Mapping
+
+extension ReinforcementData {
+
+    /// Alternative explanations mapped for the FOV working buffer
+    public var contextAlternativeExplanations: [AlternativeExplanation] {
+        alternativeExplanations.map { entry in
+            AlternativeExplanation(
+                style: AlternativeExplanation.Style.from(umcfStyle: entry.style),
+                content: entry.content
+            )
+        }
+    }
+
+    /// Misconception triggers mapped for the FOV working buffer
+    ///
+    /// A single UMCF misconception can list several detection phrases, and the
+    /// working buffer stores one trigger per phrase, so each phrase becomes its
+    /// own entry sharing the same remediation. A misconception with no authored
+    /// phrases still yields one entry keyed on the misconception statement, so
+    /// the tutor is warned about it either way. The voice-optimized
+    /// spokenCorrection is preferred as the remediation in this voice-first app,
+    /// falling back to the written correction.
+    public var contextMisconceptionTriggers: [MisconceptionTrigger] {
+        misconceptions.flatMap { entry -> [MisconceptionTrigger] in
+            let phrases = entry.triggerPhrases.isEmpty ? [entry.misconception] : entry.triggerPhrases
+            let remediation = entry.spokenCorrection ?? entry.correction
+            return phrases.map { phrase in
+                MisconceptionTrigger(
+                    triggerPhrase: phrase,
+                    misconception: entry.misconception,
+                    remediation: remediation
+                )
+            }
+        }
+    }
+}
+
 // MARK: - Document Extension for Transcript Access
 
 extension Document {
@@ -763,6 +952,46 @@ extension Document {
     public func decodedTranscript() -> TranscriptData? {
         guard let data = embedding, documentType == .transcript else { return nil }
         return try? JSONDecoder().decode(TranscriptData.self, from: data)
+    }
+
+    /// Decode reinforcement data from the embedding field
+    public func decodedReinforcement() -> ReinforcementData? {
+        guard let data = embedding, documentType == .reinforcement else { return nil }
+        return try? JSONDecoder().decode(ReinforcementData.self, from: data)
+    }
+}
+
+// MARK: - Reinforcement Document Creation
+
+/// Builds the Core Data Document that carries a topic's reinforcement material
+///
+/// Both UMCFParser and UMCFParserHelper import content nodes, so the creation logic lives
+/// here to keep the two import paths identical.
+enum ReinforcementDocumentBuilder {
+
+    /// Attach a reinforcement document to a topic when the node carries any material
+    /// - Parameters:
+    ///   - topic: Topic the material belongs to
+    ///   - node: Source UMCF content node
+    ///   - context: Core Data context
+    @MainActor
+    static func attach(to topic: Topic, from node: UMCFContentNode, context: NSManagedObjectContext) {
+        let reinforcement = ReinforcementData.extract(from: node)
+        guard !reinforcement.isEmpty,
+              let encoded = try? JSONEncoder().encode(reinforcement) else {
+            return
+        }
+
+        let document = Document(context: context)
+        document.id = UUID()
+        document.title = "Reinforcement: \(topic.title ?? "Untitled")"
+        document.type = DocumentType.reinforcement.rawValue
+        // Content stays empty and summary stays nil so this document never leaks into the
+        // reference excerpts that generateContext builds from summarized documents.
+        document.content = ""
+        document.embedding = encoded
+
+        topic.addToDocuments(document)
     }
 }
 
@@ -879,6 +1108,9 @@ public final class UMCFParserHelper {
                 if let media = node.media {
                     createVisualAssets(from: media, for: topic, context: context)
                 }
+
+                // Persist curriculum-authored reinforcement material for the FOV working buffer
+                ReinforcementDocumentBuilder.attach(to: topic, from: node, context: context)
 
                 curriculum.addToTopics(topic)
                 currentIndex += 1

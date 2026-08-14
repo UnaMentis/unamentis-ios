@@ -22,6 +22,11 @@ if ! command -v xcodebuild &> /dev/null; then
     fi
 fi
 
+# Resolve the Xcode toolchain environment (DEVELOPER_DIR on CLT-active
+# machines). Runtime-availability policy lives in test-ci.sh, the single
+# source of truth this script wraps; it is not duplicated here.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/xcode-env.sh"
+
 # Resolve simulator to UUID for reliable destination matching
 SIM_NAME="${SIMULATOR:-iPhone 17 Pro}"
 SIM_UDID=$(xcrun simctl list devices available 2>/dev/null \

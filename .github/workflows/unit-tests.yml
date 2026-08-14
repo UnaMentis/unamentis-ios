@@ -155,6 +155,10 @@ jobs:
         ./scripts/test-ci.sh
 
     - name: Install xcresultparser
+      # always(): the coverage-conversion step below runs even when tests fail,
+      # so its prerequisite must too, or a red test run adds a spurious
+      # "command not found" failure on top of the real one.
+      if: always()
       run: brew install xcresultparser
 
     - name: Convert coverage to Cobertura XML

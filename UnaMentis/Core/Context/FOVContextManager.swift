@@ -181,12 +181,14 @@ public actor FOVContextManager {
     ///   - topicContent: Topic description/outline
     ///   - learningObjectives: Learning objectives
     ///   - glossaryTerms: Relevant glossary terms
+    ///   - alternativeExplanations: Curriculum-authored alternative explanations
     ///   - misconceptionTriggers: Misconception triggers
     public func updateWorkingBuffer(
         topicTitle: String,
         topicContent: String,
         learningObjectives: [String] = [],
         glossaryTerms: [GlossaryTerm] = [],
+        alternativeExplanations: [AlternativeExplanation] = [],
         misconceptionTriggers: [MisconceptionTrigger] = []
     ) {
         workingBuffer = WorkingBuffer(
@@ -194,6 +196,7 @@ public actor FOVContextManager {
             topicContent: topicContent,
             learningObjectives: learningObjectives,
             glossaryTerms: glossaryTerms,
+            alternativeExplanations: alternativeExplanations,
             misconceptionTriggers: misconceptionTriggers
         )
 
@@ -464,46 +467,62 @@ public actor FOVContextManager {
 
 extension FOVContextManager {
     /// Build context from curriculum engine data
+    ///
+    /// MainActor-isolated so every Core Data access (topic fields, the
+    /// reinforcement document traversal, curriculum topics) happens on the
+    /// view context's queue; only extracted Sendable values cross to the
+    /// actor's buffer updates. Includes any curriculum-authored reinforcement
+    /// material, so this convenience path builds the same working context as
+    /// the coordinator's setCurrentTopic path.
     /// - Parameters:
     ///   - topic: Current topic being studied
     ///   - curriculum: Active curriculum
     ///   - conversationHistory: Recent conversation
     ///   - bargeInUtterance: User's barge-in utterance
     /// - Returns: Complete FOV context
+    @MainActor
     public func buildContext(
         topic: Topic,
         curriculum: Curriculum?,
         conversationHistory: [LLMMessage],
         bargeInUtterance: String? = nil
-    ) -> FOVContext {
-        // Update working buffer from topic
-        updateWorkingBuffer(
-            topicTitle: topic.title ?? "Unknown Topic",
-            topicContent: topic.outline ?? "",
-            learningObjectives: topic.learningObjectives
-        )
+    ) async -> FOVContext {
+        // Extract everything needed from Core Data on the MainActor.
+        let title = topic.title ?? "Unknown Topic"
+        let content = topic.outline ?? ""
+        let objectives = topic.learningObjectives
+        let reinforcement = topic.reinforcementData
 
-        // Update semantic buffer from curriculum
+        var semanticOutline: String?
+        var semanticPosition: CurriculumPosition?
         if let curriculum = curriculum {
             let topics = (curriculum.topics?.array as? [Topic]) ?? []
             let currentIndex = topics.firstIndex(where: { $0.id == topic.id }) ?? 0
 
-            let outline = topics.prefix(20).map { t in
+            semanticOutline = topics.prefix(20).map { t in
                 "\(t.orderIndex + 1). \(t.title ?? "Untitled")"
             }.joined(separator: "\n")
-
-            updateSemanticBuffer(
-                curriculumOutline: outline,
-                position: CurriculumPosition(
-                    curriculumTitle: curriculum.name ?? "",
-                    currentTopicIndex: currentIndex,
-                    totalTopics: topics.count
-                )
+            semanticPosition = CurriculumPosition(
+                curriculumTitle: curriculum.name ?? "",
+                currentTopicIndex: currentIndex,
+                totalTopics: topics.count
             )
         }
 
-        // Build and return context
-        return buildContext(
+        // Hand only Sendable values to the actor.
+        await updateWorkingBuffer(
+            topicTitle: title,
+            topicContent: content,
+            learningObjectives: objectives,
+            alternativeExplanations: reinforcement?.contextAlternativeExplanations ?? [],
+            misconceptionTriggers: reinforcement?.contextMisconceptionTriggers ?? []
+        )
+
+        if let outline = semanticOutline, let position = semanticPosition {
+            await updateSemanticBuffer(curriculumOutline: outline, position: position)
+        }
+
+        return await buildContext(
             conversationHistory: conversationHistory,
             bargeInUtterance: bargeInUtterance
         )

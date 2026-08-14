@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Resolve the Xcode toolchain environment (DEVELOPER_DIR on CLT-active machines)
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/xcode-env.sh"
+
 # Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'

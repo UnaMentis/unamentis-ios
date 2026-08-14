@@ -538,23 +538,29 @@ extension CurriculumEngine {
     }
 
     /// Get misconception triggers for a topic
+    ///
+    /// Reads the curriculum-authored misconceptions persisted during UMCF import. A single
+    /// UMCF misconception can list several detection phrases, and the working buffer stores
+    /// one trigger per phrase, so each phrase becomes its own entry sharing the same
+    /// correction. A misconception with no authored phrases still yields one entry keyed on
+    /// the misconception statement itself, so the tutor is warned about it either way.
     /// - Parameter topic: Topic to get triggers for
-    /// - Returns: Misconception triggers
+    /// - Returns: Misconception triggers, empty when the curriculum authored none
     @MainActor
     public func getMisconceptionTriggers(for topic: Topic) -> [MisconceptionTrigger] {
-        // For now, return an empty array
-        // In the future, this will extract from UMCF misconceptions section
-        return []
+        topic.reinforcementData?.contextMisconceptionTriggers ?? []
     }
 
     /// Get alternative explanations for a topic
+    ///
+    /// Reads the curriculum-authored rephrasings persisted during UMCF import. These are
+    /// authored per transcript segment, and the working buffer holds the whole topic's set
+    /// so the tutor can reach for a different framing at any point in the topic.
     /// - Parameter topic: Topic to get explanations for
-    /// - Returns: Alternative explanations
+    /// - Returns: Alternative explanations, empty when the curriculum authored none
     @MainActor
     public func getAlternativeExplanations(for topic: Topic) -> [AlternativeExplanation] {
-        // For now, return an empty array
-        // In the future, this will extract from UMCF alternativeExplanations
-        return []
+        topic.reinforcementData?.contextAlternativeExplanations ?? []
     }
 }
 
