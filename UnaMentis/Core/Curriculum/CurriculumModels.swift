@@ -947,8 +947,14 @@ extension Document {
     }
 
     /// Get decoded document chunks from embedding data
+    ///
+    /// The embedding field also carries transcript and reinforcement payloads on
+    /// their own document types, so those types are excluded here by guard
+    /// rather than by relying on their JSON shape failing to decode as chunks.
     public func decodedChunks() -> [DocumentChunk]? {
-        guard let data = embedding else { return nil }
+        guard let data = embedding,
+              documentType != .transcript,
+              documentType != .reinforcement else { return nil }
         return try? JSONDecoder().decode([DocumentChunk].self, from: data)
     }
 }

@@ -548,18 +548,7 @@ extension CurriculumEngine {
     /// - Returns: Misconception triggers, empty when the curriculum authored none
     @MainActor
     public func getMisconceptionTriggers(for topic: Topic) -> [MisconceptionTrigger] {
-        guard let reinforcement = topic.reinforcementData else { return [] }
-
-        return reinforcement.misconceptions.flatMap { entry -> [MisconceptionTrigger] in
-            let phrases = entry.triggerPhrases.isEmpty ? [entry.misconception] : entry.triggerPhrases
-            return phrases.map { phrase in
-                MisconceptionTrigger(
-                    triggerPhrase: phrase,
-                    misconception: entry.misconception,
-                    remediation: entry.correction
-                )
-            }
-        }
+        topic.reinforcementData?.contextMisconceptionTriggers ?? []
     }
 
     /// Get alternative explanations for a topic
@@ -571,14 +560,7 @@ extension CurriculumEngine {
     /// - Returns: Alternative explanations, empty when the curriculum authored none
     @MainActor
     public func getAlternativeExplanations(for topic: Topic) -> [AlternativeExplanation] {
-        guard let reinforcement = topic.reinforcementData else { return [] }
-
-        return reinforcement.alternativeExplanations.map { entry in
-            AlternativeExplanation(
-                style: AlternativeExplanation.Style.from(umcfStyle: entry.style),
-                content: entry.content
-            )
-        }
+        topic.reinforcementData?.contextAlternativeExplanations ?? []
     }
 }
 

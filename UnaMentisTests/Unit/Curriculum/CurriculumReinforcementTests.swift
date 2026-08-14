@@ -262,7 +262,8 @@ final class CurriculumReinforcementTests: XCTestCase {
     }
 
     /// Each authored trigger phrase becomes its own trigger, all sharing the same
-    /// misconception and correction.
+    /// misconception and remediation. In this voice-first app the voice-optimized
+    /// spokenCorrection is preferred over the written correction when authored.
     @MainActor
     func testGetMisconceptionTriggers_expandsEachTriggerPhrase() async throws {
         let curriculum = try await importFixture()
@@ -275,7 +276,7 @@ final class CurriculumReinforcementTests: XCTestCase {
         }
         XCTAssertEqual(brainTriggers.map(\.triggerPhrase), ["just like the brain", "brain simulation"])
         XCTAssertTrue(brainTriggers.allSatisfy {
-            $0.remediation == "They are mathematical abstractions inspired by neurons, not brain models."
+            $0.remediation == "That is a common mix-up. They borrowed an idea from biology."
         })
     }
 
@@ -291,6 +292,56 @@ final class CurriculumReinforcementTests: XCTestCase {
 
         XCTAssertEqual(linear.triggerPhrase, linear.misconception)
         XCTAssertEqual(linear.remediation, "A single neuron only separates linearly separable data.")
+    }
+
+    /// An export that emits an empty canonical triggerPhrases array alongside a
+    /// populated legacy trigger field keeps its authored phrases: the empty
+    /// canonical array must not shadow the legacy one.
+    func testDetectionPhrases_emptyCanonicalFallsThroughToLegacyTrigger() throws {
+        let json = """
+        {
+            "id": "misc-legacy",
+            "misconception": "Legacy formatted misconception",
+            "triggerPhrases": [],
+            "trigger": ["old style phrase"],
+            "correction": "The corrected understanding."
+        }
+        """
+        let misconception = try JSONDecoder().decode(
+            UMCFMisconception.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(misconception.detectionPhrases, ["old style phrase"])
+    }
+
+    /// Under a tight token budget the misconception warnings render ahead of the
+    /// alternative explanations, so remediation content is never displaced by
+    /// fallback rephrasings.
+    func testWorkingBufferRender_misconceptionsSurviveTightBudgetOverAlternatives() {
+        let verboseAlternative = AlternativeExplanation(
+            style: .simpler,
+            content: String(repeating: "A long fallback rephrasing of the concept. ", count: 60)
+        )
+        let buffer = WorkingBuffer(
+            topicTitle: "Budget Pressure",
+            topicContent: "Content",
+            learningObjectives: [],
+            glossaryTerms: [],
+            alternativeExplanations: [verboseAlternative],
+            misconceptionTriggers: [
+                MisconceptionTrigger(
+                    triggerPhrase: "just like the brain",
+                    misconception: "Neural networks simulate the brain",
+                    remediation: "They borrow an idea from biology."
+                )
+            ]
+        )
+
+        let rendered = buffer.render(tokenBudget: 200)
+
+        XCTAssertTrue(rendered.contains("Watch for these common misconceptions"))
+        XCTAssertFalse(rendered.contains("Alternative explanations you can offer"))
     }
 
     @MainActor

@@ -479,11 +479,16 @@ extension FOVContextManager {
         conversationHistory: [LLMMessage],
         bargeInUtterance: String? = nil
     ) -> FOVContext {
-        // Update working buffer from topic
+        // Update working buffer from topic, including any curriculum-authored
+        // reinforcement material, so this convenience path builds the same
+        // working context as the coordinator's setCurrentTopic path.
+        let reinforcement = topic.reinforcementData
         updateWorkingBuffer(
             topicTitle: topic.title ?? "Unknown Topic",
             topicContent: topic.outline ?? "",
-            learningObjectives: topic.learningObjectives
+            learningObjectives: topic.learningObjectives,
+            alternativeExplanations: reinforcement?.contextAlternativeExplanations ?? [],
+            misconceptionTriggers: reinforcement?.contextMisconceptionTriggers ?? []
         )
 
         // Update semantic buffer from curriculum

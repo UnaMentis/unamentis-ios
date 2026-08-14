@@ -24,6 +24,24 @@
 
 set -e
 
+# Resolve the Xcode toolchain environment (DEVELOPER_DIR on CLT-active machines)
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/xcode-env.sh"
+
+# Simulator tests cannot run at all without an iOS runtime, which is
+# unavailability, not failure. Honor the skip flag in that case so local
+# hooks fall through to CI as the test gate. CI runners have runtimes, so
+# this never skips there.
+if ! ios_simulator_runtimes_installed; then
+    echo "WARNING: no iOS simulator runtimes installed"
+    if [ "${SKIP_TESTS_IF_UNAVAILABLE:-false}" = "true" ]; then
+        echo "SKIP_TESTS_IF_UNAVAILABLE=true, skipping tests (CI runs them)"
+        exit 0
+    else
+        echo "Install the iOS platform via Xcode Settings > Components, or set SKIP_TESTS_IF_UNAVAILABLE=true"
+        exit 1
+    fi
+fi
+
 # Color output (disabled in CI for cleaner logs)
 if [ -t 1 ] && [ -z "$CI" ]; then
     RED='\033[0;31m'

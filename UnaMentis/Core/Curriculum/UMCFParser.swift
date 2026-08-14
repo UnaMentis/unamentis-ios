@@ -344,9 +344,16 @@ public struct UMCFMisconception: Codable, Sendable {
     public let severity: String?
 
     /// Detection phrases from whichever field the source document used
+    ///
+    /// The canonical `triggerPhrases` wins when it carries any usable phrase. An
+    /// empty or blank-only canonical array falls through to the legacy `trigger`
+    /// field, so an export that emits both keys never loses its authored phrases.
     public var detectionPhrases: [String] {
-        let phrases = triggerPhrases ?? trigger ?? []
-        return phrases.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let usable = { (phrases: [String]?) -> [String] in
+            (phrases ?? []).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+        let canonical = usable(triggerPhrases)
+        return canonical.isEmpty ? usable(trigger) : canonical
     }
 }
 
@@ -891,6 +898,44 @@ public struct ReinforcementData: Codable, Sendable {
             alternativeExplanations: alternatives,
             misconceptions: misconceptions
         )
+    }
+}
+
+// MARK: - Context Buffer Mapping
+
+extension ReinforcementData {
+
+    /// Alternative explanations mapped for the FOV working buffer
+    public var contextAlternativeExplanations: [AlternativeExplanation] {
+        alternativeExplanations.map { entry in
+            AlternativeExplanation(
+                style: AlternativeExplanation.Style.from(umcfStyle: entry.style),
+                content: entry.content
+            )
+        }
+    }
+
+    /// Misconception triggers mapped for the FOV working buffer
+    ///
+    /// A single UMCF misconception can list several detection phrases, and the
+    /// working buffer stores one trigger per phrase, so each phrase becomes its
+    /// own entry sharing the same remediation. A misconception with no authored
+    /// phrases still yields one entry keyed on the misconception statement, so
+    /// the tutor is warned about it either way. The voice-optimized
+    /// spokenCorrection is preferred as the remediation in this voice-first app,
+    /// falling back to the written correction.
+    public var contextMisconceptionTriggers: [MisconceptionTrigger] {
+        misconceptions.flatMap { entry -> [MisconceptionTrigger] in
+            let phrases = entry.triggerPhrases.isEmpty ? [entry.misconception] : entry.triggerPhrases
+            let remediation = entry.spokenCorrection ?? entry.correction
+            return phrases.map { phrase in
+                MisconceptionTrigger(
+                    triggerPhrase: phrase,
+                    misconception: entry.misconception,
+                    remediation: remediation
+                )
+            }
+        }
     }
 }
 

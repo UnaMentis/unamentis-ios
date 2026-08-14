@@ -420,6 +420,20 @@ public struct WorkingBuffer: Sendable {
             }
         }
 
+        // Misconception triggers (important for tutoring). Rendered before the
+        // alternative explanations so that under a tight token budget the
+        // misconception warnings, the higher-value remediation content, are
+        // never displaced by fallback rephrasings.
+        if !misconceptionTriggers.isEmpty && estimatedTokens < tokenBudget {
+            let triggerText = "Watch for these common misconceptions:\n" +
+                misconceptionTriggers.map { "- If student says '\($0.triggerPhrase)': \($0.remediation)" }
+                    .joined(separator: "\n")
+            if estimatedTokens + triggerText.count / 4 <= tokenBudget {
+                parts.append(triggerText)
+                estimatedTokens += triggerText.count / 4
+            }
+        }
+
         // Alternative explanations (curriculum-authored rephrasings the tutor can fall back on)
         if !alternativeExplanations.isEmpty && estimatedTokens < tokenBudget {
             let alternativesText = "Alternative explanations you can offer:\n" +
@@ -428,17 +442,6 @@ public struct WorkingBuffer: Sendable {
             if estimatedTokens + alternativesText.count / 4 <= tokenBudget {
                 parts.append(alternativesText)
                 estimatedTokens += alternativesText.count / 4
-            }
-        }
-
-        // Misconception triggers (important for tutoring)
-        if !misconceptionTriggers.isEmpty && estimatedTokens < tokenBudget {
-            let triggerText = "Watch for these common misconceptions:\n" +
-                misconceptionTriggers.map { "- If student says '\($0.triggerPhrase)': \($0.remediation)" }
-                    .joined(separator: "\n")
-            if estimatedTokens + triggerText.count / 4 <= tokenBudget {
-                parts.append(triggerText)
-                estimatedTokens += triggerText.count / 4
             }
         }
 
