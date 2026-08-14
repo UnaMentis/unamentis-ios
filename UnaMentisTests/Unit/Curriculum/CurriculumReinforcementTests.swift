@@ -394,9 +394,11 @@ final class CurriculumReinforcementTests: XCTestCase {
         XCTAssertTrue(fovContext.workingContext.contains("Think of a neuron as a small voting machine."))
         XCTAssertTrue(fovContext.workingContext.contains("Given inputs 2 and 3"))
         XCTAssertTrue(fovContext.workingContext.contains("just like the brain"))
+        // The voice-optimized spokenCorrection is preferred over the written
+        // correction as the rendered remediation.
         XCTAssertTrue(
             fovContext.workingContext.contains(
-                "They are mathematical abstractions inspired by neurons, not brain models."
+                "That is a common mix-up. They borrowed an idea from biology."
             )
         )
     }

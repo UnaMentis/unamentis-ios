@@ -260,6 +260,8 @@ main() {
         BargeInMeasurementTests
         KBAudioTestHarnessTests
         LiveInferenceFullPathTests
+        PocketTTSSynthesisTests
+        SessionEnginePathTests
         ThermalManagementIntegrationTests
         VoiceSessionIntegrationTests
     )

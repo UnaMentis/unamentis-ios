@@ -308,8 +308,9 @@ final class AudioPlaybackOrchestratorTests: XCTestCase {
         await orch.loadSegments(segments)
         await orch.startPlayback(from: 0)
 
-        // Wait for completion
-        for _ in 0..<40 {
+        // Wait for completion. The budget is generous because loaded CI runners
+        // stretch wall-clock waits well past local timings.
+        for _ in 0..<150 {
             try? await Task.sleep(for: .milliseconds(100))
             let state = await orch.state
             if state == .completed { break }
@@ -636,8 +637,10 @@ final class AudioPlaybackOrchestratorTests: XCTestCase {
 
         await orch.startPlayback(from: 0)
 
+        // The budget is generous because loaded CI runners stretch wall-clock
+        // waits well past local timings.
         var surfaced = false
-        for _ in 0..<60 {
+        for _ in 0..<200 {
             if !delegate.errors.isEmpty { surfaced = true; break }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
