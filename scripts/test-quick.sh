@@ -22,6 +22,31 @@ if ! command -v xcodebuild &> /dev/null; then
     fi
 fi
 
+# Simulator tests need a full Xcode developer directory. On machines where
+# xcode-select points at the Command Line Tools, resolve DEVELOPER_DIR to the
+# installed Xcode without changing machine state. No-op on CI.
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+    ACTIVE_DEV_DIR=$(xcode-select -p 2>/dev/null || true)
+    if [[ "$ACTIVE_DEV_DIR" != *"Xcode.app"* ]] && [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+        export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+    fi
+fi
+
+# A machine can have Xcode yet no iOS simulator runtimes installed (the
+# platform is a separate multi-GB download). Tests cannot run there at all,
+# which is unavailability, not failure. Honor the skip flag in that case so
+# pre-commit hooks fall through to CI as the test gate.
+if ! xcrun simctl list runtimes 2>/dev/null | grep -q "iOS"; then
+    echo "WARNING: no iOS simulator runtimes installed"
+    if [ "${SKIP_TESTS_IF_UNAVAILABLE:-false}" = "true" ]; then
+        echo "SKIP_TESTS_IF_UNAVAILABLE=true, skipping tests (CI runs them)"
+        exit 0
+    else
+        echo "Install the iOS platform via Xcode Settings > Components, or set SKIP_TESTS_IF_UNAVAILABLE=true"
+        exit 1
+    fi
+fi
+
 # Resolve simulator to UUID for reliable destination matching
 SIM_NAME="${SIMULATOR:-iPhone 17 Pro}"
 SIM_UDID=$(xcrun simctl list devices available 2>/dev/null \

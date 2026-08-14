@@ -1,6 +1,19 @@
 #!/bin/bash
 set -e
 
+# SwiftLint's SourceKit backend requires a full Xcode developer directory. On
+# machines where xcode-select points at the Command Line Tools, swiftlint
+# crashes (Trace/BPT trap) and the failure looks like lint violations. Resolve
+# DEVELOPER_DIR to the installed Xcode in that case, without changing the
+# machine's xcode-select state. CI already points at Xcode, so this is a no-op
+# there.
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+    ACTIVE_DEV_DIR=$(xcode-select -p 2>/dev/null || true)
+    if [[ "$ACTIVE_DEV_DIR" != *"Xcode.app"* ]] && [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+        export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+    fi
+fi
+
 # Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
