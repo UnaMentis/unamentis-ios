@@ -538,23 +538,47 @@ extension CurriculumEngine {
     }
 
     /// Get misconception triggers for a topic
+    ///
+    /// Reads the curriculum-authored misconceptions persisted during UMCF import. A single
+    /// UMCF misconception can list several detection phrases, and the working buffer stores
+    /// one trigger per phrase, so each phrase becomes its own entry sharing the same
+    /// correction. A misconception with no authored phrases still yields one entry keyed on
+    /// the misconception statement itself, so the tutor is warned about it either way.
     /// - Parameter topic: Topic to get triggers for
-    /// - Returns: Misconception triggers
+    /// - Returns: Misconception triggers, empty when the curriculum authored none
     @MainActor
     public func getMisconceptionTriggers(for topic: Topic) -> [MisconceptionTrigger] {
-        // For now, return an empty array
-        // In the future, this will extract from UMCF misconceptions section
-        return []
+        guard let reinforcement = topic.reinforcementData else { return [] }
+
+        return reinforcement.misconceptions.flatMap { entry -> [MisconceptionTrigger] in
+            let phrases = entry.triggerPhrases.isEmpty ? [entry.misconception] : entry.triggerPhrases
+            return phrases.map { phrase in
+                MisconceptionTrigger(
+                    triggerPhrase: phrase,
+                    misconception: entry.misconception,
+                    remediation: entry.correction
+                )
+            }
+        }
     }
 
     /// Get alternative explanations for a topic
+    ///
+    /// Reads the curriculum-authored rephrasings persisted during UMCF import. These are
+    /// authored per transcript segment, and the working buffer holds the whole topic's set
+    /// so the tutor can reach for a different framing at any point in the topic.
     /// - Parameter topic: Topic to get explanations for
-    /// - Returns: Alternative explanations
+    /// - Returns: Alternative explanations, empty when the curriculum authored none
     @MainActor
     public func getAlternativeExplanations(for topic: Topic) -> [AlternativeExplanation] {
-        // For now, return an empty array
-        // In the future, this will extract from UMCF alternativeExplanations
-        return []
+        guard let reinforcement = topic.reinforcementData else { return [] }
+
+        return reinforcement.alternativeExplanations.map { entry in
+            AlternativeExplanation(
+                style: AlternativeExplanation.Style.from(umcfStyle: entry.style),
+                content: entry.content
+            )
+        }
     }
 }
 

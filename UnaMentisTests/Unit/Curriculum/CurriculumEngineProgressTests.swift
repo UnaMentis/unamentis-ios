@@ -395,10 +395,12 @@ final class CurriculumEngineProgressTests: XCTestCase {
         XCTAssertEqual(topic.status, .completed)
     }
 
-    // MARK: - FOV extension stubs (currently empty by design)
+    // MARK: - FOV extension accessors with no curriculum-authored material
 
+    /// A topic created without any UMCF reinforcement material has nothing to offer the
+    /// working buffer, so every accessor returns empty rather than fabricating content.
     @MainActor
-    func testGlossaryAndMisconceptionStubs_returnEmpty() async throws {
+    func testFOVAccessors_returnEmptyWithoutAuthoredMaterial() async throws {
         let topic = TestDataFactory.createTopic(in: context)
         try context.save()
 

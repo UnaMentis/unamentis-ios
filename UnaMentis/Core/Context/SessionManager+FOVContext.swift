@@ -181,12 +181,14 @@ public final class FOVSessionContextCoordinator {
         let outline = await curriculum.generateCurriculumOutline()
         let glossaryTerms = await curriculum.getRelevantGlossaryTerms(for: "", in: topic)
         let misconceptions = await curriculum.getMisconceptionTriggers(for: topic)
+        let alternatives = await curriculum.getAlternativeExplanations(for: topic)
 
         await contextManager.updateWorkingBuffer(
             topicTitle: topic.title ?? "Unknown Topic",
             topicContent: topic.outline ?? "",
             learningObjectives: topic.learningObjectives,
             glossaryTerms: glossaryTerms,
+            alternativeExplanations: alternatives,
             misconceptionTriggers: misconceptions
         )
 

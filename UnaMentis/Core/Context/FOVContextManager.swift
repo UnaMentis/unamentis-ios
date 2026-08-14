@@ -181,12 +181,14 @@ public actor FOVContextManager {
     ///   - topicContent: Topic description/outline
     ///   - learningObjectives: Learning objectives
     ///   - glossaryTerms: Relevant glossary terms
+    ///   - alternativeExplanations: Curriculum-authored alternative explanations
     ///   - misconceptionTriggers: Misconception triggers
     public func updateWorkingBuffer(
         topicTitle: String,
         topicContent: String,
         learningObjectives: [String] = [],
         glossaryTerms: [GlossaryTerm] = [],
+        alternativeExplanations: [AlternativeExplanation] = [],
         misconceptionTriggers: [MisconceptionTrigger] = []
     ) {
         workingBuffer = WorkingBuffer(
@@ -194,6 +196,7 @@ public actor FOVContextManager {
             topicContent: topicContent,
             learningObjectives: learningObjectives,
             glossaryTerms: glossaryTerms,
+            alternativeExplanations: alternativeExplanations,
             misconceptionTriggers: misconceptionTriggers
         )
 

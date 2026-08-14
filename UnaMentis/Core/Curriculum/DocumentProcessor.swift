@@ -107,6 +107,10 @@ public actor DocumentProcessor {
             return try await extractPlainText(url: url)
         case .transcript:
             return try await extractTranscriptText(url: url)
+        case .reinforcement:
+            // Reinforcement documents are generated during UMCF import and hold serialized
+            // material rather than a source file, so there is nothing to extract from disk.
+            throw DocumentError.unsupportedType(DocumentType.reinforcement.rawValue)
         }
     }
 

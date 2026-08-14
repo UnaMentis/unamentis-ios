@@ -193,6 +193,9 @@ public enum DocumentType: String, Codable, Sendable, CaseIterable {
     case text = "text"
     case markdown = "markdown"
     case transcript = "transcript"
+    /// Curriculum-authored reinforcement material (alternative explanations, misconceptions).
+    /// Generated during UMCF import rather than imported from a file, so it has no extension.
+    case reinforcement = "reinforcement"
 
     /// File extensions associated with this type
     public var fileExtensions: [String] {
@@ -201,6 +204,7 @@ public enum DocumentType: String, Codable, Sendable, CaseIterable {
         case .text: return ["txt"]
         case .markdown: return ["md", "markdown"]
         case .transcript: return ["json"]
+        case .reinforcement: return []
         }
     }
 
@@ -908,6 +912,11 @@ extension Topic {
     /// Get visual assets as typed set
     public var visualAssetSet: Set<VisualAsset> {
         visualAssets as? Set<VisualAsset> ?? []
+    }
+
+    /// Curriculum-authored reinforcement material, if the UMCF source supplied any
+    public var reinforcementData: ReinforcementData? {
+        documentSet.first(where: { $0.documentType == .reinforcement })?.decodedReinforcement()
     }
 
     /// Get embedded visual assets (non-reference, shown during playback)
