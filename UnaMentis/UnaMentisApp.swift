@@ -811,11 +811,13 @@ public class AppState: ObservableObject {
         await patchPanel.setEndpointStatus("llama-70b-server", status: .unavailable)
         await patchPanel.setEndpointStatus("llama-8b-server", status: .unavailable)
 
-        // On-device LLM currently unavailable (API incompatible), mark as unavailable
-        // Using SelfHostedLLMService (Ollama) instead
-        await patchPanel.setEndpointStatus("llama-3b-device", status: .unavailable)
-        // 1B model not currently bundled
-        await patchPanel.setEndpointStatus("llama-1b-device", status: .unavailable)
+        // The on-device LLM (OnDeviceLLMService on llama.cpp) is usable only once its
+        // GGUF has been downloaded, so its status tracks the model file on disk.
+        let hasOnDeviceModel = await OnDeviceLLMModelManager.shared.isModelAvailable()
+        await patchPanel.setEndpointStatus(
+            "on-device-llm",
+            status: hasOnDeviceModel ? .available : .unavailable
+        )
     }
 
     private func initializeCurriculum() async {

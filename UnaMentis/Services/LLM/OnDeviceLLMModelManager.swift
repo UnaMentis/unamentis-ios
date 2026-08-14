@@ -3,6 +3,7 @@
 //
 // Part of Services/LLM
 
+import CryptoKit
 import Foundation
 import OSLog
 
@@ -20,6 +21,14 @@ public struct OnDeviceLLMModelConfig: Sendable {
     let filename: String
     /// Expected file size in bytes
     let expectedSizeBytes: Int64
+    /// Expected SHA256 of the downloaded file, lowercase hex.
+    ///
+    /// Sourced from the Hugging Face LFS metadata for the exact revision we
+    /// download (`GET /api/models/<repo>/tree/main?recursive=true`, the `lfs.oid`
+    /// field, which is the SHA256 of the file contents). The download is rejected
+    /// unless the file hashes to this value, so a corrupted transfer or a
+    /// substituted file can never be loaded into llama.cpp.
+    let expectedSHA256: String
     /// Quantization type
     let quantization: String
     /// Context window size
@@ -72,7 +81,8 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 displayName: "Gemma 4 E2B",
                 huggingFaceRepo: "unsloth/gemma-4-E2B-it-GGUF",
                 filename: "gemma-4-E2B-it-Q4_K_M.gguf",
-                expectedSizeBytes: 3_106_736_256, // 3.11 GB (validated against the live HF link; Per-Layer Embeddings load ~5.1B weights)
+                expectedSizeBytes: 3_106_738_272, // 3.11 GB (HF LFS size; Per-Layer Embeddings load ~5.1B weights)
+                expectedSHA256: "740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8",
                 quantization: "Q4_K_M",
                 contextSize: 8192,
                 minimumRAMGB: 12,
@@ -84,7 +94,8 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 displayName: "Qwen3 1.7B",
                 huggingFaceRepo: "unsloth/Qwen3-1.7B-GGUF",
                 filename: "Qwen3-1.7B-Q4_K_M.gguf",
-                expectedSizeBytes: 1_050_000_000, // ~1.05 GB (verify at download)
+                expectedSizeBytes: 1_107_409_472, // ~1.11 GB (HF LFS size)
+                expectedSHA256: "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897",
                 quantization: "Q4_K_M",
                 contextSize: 8192,
                 minimumRAMGB: 8,
@@ -96,7 +107,8 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 displayName: "Qwen3 0.6B",
                 huggingFaceRepo: "unsloth/Qwen3-0.6B-GGUF",
                 filename: "Qwen3-0.6B-Q4_K_M.gguf",
-                expectedSizeBytes: 400_000_000, // ~400 MB (verify at download)
+                expectedSizeBytes: 396_705_472, // ~397 MB (HF LFS size)
+                expectedSHA256: "ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a",
                 quantization: "Q4_K_M",
                 contextSize: 8192,
                 minimumRAMGB: 6,
@@ -108,7 +120,8 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 displayName: "Ministral 3 3B",
                 huggingFaceRepo: "mistralai/Ministral-3-3B-Instruct-2512-GGUF",
                 filename: "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf",
-                expectedSizeBytes: 2_150_000_000, // ~2.15 GB
+                expectedSizeBytes: 2_147_023_008, // ~2.15 GB (HF LFS size)
+                expectedSHA256: "9ed150d4367e68df0ac8e1540f6ddc65b42d0ee26378329d1ecbca60f93fc5f8",
                 quantization: "Q4_K_M",
                 contextSize: 4096,
                 minimumRAMGB: 8,
@@ -420,23 +433,34 @@ public actor OnDeviceLLMModelManager {
                 try FileManager.default.removeItem(at: modelPath)
             }
             try FileManager.default.moveItem(at: tempURL, to: modelPath)
-
-            // Verify size
-            let actualSize = modelSizeBytes()
-            let expectedSize = config.expectedSizeBytes
-            let tolerance: Int64 = 100_000_000 // 100MB tolerance for compression variations
-
-            if abs(actualSize - expectedSize) > tolerance {
-                logger.warning("Model size mismatch: expected \(expectedSize), got \(actualSize)")
-            }
-
-            state = .available
-            logger.info("Model \(config.displayName) downloaded successfully (\(self.modelSizeMB()) MB)")
-
         } catch {
             state = .error("Failed to save model: \(error.localizedDescription)")
             throw OnDeviceLLMModelError.downloadFailed(error.localizedDescription)
         }
+
+        // Verify size. This is a cheap sanity check only; the SHA256 below is the
+        // real gate, so a size mismatch is logged rather than fatal.
+        let actualSize = modelSizeBytes()
+        let expectedSize = config.expectedSizeBytes
+        let tolerance: Int64 = 100_000_000 // 100MB tolerance for compression variations
+
+        if abs(actualSize - expectedSize) > tolerance {
+            logger.warning("Model size mismatch: expected \(expectedSize), got \(actualSize)")
+        }
+
+        // Verify cryptographic integrity before the file is ever considered usable.
+        // verifyFile deletes the file on mismatch so a bad GGUF is never left on
+        // disk for a later launch to pick up as "available".
+        do {
+            try Self.verifyFile(at: modelPath, expectedSHA256: config.expectedSHA256)
+        } catch let error as OnDeviceLLMModelError {
+            logger.error("Integrity check failed for \(config.displayName): \(error.localizedDescription)")
+            state = .error(error.errorDescription ?? "Model integrity check failed")
+            throw error
+        }
+
+        state = .available
+        logger.info("Model \(config.displayName) verified and downloaded successfully (\(self.modelSizeMB()) MB)")
     }
 
     /// Cancel ongoing download
@@ -487,6 +511,57 @@ public actor OnDeviceLLMModelManager {
         }
     }
 
+    // MARK: - Integrity Verification
+
+    /// Bytes hashed per read. Model files reach 3.11 GB, so the file is streamed
+    /// through the digest in fixed-size chunks and never held in memory at once.
+    static let hashChunkSize = 1 << 20 // 1 MiB
+
+    /// Compute the SHA256 of a file by streaming it in `hashChunkSize` chunks.
+    ///
+    /// Memory use stays flat at one chunk regardless of file size, which matters
+    /// because the largest model is 3.11 GB and loading it whole would blow the
+    /// app's memory budget on the very devices that need the on-device path.
+    ///
+    /// - Returns: The digest as lowercase hex.
+    public static func sha256Hex(ofFileAt url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        while true {
+            let chunk = try handle.read(upToCount: hashChunkSize)
+            guard let chunk, !chunk.isEmpty else { break }
+            hasher.update(data: chunk)
+        }
+
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Verify a downloaded model file against its expected SHA256.
+    ///
+    /// On mismatch the file is deleted before throwing, so a corrupted or
+    /// substituted GGUF is never left on disk where a later launch could treat its
+    /// mere presence as "model available" and hand it to llama.cpp.
+    ///
+    /// - Throws: `OnDeviceLLMModelError.hashMismatch` if the digest differs,
+    ///   `OnDeviceLLMModelError.verificationFailed` if the file cannot be read.
+    public static func verifyFile(at url: URL, expectedSHA256: String) throws {
+        let actual: String
+        do {
+            actual = try sha256Hex(ofFileAt: url)
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw OnDeviceLLMModelError.verificationFailed(error.localizedDescription)
+        }
+
+        let expected = expectedSHA256.lowercased()
+        guard actual == expected else {
+            try? FileManager.default.removeItem(at: url)
+            throw OnDeviceLLMModelError.hashMismatch(expected: expected, actual: actual)
+        }
+    }
+
     // MARK: - Private Helpers
 
     private func checkModelAvailability() {
@@ -513,6 +588,10 @@ public enum OnDeviceLLMModelError: Error, LocalizedError {
     case insufficientStorage
     case insufficientRAM
     case networkUnavailable
+    /// The downloaded file did not hash to the expected SHA256. The file has been deleted.
+    case hashMismatch(expected: String, actual: String)
+    /// The downloaded file could not be read to compute its hash. The file has been deleted.
+    case verificationFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -528,6 +607,10 @@ public enum OnDeviceLLMModelError: Error, LocalizedError {
             return "This device does not have enough RAM to run the on-device LLM. A minimum of 4 GB is required."
         case .networkUnavailable:
             return "Network connection is required to download the model."
+        case .hashMismatch(let expected, let actual):
+            return "Model integrity check failed. The download was corrupted or tampered with and has been deleted. Please try again. (expected \(expected.prefix(12)), got \(actual.prefix(12)))"
+        case .verificationFailed(let reason):
+            return "Could not verify the downloaded model, so it was deleted. Please try again. (\(reason))"
         }
     }
 }

@@ -36,7 +36,7 @@ public struct LLMEndpoint: Identifiable, Codable, Sendable {
 
     // MARK: - Identity
 
-    /// Unique identifier for this endpoint (e.g., "gpt-4o", "llama-3b-device")
+    /// Unique identifier for this endpoint (e.g., "gpt-4o", "on-device-llm")
     public let id: String
 
     /// Human-readable display name (e.g., "GPT-4o (OpenAI)")
@@ -475,49 +475,30 @@ extension LLMEndpoint {
             status: .unavailable  // Needs to be configured
         ),
 
-        // MARK: On-Device Endpoints
+        // MARK: On-Device Endpoint
 
-        "llama-3b-device": LLMEndpoint(
-            id: "llama-3b-device",
-            displayName: "Llama 3.2 3B (On-Device)",
+        /// The single on-device LLM, served by `OnDeviceLLMService` on llama.cpp.
+        ///
+        /// There is exactly one on-device entry because the device runs exactly one
+        /// model: `OnDeviceLLMModelManager` picks the GGUF for the device's RAM tier
+        /// (Gemma 4 E2B, Qwen3-1.7B, or Qwen3-0.6B) and downloads only that one. The
+        /// concrete file path is therefore resolved at runtime rather than declared
+        /// here, so this entry carries no `connectionConfig`.
+        "on-device-llm": LLMEndpoint(
+            id: "on-device-llm",
+            displayName: "On-Device LLM (llama.cpp)",
             provider: .onDevice,
             location: .onDevice,
-            maxContextTokens: 4_096,
+            maxContextTokens: 8_192,
             maxOutputTokens: 512,
             supportsStreaming: true,
             supportsSystemPrompt: true,
             supportsFunctionCalling: false,
             expectedTTFTMs: 200,
-            expectedTokensPerSec: 15,
+            expectedTokensPerSec: 20,
             reliabilityScore: 0.95,
             costPerInputToken: 0,
             costPerOutputToken: 0,
-            connectionConfig: .onDeviceConfig(
-                modelPath: "llama-3.2-3b.mlmodelc",
-                computeUnits: .cpuAndNeuralEngine
-            ),
-            status: .unavailable  // Needs model to be downloaded
-        ),
-
-        "llama-1b-device": LLMEndpoint(
-            id: "llama-1b-device",
-            displayName: "Llama 3.2 1B (On-Device)",
-            provider: .onDevice,
-            location: .onDevice,
-            maxContextTokens: 4_096,
-            maxOutputTokens: 512,
-            supportsStreaming: true,
-            supportsSystemPrompt: true,
-            supportsFunctionCalling: false,
-            expectedTTFTMs: 100,
-            expectedTokensPerSec: 30,
-            reliabilityScore: 0.95,
-            costPerInputToken: 0,
-            costPerOutputToken: 0,
-            connectionConfig: .onDeviceConfig(
-                modelPath: "llama-3.2-1b.mlmodelc",
-                computeUnits: .cpuAndNeuralEngine
-            ),
             status: .unavailable  // Needs model to be downloaded
         )
     ]

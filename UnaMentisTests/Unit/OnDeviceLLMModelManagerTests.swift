@@ -5,6 +5,7 @@
 //  Unit tests for OnDeviceLLMModelManager
 //
 
+import CryptoKit
 import XCTest
 @testable import UnaMentis
 
@@ -39,8 +40,8 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
     func testModelConfigExpectedSizeMB() {
         let config = OnDeviceLLMModel.ministral3_3B.config
 
-        // ~2.15 GB = ~2150 MB
-        XCTAssertEqual(config.expectedSizeMB, 2150)
+        // Exact Hugging Face LFS size, 2_147_023_008 bytes = 2147 MB
+        XCTAssertEqual(config.expectedSizeMB, 2147)
     }
 
     // MARK: - Model State Tests
@@ -356,5 +357,140 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
 
     func testModelRawValues() {
         XCTAssertEqual(OnDeviceLLMModel.ministral3_3B.rawValue, "ministral-3-3b")
+    }
+
+    // MARK: - SHA256 Integrity Verification
+
+    /// Write `data` to a unique temporary file and register its cleanup.
+    private func makeTempFile(containing data: Data) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sha256-test-\(UUID().uuidString)")
+        try data.write(to: url)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: url)
+        }
+        return url
+    }
+
+    func testSHA256OfKnownContent() throws {
+        // Well-known vector: SHA256("hello world")
+        let url = try makeTempFile(containing: Data("hello world".utf8))
+
+        let digest = try OnDeviceLLMModelManager.sha256Hex(ofFileAt: url)
+
+        XCTAssertEqual(digest, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
+    }
+
+    func testSHA256OfEmptyFile() throws {
+        let url = try makeTempFile(containing: Data())
+
+        let digest = try OnDeviceLLMModelManager.sha256Hex(ofFileAt: url)
+
+        XCTAssertEqual(digest, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    }
+
+    /// The real models reach 3.11 GB and are hashed a chunk at a time. This proves
+    /// the chunked read produces the same digest as hashing the bytes in one shot,
+    /// including when the length is not a multiple of the chunk size.
+    func testSHA256SpansMultipleChunksAndMatchesOneShot() throws {
+        let length = OnDeviceLLMModelManager.hashChunkSize * 3 + 7
+        var bytes = Data(count: length)
+        for index in 0..<length {
+            bytes[index] = UInt8(index % 251)
+        }
+        let url = try makeTempFile(containing: bytes)
+
+        let streamed = try OnDeviceLLMModelManager.sha256Hex(ofFileAt: url)
+        let oneShot = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+
+        XCTAssertEqual(streamed, oneShot, "Chunked hashing must equal one-shot hashing")
+    }
+
+    func testSHA256ThrowsForMissingFile() {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("does-not-exist-\(UUID().uuidString)")
+
+        XCTAssertThrowsError(try OnDeviceLLMModelManager.sha256Hex(ofFileAt: missing))
+    }
+
+    func testVerifyFileSucceedsAndKeepsFileOnMatch() throws {
+        let url = try makeTempFile(containing: Data("hello world".utf8))
+        let expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+
+        XCTAssertNoThrow(try OnDeviceLLMModelManager.verifyFile(at: url, expectedSHA256: expected))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: url.path),
+            "A file that passes verification must be left in place"
+        )
+    }
+
+    func testVerifyFileAcceptsUppercaseExpectedHash() throws {
+        let url = try makeTempFile(containing: Data("hello world".utf8))
+        let expected = "B94D27B9934D3E08A52E52D7DA7DABFAC484EFE37A5380EE9088F7ACE2EFCDE9"
+
+        XCTAssertNoThrow(try OnDeviceLLMModelManager.verifyFile(at: url, expectedSHA256: expected))
+    }
+
+    func testVerifyFileDeletesFileAndThrowsOnMismatch() throws {
+        let url = try makeTempFile(containing: Data("hello world".utf8))
+        // Correct-shaped but wrong digest, as a corrupted or substituted download would be.
+        let wrong = String(repeating: "a", count: 64)
+
+        XCTAssertThrowsError(try OnDeviceLLMModelManager.verifyFile(at: url, expectedSHA256: wrong)) { error in
+            guard case OnDeviceLLMModelError.hashMismatch(let expected, let actual) = error else {
+                return XCTFail("Expected hashMismatch, got \(error)")
+            }
+            XCTAssertEqual(expected, wrong)
+            XCTAssertEqual(actual, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
+        }
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: url.path),
+            "A file that fails verification must be deleted so it can never be loaded"
+        )
+    }
+
+    func testVerifyFileThrowsVerificationFailedForUnreadableFile() {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("unreadable-\(UUID().uuidString)")
+
+        XCTAssertThrowsError(
+            try OnDeviceLLMModelManager.verifyFile(at: missing, expectedSHA256: String(repeating: "0", count: 64))
+        ) { error in
+            guard case OnDeviceLLMModelError.verificationFailed = error else {
+                return XCTFail("Expected verificationFailed, got \(error)")
+            }
+        }
+    }
+
+    /// Every catalog entry must carry a real, well-formed SHA256 taken from the
+    /// Hugging Face LFS metadata. A blank or malformed value would silently disable
+    /// the integrity gate for that model.
+    func testEveryModelDeclaresAWellFormedSHA256() {
+        var seen = Set<String>()
+        for model in OnDeviceLLMModel.allCases {
+            let hash = model.config.expectedSHA256
+            XCTAssertEqual(hash.count, 64, "\(model.rawValue) SHA256 must be 64 hex characters")
+            XCTAssertEqual(hash, hash.lowercased(), "\(model.rawValue) SHA256 must be lowercase")
+            XCTAssertTrue(
+                hash.allSatisfy { $0.isHexDigit },
+                "\(model.rawValue) SHA256 must be hex"
+            )
+            XCTAssertTrue(seen.insert(hash).inserted, "\(model.rawValue) SHA256 must be unique")
+        }
+    }
+
+    func testIntegrityErrorDescriptions() {
+        let mismatch = OnDeviceLLMModelError.hashMismatch(
+            expected: String(repeating: "a", count: 64),
+            actual: String(repeating: "b", count: 64)
+        )
+        let mismatchText = try? XCTUnwrap(mismatch.errorDescription)
+        XCTAssertTrue(mismatchText?.contains("integrity") == true)
+        XCTAssertTrue(mismatchText?.contains("deleted") == true)
+
+        let failed = OnDeviceLLMModelError.verificationFailed("disk error")
+        let failedText = try? XCTUnwrap(failed.errorDescription)
+        XCTAssertTrue(failedText?.contains("disk error") == true)
     }
 }
