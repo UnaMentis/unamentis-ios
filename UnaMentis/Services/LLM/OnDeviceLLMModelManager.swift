@@ -3,6 +3,7 @@
 //
 // Part of Services/LLM
 
+import CryptoKit
 import Foundation
 import OSLog
 
@@ -20,6 +21,20 @@ public struct OnDeviceLLMModelConfig: Sendable {
     let filename: String
     /// Expected file size in bytes
     let expectedSizeBytes: Int64
+    /// Expected SHA256 of the downloaded file, lowercase hex.
+    ///
+    /// Sourced from the Hugging Face LFS metadata for the pinned `revision`
+    /// (`GET /api/models/<repo>/tree/<revision>?recursive=true`, the `lfs.oid`
+    /// field, which is the SHA256 of the file contents). The download is rejected
+    /// unless the file hashes to this value, so a corrupted transfer or a
+    /// substituted file is never committed to the model path llama.cpp loads.
+    let expectedSHA256: String
+    /// Pinned Hugging Face revision (repo commit SHA) the hash and size describe.
+    ///
+    /// The download URL resolves this revision, not `main`, so an upstream
+    /// force-push can never make every download fail its hash check after the
+    /// full multi-gigabyte transfer. Bump revision, size, and hash together.
+    let revision: String
     /// Quantization type
     let quantization: String
     /// Context window size
@@ -29,9 +44,18 @@ public struct OnDeviceLLMModelConfig: Sendable {
     /// Description for users
     let description: String
 
-    /// Direct download URL from Hugging Face CDN
+    /// Direct download URL from Hugging Face CDN, pinned to `revision`
     var downloadURL: URL {
-        URL(string: "https://huggingface.co/\(huggingFaceRepo)/resolve/main/\(filename)")!
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "huggingface.co"
+        components.path = "/\(huggingFaceRepo)/resolve/\(revision)/\(filename)"
+        guard let url = components.url else {
+            // Catalog entries are compile-time constants whose shape is
+            // asserted by tests; a nil here means a malformed entry.
+            preconditionFailure("Malformed model download URL for \(id)")
+        }
+        return url
     }
 
     /// Expected size in MB for display
@@ -72,7 +96,9 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 displayName: "Gemma 4 E2B",
                 huggingFaceRepo: "unsloth/gemma-4-E2B-it-GGUF",
                 filename: "gemma-4-E2B-it-Q4_K_M.gguf",
-                expectedSizeBytes: 3_106_736_256, // 3.11 GB (validated against the live HF link; Per-Layer Embeddings load ~5.1B weights)
+                expectedSizeBytes: 3_106_738_272, // 3.11 GB (HF LFS size; Per-Layer Embeddings load ~5.1B weights)
+                expectedSHA256: "740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8",
+                revision: "0314792d7f1f7e229411f620751375812bb9faf2",
                 quantization: "Q4_K_M",
                 contextSize: 8192,
                 minimumRAMGB: 12,
@@ -84,7 +110,9 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 displayName: "Qwen3 1.7B",
                 huggingFaceRepo: "unsloth/Qwen3-1.7B-GGUF",
                 filename: "Qwen3-1.7B-Q4_K_M.gguf",
-                expectedSizeBytes: 1_050_000_000, // ~1.05 GB (verify at download)
+                expectedSizeBytes: 1_107_409_472, // ~1.11 GB (HF LFS size)
+                expectedSHA256: "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897",
+                revision: "d7f544eead698dbd1f15126ef60b45a1e1933222",
                 quantization: "Q4_K_M",
                 contextSize: 8192,
                 minimumRAMGB: 8,
@@ -96,7 +124,9 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 displayName: "Qwen3 0.6B",
                 huggingFaceRepo: "unsloth/Qwen3-0.6B-GGUF",
                 filename: "Qwen3-0.6B-Q4_K_M.gguf",
-                expectedSizeBytes: 400_000_000, // ~400 MB (verify at download)
+                expectedSizeBytes: 396_705_472, // ~397 MB (HF LFS size)
+                expectedSHA256: "ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a",
+                revision: "50968a4468ef4233ed78cd7c3de230dd1d61a56b",
                 quantization: "Q4_K_M",
                 contextSize: 8192,
                 minimumRAMGB: 6,
@@ -108,7 +138,9 @@ public enum OnDeviceLLMModel: String, CaseIterable, Sendable {
                 displayName: "Ministral 3 3B",
                 huggingFaceRepo: "mistralai/Ministral-3-3B-Instruct-2512-GGUF",
                 filename: "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf",
-                expectedSizeBytes: 2_150_000_000, // ~2.15 GB
+                expectedSizeBytes: 2_147_023_008, // ~2.15 GB (HF LFS size)
+                expectedSHA256: "9ed150d4367e68df0ac8e1540f6ddc65b42d0ee26378329d1ecbca60f93fc5f8",
+                revision: "eb599d408350ea2bb60452cb86be7c7b2fc28227",
                 quantization: "Q4_K_M",
                 contextSize: 4096,
                 minimumRAMGB: 8,
@@ -249,8 +281,29 @@ public actor OnDeviceLLMModelManager {
 
     // MARK: - Download State
 
+    /// Hands out its continuation exactly once, no matter how the URLSession
+    /// completion handler and cancelDownload() race. Resuming a checked
+    /// continuation twice is a fatal error, and the two resume sites run on
+    /// different executors, so take-once semantics need a lock, not actor state.
+    private final class DownloadContinuationBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<URL, Error>?
+
+        init(_ continuation: CheckedContinuation<URL, Error>) {
+            self.continuation = continuation
+        }
+
+        func take() -> CheckedContinuation<URL, Error>? {
+            lock.lock()
+            defer { lock.unlock() }
+            let taken = continuation
+            continuation = nil
+            return taken
+        }
+    }
+
     private var downloadTask: URLSessionDownloadTask?
-    private var downloadContinuation: CheckedContinuation<URL, Error>?
+    private var downloadContinuationBox: DownloadContinuationBox?
     private var progressObservation: NSKeyValueObservation?
 
     // MARK: - Model Paths
@@ -261,9 +314,25 @@ public actor OnDeviceLLMModelManager {
         return documentsPath.appendingPathComponent("models/LLM", isDirectory: true)
     }
 
-    /// Path to the current model file
+    /// Path to the current model file. A file exists here only after it passed
+    /// hash verification: downloads land at `stagingModelPath` and are renamed
+    /// in as the final commit step, so presence implies verified.
     public var modelPath: URL {
         modelDirectory.appendingPathComponent(selectedModel.config.filename)
+    }
+
+    /// Staging path holding a downloaded file until its hash is verified. If the
+    /// app dies mid-verification, the file is here, not at `modelPath`, so it can
+    /// never be mistaken for an available model on the next launch.
+    var stagingModelPath: URL {
+        modelDirectory.appendingPathComponent(selectedModel.config.filename + ".unverified")
+    }
+
+    /// Sidecar recording the verified SHA256 of the file at `modelPath`. Lets a
+    /// later launch (or a pin bump to a new model revision) know whether the
+    /// on-disk file still matches the expected hash without re-reading gigabytes.
+    var verifiedSidecarPath: URL {
+        modelDirectory.appendingPathComponent(selectedModel.config.filename + ".sha256")
     }
 
     /// Path as string for llama.cpp
@@ -338,10 +407,19 @@ public actor OnDeviceLLMModelManager {
     }
 
     /// Ensure model is available (download if needed)
+    ///
+    /// A file already on disk is not trusted on presence alone: installs that
+    /// predate hash pinning, or a pin bump to a new model revision, leave files
+    /// the download-time gate never saw. The verified sidecar makes the repeat
+    /// check cheap; a full hash runs only when the sidecar is missing or stale,
+    /// and a file that fails its pin is deleted and re-downloaded.
     public func ensureModelAvailable() async throws {
         if isModelAvailable() {
-            state = .available
-            return
+            if try await verifyExistingModelIfNeeded() {
+                state = .available
+                return
+            }
+            // The existing file failed its pin and was deleted; fall through.
         }
 
         try await downloadModel()
@@ -368,88 +446,216 @@ public actor OnDeviceLLMModelManager {
         sessionConfig.timeoutIntervalForResource = 3600 // 1 hour for large file
         let session = URLSession(configuration: sessionConfig)
 
-        // Download file
-        let tempURL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-            self.downloadContinuation = continuation
+        // Download to the staging path. The URLSession temp file must be moved
+        // before the completion handler returns (the system may delete it after),
+        // so the handler stages it synchronously and the actor only ever works
+        // with the staged file.
+        let stagingURL = stagingModelPath
+        do {
+            _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+                let box = DownloadContinuationBox(continuation)
+                self.downloadContinuationBox = box
 
-            let task = session.downloadTask(with: config.downloadURL) { tempURL, response, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
+                let task = session.downloadTask(with: config.downloadURL) { tempURL, response, error in
+                    // take() returns nil when cancelDownload already resumed;
+                    // resuming twice would crash.
+                    guard let continuation = box.take() else { return }
+
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+
+                    guard let httpResponse = response as? HTTPURLResponse,
+                          (200...299).contains(httpResponse.statusCode) else {
+                        continuation.resume(throwing: OnDeviceLLMModelError.downloadFailed("Invalid response"))
+                        return
+                    }
+
+                    guard let tempURL = tempURL else {
+                        continuation.resume(throwing: OnDeviceLLMModelError.downloadFailed("No file returned"))
+                        return
+                    }
+
+                    do {
+                        if FileManager.default.fileExists(atPath: stagingURL.path) {
+                            try FileManager.default.removeItem(at: stagingURL)
+                        }
+                        try FileManager.default.moveItem(at: tempURL, to: stagingURL)
+                        continuation.resume(returning: stagingURL)
+                    } catch {
+                        continuation.resume(throwing: OnDeviceLLMModelError.downloadFailed(
+                            "Could not stage downloaded file: \(error.localizedDescription)"
+                        ))
+                    }
                 }
 
-                guard let httpResponse = response as? HTTPURLResponse,
-                      (200...299).contains(httpResponse.statusCode) else {
-                    continuation.resume(throwing: OnDeviceLLMModelError.downloadFailed("Invalid response"))
-                    return
+                self.downloadTask = task
+
+                // Observe progress
+                self.progressObservation = task.progress.observe(\.fractionCompleted) { [weak self] progress, _ in
+                    Task { [weak self] in
+                        await self?.updateDownloadProgress(Float(progress.fractionCompleted))
+                    }
                 }
 
-                guard let tempURL = tempURL else {
-                    continuation.resume(throwing: OnDeviceLLMModelError.downloadFailed("No file returned"))
-                    return
-                }
-
-                continuation.resume(returning: tempURL)
+                task.resume()
             }
-
-            self.downloadTask = task
-
-            // Observe progress
-            self.progressObservation = task.progress.observe(\.fractionCompleted) { [weak self] progress, _ in
-                Task { [weak self] in
-                    await self?.updateDownloadProgress(Float(progress.fractionCompleted))
-                }
+        } catch {
+            cleanUpDownloadBookkeeping()
+            if error is CancellationError {
+                // cancelDownload already set the state; do not overwrite it.
+                throw error
             }
-
-            task.resume()
+            state = .error("Download failed: \(error.localizedDescription)")
+            throw error
         }
 
-        // Clean up observation
+        cleanUpDownloadBookkeeping()
+        try await verifyAndCommit(stagingURL: stagingURL, config: config)
+    }
+
+    /// Invalidate progress observation and drop download bookkeeping on every
+    /// exit path, success or failure, so no continuation dangles and no stale
+    /// observation fires into the next download.
+    private func cleanUpDownloadBookkeeping() {
         progressObservation?.invalidate()
         progressObservation = nil
         downloadTask = nil
-        downloadContinuation = nil
+        downloadContinuationBox = nil
+    }
 
-        // Verify and move file
+    /// Verify the staged file and commit it to `modelPath`.
+    ///
+    /// The staged file only reaches `modelPath` after passing an exact size check
+    /// and the SHA256 gate, so presence at `modelPath` implies verified even if
+    /// the app dies mid-verification. On any failure the staged file is deleted
+    /// and the error state is set.
+    private func verifyAndCommit(stagingURL: URL, config: OnDeviceLLMModelConfig) async throws {
         state = .verifying
         logger.info("Download complete, verifying file...")
 
+        // Exact size fast-fail: expectedSizeBytes is the exact LFS size for the
+        // pinned revision, so any difference already means the hash cannot match.
+        // Rejecting here avoids hashing gigabytes of a truncated transfer.
+        let stagedSize = (try? FileManager.default.attributesOfItem(atPath: stagingURL.path)[.size] as? Int64) ?? 0
+        guard stagedSize == config.expectedSizeBytes else {
+            try? FileManager.default.removeItem(at: stagingURL)
+            let message = "Downloaded size \(stagedSize) does not match expected \(config.expectedSizeBytes)"
+            logger.error("\(message)")
+            state = .error("Model download was incomplete or corrupted. Please try again.")
+            throw OnDeviceLLMModelError.verificationFailed(message)
+        }
+
         do {
-            // Move to final location
+            try await Self.verifyFile(at: stagingURL, expectedSHA256: config.expectedSHA256)
+
+            // Commit: the file appears at modelPath only after verification.
             if FileManager.default.fileExists(atPath: modelPath.path) {
                 try FileManager.default.removeItem(at: modelPath)
             }
-            try FileManager.default.moveItem(at: tempURL, to: modelPath)
-
-            // Verify size
-            let actualSize = modelSizeBytes()
-            let expectedSize = config.expectedSizeBytes
-            let tolerance: Int64 = 100_000_000 // 100MB tolerance for compression variations
-
-            if abs(actualSize - expectedSize) > tolerance {
-                logger.warning("Model size mismatch: expected \(expectedSize), got \(actualSize)")
-            }
-
-            state = .available
-            logger.info("Model \(config.displayName) downloaded successfully (\(self.modelSizeMB()) MB)")
-
+            try FileManager.default.moveItem(at: stagingURL, to: modelPath)
+            writeVerifiedSidecar(expectedSHA256: config.expectedSHA256)
         } catch {
-            state = .error("Failed to save model: \(error.localizedDescription)")
-            throw OnDeviceLLMModelError.downloadFailed(error.localizedDescription)
+            try? FileManager.default.removeItem(at: stagingURL)
+            logger.error("Integrity check failed for \(config.displayName): \(error.localizedDescription)")
+            state = .error((error as? OnDeviceLLMModelError)?.errorDescription
+                ?? "Model integrity check failed. Please try again.")
+            throw error
         }
+
+        state = .available
+        logger.info("Model \(config.displayName) verified and downloaded successfully (\(stagedSize / 1_000_000) MB)")
+    }
+
+    /// Check an already-downloaded file against the current pin, cheaply when the
+    /// verified sidecar matches, with a full hash otherwise.
+    /// - Returns: true when the file at `modelPath` is verified. false when it
+    ///   failed the pin and was deleted so the caller can re-download.
+    private func verifyExistingModelIfNeeded() async throws -> Bool {
+        let expected = selectedModel.config.expectedSHA256.lowercased()
+
+        if sidecarMatchesCurrentFile(expected: expected) {
+            return true
+        }
+
+        logger.info("Existing model has no matching verification record; hashing it against the pin")
+        state = .verifying
+        let actual: String
+        do {
+            actual = try await Self.sha256Hex(ofFileAt: modelPath)
+        } catch {
+            // A terminal state here matters: .verifying is treated as
+            // transient and would stick in the UI forever if hashing fails.
+            state = .error("Could not verify the on-device model. Please try again.")
+            throw error
+        }
+        if actual == expected {
+            writeVerifiedSidecar(expectedSHA256: expected)
+            return true
+        }
+
+        logger.warning("Existing model failed its hash pin (expected \(expected.prefix(12)), got \(actual.prefix(12))); deleting for re-download")
+        try? FileManager.default.removeItem(at: modelPath)
+        try? FileManager.default.removeItem(at: verifiedSidecarPath)
+        state = .notDownloaded
+        return false
+    }
+
+    // MARK: - Verified Sidecar
+
+    /// What the verified sidecar records: the digest plus the identity of the
+    /// file it was computed against, so the fast path can detect a file that
+    /// changed after verification without re-reading gigabytes.
+    private struct VerifiedModelSidecar: Codable {
+        let sha256: String
+        let sizeBytes: Int64
+        let modifiedAt: Date
+    }
+
+    private func fileIdentity(at url: URL) -> (size: Int64, modified: Date)? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int64,
+              let modified = attrs[.modificationDate] as? Date else { return nil }
+        return (size, modified)
+    }
+
+    private func writeVerifiedSidecar(expectedSHA256: String) {
+        guard let identity = fileIdentity(at: modelPath) else { return }
+        let sidecar = VerifiedModelSidecar(
+            sha256: expectedSHA256.lowercased(),
+            sizeBytes: identity.size,
+            modifiedAt: identity.modified
+        )
+        if let data = try? JSONEncoder().encode(sidecar) {
+            try? data.write(to: verifiedSidecarPath, options: .atomic)
+        }
+    }
+
+    /// True when the sidecar records the expected pin AND still describes the
+    /// file currently at modelPath (size and modification date unchanged).
+    private func sidecarMatchesCurrentFile(expected: String) -> Bool {
+        guard let data = try? Data(contentsOf: verifiedSidecarPath),
+              let sidecar = try? JSONDecoder().decode(VerifiedModelSidecar.self, from: data),
+              sidecar.sha256 == expected,
+              let identity = fileIdentity(at: modelPath),
+              identity.size == sidecar.sizeBytes,
+              abs(identity.modified.timeIntervalSince(sidecar.modifiedAt)) < 1.0 else {
+            return false
+        }
+        return true
     }
 
     /// Cancel ongoing download
     public func cancelDownload() {
         downloadTask?.cancel()
-        downloadTask = nil
-        progressObservation?.invalidate()
-        progressObservation = nil
 
-        if let continuation = downloadContinuation {
+        // take() wins or loses the race with the completion handler atomically;
+        // whichever side gets the continuation is the only one that resumes it.
+        if let continuation = downloadContinuationBox?.take() {
             continuation.resume(throwing: CancellationError())
-            downloadContinuation = nil
         }
+        cleanUpDownloadBookkeeping()
 
         state = .notDownloaded
         logger.info("Download cancelled")
@@ -465,6 +671,8 @@ public actor OnDeviceLLMModelManager {
 
         do {
             try FileManager.default.removeItem(at: modelPath)
+            try? FileManager.default.removeItem(at: verifiedSidecarPath)
+            try? FileManager.default.removeItem(at: stagingModelPath)
             state = .notDownloaded
             logger.info("Model deleted successfully")
         } catch {
@@ -487,9 +695,88 @@ public actor OnDeviceLLMModelManager {
         }
     }
 
+    // MARK: - Integrity Verification
+
+    /// Bytes hashed per read. Model files reach 3.11 GB, so the file is streamed
+    /// through the digest in fixed-size chunks and never held in memory at once.
+    static let hashChunkSize = 1 << 20 // 1 MiB
+
+    /// How many chunks to hash between suspension points. 64 chunks is 64 MiB,
+    /// roughly tens of milliseconds of work per slice on device.
+    static let hashYieldStride = 64
+
+    /// Compute the SHA256 of a file by streaming it in `hashChunkSize` chunks.
+    ///
+    /// Memory use stays flat at one chunk regardless of file size, which matters
+    /// because the largest model is 3.11 GB and loading it whole would blow the
+    /// app's memory budget on the very devices that need the on-device path.
+    ///
+    /// Async with a yield every `hashYieldStride` chunks: hashing 3.11 GB takes
+    /// seconds, and an unbroken synchronous loop would hold whatever executor it
+    /// runs on (and, when called from the actor, the actor itself) the whole
+    /// time. The yields honor the cooperative pool's forward-progress contract
+    /// and let other work interleave.
+    ///
+    /// - Returns: The digest as lowercase hex.
+    public static func sha256Hex(ofFileAt url: URL) async throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        var chunksSinceYield = 0
+        while true {
+            // Stop promptly when the surrounding task is cancelled instead of
+            // hashing the rest of a multi-gigabyte file (Task.yield alone does
+            // not observe cancellation).
+            try Task.checkCancellation()
+            let chunk = try handle.read(upToCount: hashChunkSize)
+            guard let chunk, !chunk.isEmpty else { break }
+            hasher.update(data: chunk)
+            chunksSinceYield += 1
+            if chunksSinceYield >= Self.hashYieldStride {
+                chunksSinceYield = 0
+                await Task.yield()
+            }
+        }
+
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Verify a downloaded model file against its expected SHA256.
+    ///
+    /// On mismatch the file is deleted before throwing, so a corrupted or
+    /// substituted GGUF is never left on disk where a later launch could treat its
+    /// mere presence as "model available" and hand it to llama.cpp.
+    ///
+    /// - Throws: `OnDeviceLLMModelError.hashMismatch` if the digest differs,
+    ///   `OnDeviceLLMModelError.verificationFailed` if the file cannot be read.
+    public static func verifyFile(at url: URL, expectedSHA256: String) async throws {
+        let actual: String
+        do {
+            actual = try await sha256Hex(ofFileAt: url)
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw OnDeviceLLMModelError.verificationFailed(error.localizedDescription)
+        }
+
+        let expected = expectedSHA256.lowercased()
+        guard actual == expected else {
+            try? FileManager.default.removeItem(at: url)
+            throw OnDeviceLLMModelError.hashMismatch(expected: expected, actual: actual)
+        }
+    }
+
     // MARK: - Private Helpers
 
     private func checkModelAvailability() {
+        // A staged file left behind by an app death mid-verification is not a
+        // model; delete the straggler so it cannot linger and confuse storage
+        // accounting. Never verified means never trusted.
+        if FileManager.default.fileExists(atPath: stagingModelPath.path), downloadTask == nil {
+            logger.warning("Removing stale unverified staging file from an interrupted download")
+            try? FileManager.default.removeItem(at: stagingModelPath)
+        }
+
         // Route through refreshStateFromFilesystem so this init-time probe never
         // clobbers a transient/runtime state (.loaded, .loading, .downloading).
         // Setting state directly here raced with markLoaded() and reset a
@@ -499,6 +786,10 @@ public actor OnDeviceLLMModelManager {
     }
 
     private func updateDownloadProgress(_ progress: Float) {
+        // KVO progress ticks are delivered through detached Tasks that can land
+        // after the download finished; a late tick must not overwrite a terminal
+        // state (.verifying, .available, .error) with .downloading.
+        guard case .downloading = state else { return }
         state = .downloading(progress)
     }
 }
@@ -513,6 +804,10 @@ public enum OnDeviceLLMModelError: Error, LocalizedError {
     case insufficientStorage
     case insufficientRAM
     case networkUnavailable
+    /// The downloaded file did not hash to the expected SHA256. The file has been deleted.
+    case hashMismatch(expected: String, actual: String)
+    /// The downloaded file could not be read to compute its hash. The file has been deleted.
+    case verificationFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -528,6 +823,10 @@ public enum OnDeviceLLMModelError: Error, LocalizedError {
             return "This device does not have enough RAM to run the on-device LLM. A minimum of 4 GB is required."
         case .networkUnavailable:
             return "Network connection is required to download the model."
+        case .hashMismatch(let expected, let actual):
+            return "Model integrity check failed. The download was corrupted or tampered with and has been deleted. Please try again. (expected \(expected.prefix(12)), got \(actual.prefix(12)))"
+        case .verificationFailed(let reason):
+            return "Could not verify the downloaded model, so it was deleted. Please try again. (\(reason))"
         }
     }
 }

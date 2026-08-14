@@ -133,9 +133,8 @@ final class LLMEndpointTests: XCTestCase {
         XCTAssertTrue(registry.keys.contains("claude-3.5-sonnet"))
         XCTAssertTrue(registry.keys.contains("claude-3.5-haiku"))
 
-        // Should contain on-device endpoints
-        XCTAssertTrue(registry.keys.contains("llama-3b-device"))
-        XCTAssertTrue(registry.keys.contains("llama-1b-device"))
+        // Should contain the single llama.cpp-backed on-device endpoint
+        XCTAssertTrue(registry.keys.contains("on-device-llm"))
     }
 
     func testDefaultRegistryEndpointProperties() {
@@ -149,13 +148,18 @@ final class LLMEndpointTests: XCTestCase {
         XCTAssertEqual(gpt4o?.maxContextTokens, 128_000)
         XCTAssertTrue(gpt4o?.supportsStreaming ?? false)
 
-        // On-device should have zero cost
-        let llama3b = registry["llama-3b-device"]
-        XCTAssertNotNil(llama3b)
-        XCTAssertEqual(llama3b?.provider, .onDevice)
-        XCTAssertEqual(llama3b?.location, .onDevice)
-        XCTAssertEqual(llama3b?.costPerInputToken, 0)
-        XCTAssertEqual(llama3b?.costPerOutputToken, 0)
+        // On-device should have zero cost, and must not declare a static model file:
+        // OnDeviceLLMModelManager resolves the device's GGUF at runtime.
+        let onDevice = registry["on-device-llm"]
+        XCTAssertNotNil(onDevice)
+        XCTAssertEqual(onDevice?.provider, .onDevice)
+        XCTAssertEqual(onDevice?.location, .onDevice)
+        XCTAssertEqual(onDevice?.costPerInputToken, 0)
+        XCTAssertEqual(onDevice?.costPerOutputToken, 0)
+        // The registry entry must carry no connectionConfig at all: the GGUF is
+        // resolved at runtime by OnDeviceLLMModelManager, and asserting only on
+        // modelPath would pass vacuously through the nil config chain.
+        XCTAssertNil(onDevice?.connectionConfig)
     }
 
     // MARK: - Codable Tests
@@ -199,7 +203,7 @@ final class LLMEndpointTests: XCTestCase {
             apiVersion: "v1",
             serverHost: "localhost",
             serverPort: 11434,
-            modelPath: "/models/test.mlmodelc",
+            modelPath: "/models/test.gguf",
             computeUnits: .cpuAndNeuralEngine
         )
 
@@ -296,11 +300,11 @@ final class EndpointConnectionConfigTests: XCTestCase {
 
     func testOnDeviceConnectionConfig() {
         let config = EndpointConnectionConfig.onDeviceConfig(
-            modelPath: "/models/llama-3b.mlmodelc",
+            modelPath: "/models/test-model.gguf",
             computeUnits: .cpuAndNeuralEngine
         )
 
-        XCTAssertEqual(config.modelPath, "/models/llama-3b.mlmodelc")
+        XCTAssertEqual(config.modelPath, "/models/test-model.gguf")
         XCTAssertEqual(config.computeUnits, .cpuAndNeuralEngine)
         XCTAssertNil(config.apiKeyReference)
         XCTAssertNil(config.serverHost)

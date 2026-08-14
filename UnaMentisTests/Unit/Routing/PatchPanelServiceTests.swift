@@ -41,7 +41,7 @@ final class PatchPanelServiceTests: XCTestCase {
 
     func testRouteUsesDefaultForSimpleTask() async {
         // Mark on-device endpoints as available for this test
-        await patchPanel.setEndpointStatus("llama-1b-device", status: .available)
+        await patchPanel.setEndpointStatus("on-device-llm", status: .available)
 
         let decision = await patchPanel.resolveRouting(
             taskType: .acknowledgment,
@@ -49,7 +49,7 @@ final class PatchPanelServiceTests: XCTestCase {
         )
 
         // Acknowledgment should route to on-device by default
-        XCTAssertEqual(decision.endpointChain.first, "llama-1b-device")
+        XCTAssertEqual(decision.endpointChain.first, "on-device-llm")
         XCTAssertEqual(decision.reason, .defaultRoute)
     }
 
@@ -165,7 +165,7 @@ final class PatchPanelServiceTests: XCTestCase {
 
     func testThermalThrottleDoesNotTriggerOnNominal() async {
         // Mark on-device endpoints as available for this test
-        await patchPanel.setEndpointStatus("llama-1b-device", status: .available)
+        await patchPanel.setEndpointStatus("on-device-llm", status: .available)
 
         let coolContext = RoutingContext(thermalState: .nominal)
 
@@ -175,13 +175,13 @@ final class PatchPanelServiceTests: XCTestCase {
         )
 
         // Should use default on-device route
-        XCTAssertEqual(decision.endpointChain.first, "llama-1b-device")
+        XCTAssertEqual(decision.endpointChain.first, "on-device-llm")
         XCTAssertEqual(decision.reason, .defaultRoute)
     }
 
     func testOfflineModeRuleTriggersWhenNoNetwork() async {
         // Mark on-device endpoints as available for this test
-        await patchPanel.setEndpointStatus("llama-3b-device", status: .available)
+        await patchPanel.setEndpointStatus("on-device-llm", status: .available)
 
         let offlineContext = RoutingContext(networkType: .none)
 
@@ -215,7 +215,7 @@ final class PatchPanelServiceTests: XCTestCase {
 
     func testRulePriorityOrdering() async {
         // Mark on-device endpoints as available for this test
-        await patchPanel.setEndpointStatus("llama-3b-device", status: .available)
+        await patchPanel.setEndpointStatus("on-device-llm", status: .available)
 
         // Create context that matches multiple rules
         let complexContext = RoutingContext(
@@ -257,9 +257,8 @@ final class PatchPanelServiceTests: XCTestCase {
 
     func testFallbackChainUsedWhenDefaultUnavailable() async {
         // Mark all default endpoints for acknowledgment as unavailable
-        // Default chain for acknowledgment is ["llama-1b-device", "llama-3b-device", "gpt-4o-mini"]
-        await patchPanel.setEndpointStatus("llama-1b-device", status: .unavailable)
-        await patchPanel.setEndpointStatus("llama-3b-device", status: .unavailable)
+        // Default chain for acknowledgment is ["on-device-llm", "gpt-4o-mini"]
+        await patchPanel.setEndpointStatus("on-device-llm", status: .unavailable)
         await patchPanel.setEndpointStatus("gpt-4o-mini", status: .unavailable)
 
         let decision = await patchPanel.resolveRouting(
@@ -317,7 +316,7 @@ final class PatchPanelServiceTests: XCTestCase {
     }
 
     func testUnavailableEndpointSkippedInRouting() async {
-        await patchPanel.setEndpointStatus("llama-1b-device", status: .unavailable)
+        await patchPanel.setEndpointStatus("on-device-llm", status: .unavailable)
 
         let decision = await patchPanel.resolveRouting(
             taskType: .acknowledgment,
@@ -325,7 +324,7 @@ final class PatchPanelServiceTests: XCTestCase {
         )
 
         // Unavailable endpoint should not be first choice
-        XCTAssertNotEqual(decision.endpointChain.first, "llama-1b-device")
+        XCTAssertNotEqual(decision.endpointChain.first, "on-device-llm")
     }
 
     // MARK: - Stats Tests
@@ -365,7 +364,7 @@ final class RoutingDecisionTests: XCTestCase {
 
     func testRoutingDecisionCreation() {
         let decision = RoutingDecision(
-            endpointChain: ["gpt-4o", "gpt-4o-mini", "llama-3b-device"],
+            endpointChain: ["gpt-4o", "gpt-4o-mini", "on-device-llm"],
             reason: .defaultRoute
         )
 
@@ -448,7 +447,7 @@ final class RoutingStatsTests: XCTestCase {
     func testRoutingStatsCreation() {
         let stats = RoutingStats(
             totalRequests: 100,
-            byEndpoint: ["gpt-4o": 50, "llama-1b-device": 50],
+            byEndpoint: ["gpt-4o": 50, "on-device-llm": 50],
             byTaskType: [.tutoringResponse: 30, .acknowledgment: 70],
             byReason: ["Default Route": 80, "Auto Rule: Thermal Throttle": 20],
             avgLatencyByEndpoint: ["gpt-4o": 300.0],

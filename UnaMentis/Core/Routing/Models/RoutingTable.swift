@@ -88,28 +88,28 @@ extension RoutingTable {
             .exampleGeneration: ["llama-70b-server", "gpt-4o-mini", "llama-8b-server"],
             .analogyGeneration: ["gpt-4o-mini", "llama-70b-server", "claude-3.5-haiku"],
             .rephrasing: ["llama-8b-server", "gpt-4o-mini", "llama-70b-server"],
-            .simplification: ["llama-8b-server", "gpt-4o-mini", "llama-3b-device"],
+            .simplification: ["llama-8b-server", "gpt-4o-mini", "on-device-llm"],
             .documentSummarization: ["llama-70b-server", "gpt-4o-mini", "claude-3.5-haiku"],
             .transcriptGeneration: ["llama-70b-server", "gpt-4o-mini"],
             .sessionSummary: ["llama-8b-server", "gpt-4o-mini", "llama-70b-server"],
 
             // MARK: Small Tasks - Prefer on-device
 
-            .intentClassification: ["llama-1b-device", "llama-3b-device", "gpt-4o-mini"],
-            .sentimentAnalysis: ["llama-1b-device", "llama-3b-device", "gpt-4o-mini"],
-            .topicClassification: ["llama-1b-device", "llama-3b-device", "gpt-4o-mini"],
-            .glossaryExtraction: ["llama-3b-device", "llama-8b-server", "gpt-4o-mini"],
-            .topicTransition: ["llama-1b-device", "llama-3b-device", "gpt-4o-mini"],
+            .intentClassification: ["on-device-llm", "gpt-4o-mini"],
+            .sentimentAnalysis: ["on-device-llm", "gpt-4o-mini"],
+            .topicClassification: ["on-device-llm", "gpt-4o-mini"],
+            .glossaryExtraction: ["on-device-llm", "llama-8b-server", "gpt-4o-mini"],
+            .topicTransition: ["on-device-llm", "gpt-4o-mini"],
 
             // MARK: Tiny Tasks - On-device only
 
-            .acknowledgment: ["llama-1b-device", "llama-3b-device", "gpt-4o-mini"],
-            .fillerResponse: ["llama-1b-device", "llama-3b-device", "gpt-4o-mini"],
-            .navigationConfirmation: ["llama-1b-device", "llama-3b-device", "gpt-4o-mini"],
+            .acknowledgment: ["on-device-llm", "gpt-4o-mini"],
+            .fillerResponse: ["on-device-llm", "gpt-4o-mini"],
+            .navigationConfirmation: ["on-device-llm", "gpt-4o-mini"],
 
             // MARK: System Tasks
 
-            .healthCheck: ["gpt-4o-mini", "llama-1b-device"],
+            .healthCheck: ["gpt-4o-mini", "on-device-llm"],
             .embeddingGeneration: ["gpt-4o-mini"]  // Uses embedding endpoint
         ],
         manualOverrides: [:],
@@ -142,7 +142,7 @@ extension RoutingTable {
                 priority: 200,  // Higher priority than thermal
                 conditions: [.networkType(.none)],
                 conditionLogic: .all,
-                targetEndpointId: "llama-3b-device",
+                targetEndpointId: "on-device-llm",
                 applyToTaskTypes: nil  // Applies to all tasks
             ),
 
@@ -202,8 +202,7 @@ extension RoutingTable {
         fallbackChain: [
             "gpt-4o-mini",      // Reliable, cheap cloud
             "claude-3.5-haiku", // Alternative cloud
-            "llama-3b-device",  // On-device backup
-            "llama-1b-device"   // Smallest on-device
+            "on-device-llm"     // On-device backup
         ]
     )
 
@@ -223,23 +222,23 @@ extension RoutingTable {
             .explanationGeneration: ["llama-8b-server", "llama-70b-server", "gpt-4o-mini"],
             .exampleGeneration: ["llama-8b-server", "llama-70b-server", "gpt-4o-mini"],
             .analogyGeneration: ["llama-8b-server", "llama-70b-server", "gpt-4o-mini"],
-            .rephrasing: ["llama-8b-server", "llama-3b-device", "gpt-4o-mini"],
-            .simplification: ["llama-8b-server", "llama-3b-device", "gpt-4o-mini"],
+            .rephrasing: ["llama-8b-server", "on-device-llm", "gpt-4o-mini"],
+            .simplification: ["llama-8b-server", "on-device-llm", "gpt-4o-mini"],
             .documentSummarization: ["llama-70b-server", "llama-8b-server", "gpt-4o-mini"],
             .transcriptGeneration: ["llama-70b-server", "llama-8b-server", "gpt-4o-mini"],
-            .sessionSummary: ["llama-8b-server", "llama-3b-device", "gpt-4o-mini"],
+            .sessionSummary: ["llama-8b-server", "on-device-llm", "gpt-4o-mini"],
 
-            .intentClassification: ["llama-3b-device", "llama-1b-device", "llama-8b-server"],
-            .sentimentAnalysis: ["llama-3b-device", "llama-1b-device", "llama-8b-server"],
-            .topicClassification: ["llama-3b-device", "llama-1b-device", "llama-8b-server"],
-            .glossaryExtraction: ["llama-8b-server", "llama-3b-device", "gpt-4o-mini"],
-            .topicTransition: ["llama-3b-device", "llama-1b-device", "llama-8b-server"],
+            .intentClassification: ["on-device-llm", "llama-8b-server"],
+            .sentimentAnalysis: ["on-device-llm", "llama-8b-server"],
+            .topicClassification: ["on-device-llm", "llama-8b-server"],
+            .glossaryExtraction: ["llama-8b-server", "on-device-llm", "gpt-4o-mini"],
+            .topicTransition: ["on-device-llm", "llama-8b-server"],
 
-            .acknowledgment: ["llama-1b-device", "llama-3b-device", "llama-8b-server"],
-            .fillerResponse: ["llama-1b-device", "llama-3b-device", "llama-8b-server"],
-            .navigationConfirmation: ["llama-1b-device", "llama-3b-device", "llama-8b-server"],
+            .acknowledgment: ["on-device-llm", "llama-8b-server"],
+            .fillerResponse: ["on-device-llm", "llama-8b-server"],
+            .navigationConfirmation: ["on-device-llm", "llama-8b-server"],
 
-            .healthCheck: ["llama-1b-device", "llama-8b-server"],
+            .healthCheck: ["on-device-llm", "llama-8b-server"],
             .embeddingGeneration: ["llama-8b-server", "gpt-4o-mini"]
         ],
         manualOverrides: [:],
@@ -247,8 +246,7 @@ extension RoutingTable {
         autoRoutingRules: [],  // No auto-rules - always prefer self-hosted
         fallbackChain: [
             "llama-8b-server",  // Self-hosted first
-            "llama-3b-device",  // On-device
-            "llama-1b-device",  // Smallest on-device
+            "on-device-llm",    // On-device
             "gpt-4o-mini"       // Cloud as last resort
         ]
     )

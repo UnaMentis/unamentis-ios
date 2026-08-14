@@ -42,10 +42,10 @@ final class RoutingTableTests: XCTestCase {
 
         // Simple tasks should prefer on-device
         let ackRoutes = table.defaultRoutes[.acknowledgment]!
-        XCTAssertEqual(ackRoutes.first, "llama-1b-device")
+        XCTAssertEqual(ackRoutes.first, "on-device-llm")
 
         let fillerRoutes = table.defaultRoutes[.fillerResponse]!
-        XCTAssertEqual(fillerRoutes.first, "llama-1b-device")
+        XCTAssertEqual(fillerRoutes.first, "on-device-llm")
     }
 
     func testDefaultRoutesForMediumTasks() {
@@ -149,8 +149,7 @@ final class RoutingTableTests: XCTestCase {
 
         // Should include on-device as last resort
         XCTAssertTrue(
-            table.fallbackChain.contains("llama-1b-device") ||
-            table.fallbackChain.contains("llama-3b-device"),
+            table.fallbackChain.contains("on-device-llm"),
             "Fallback should include on-device endpoint"
         )
     }
@@ -160,7 +159,7 @@ final class RoutingTableTests: XCTestCase {
     func testRoutingTableCodable() throws {
         var table = RoutingTable.default
         table.globalOverride = "test-endpoint"
-        table.manualOverrides[.acknowledgment] = "llama-3b-device"
+        table.manualOverrides[.acknowledgment] = "on-device-llm"
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(table)
@@ -169,7 +168,7 @@ final class RoutingTableTests: XCTestCase {
         let decoded = try decoder.decode(RoutingTable.self, from: data)
 
         XCTAssertEqual(decoded.globalOverride, "test-endpoint")
-        XCTAssertEqual(decoded.manualOverrides[.acknowledgment], "llama-3b-device")
+        XCTAssertEqual(decoded.manualOverrides[.acknowledgment], "on-device-llm")
         XCTAssertFalse(decoded.defaultRoutes.isEmpty)
         XCTAssertFalse(decoded.autoRoutingRules.isEmpty)
         XCTAssertFalse(decoded.fallbackChain.isEmpty)
