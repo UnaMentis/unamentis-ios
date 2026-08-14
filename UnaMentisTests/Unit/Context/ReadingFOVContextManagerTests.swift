@@ -153,10 +153,11 @@ final class ReadingFOVContextManagerTests: XCTestCase {
         XCTAssertEqual(window.followingText, "")
     }
 
-    // MARK: - Section truncation
+    // MARK: - Section budget
 
-    func testBuildContext_truncatesLongPrecedingTextToSuffix() async {
-        // maxSectionCharacters = 50 so preceding text gets clipped to its tail.
+    func testBuildContext_dropsFarPrecedingChunksToFitTheSectionBudget() async {
+        // maxSectionCharacters = 50, so the preceding band gives up whole chunks
+        // from its far edge rather than clipping characters mid-text.
         let smallWindowManager = ReadingFOVContextManager(
             precedingChunkCount: 3,
             followingChunkCount: 1,
@@ -172,15 +173,10 @@ final class ReadingFOVContextManagerTests: XCTestCase {
             title: "Doc"
         )
 
-        XCTAssertEqual(window.precedingText.count, 50, "Preceding text should be clipped to the limit")
-        XCTAssertTrue(window.precedingText.hasSuffix(tail),
-                      "Truncation keeps the most recent (suffix) text")
-        // The full 100-character head cannot survive a 50-character suffix clip, so
-        // the oldest leading text is dropped. (A few of the head's trailing
-        // characters may remain to fill out the 50-char budget, which is correct;
-        // suffix truncation keeps the text closest to the current position.)
-        XCTAssertFalse(window.precedingText.contains(head),
-                       "Oldest leading text should be dropped during truncation")
+        XCTAssertEqual(window.precedingText, tail,
+                       "The chunk nearest the reading position survives whole")
+        XCTAssertFalse(window.precedingText.contains("H"),
+                       "The far chunk is dropped as a unit, not sliced")
     }
 
     // MARK: - fullContext rendering

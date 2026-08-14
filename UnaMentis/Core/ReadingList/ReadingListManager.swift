@@ -180,9 +180,34 @@ public actor ReadingListManager {
                 chunks: specs,
                 persistenceController: persistenceController
             )
+
+            await startSummaryPreGeneration(
+                itemId: itemId,
+                title: item.title ?? "Untitled",
+                chunks: result.chunks,
+                sectionMarkers: result.sectionMarkers
+            )
         }
 
         return item
+    }
+
+    /// Kick off background summary and outline generation for a freshly imported
+    /// document. Fire and forget: it must never block import or playback.
+    @MainActor
+    private func startSummaryPreGeneration(
+        itemId: UUID,
+        title: String,
+        chunks: [TextChunkResult],
+        sectionMarkers: [DocumentSectionMarker]
+    ) async {
+        let specs = chunks.map { PreGenChunkSpec(index: Int32($0.index), text: $0.text) }
+        await ReadingSummaryPreGenerator.shared.preGenerate(
+            itemId: itemId,
+            title: title,
+            chunks: specs,
+            sectionMarkers: sectionMarkers
+        )
     }
 
     /// Import a web article from a URL into the reading list
@@ -279,6 +304,13 @@ public actor ReadingListManager {
                 itemId: itemId,
                 chunks: specs,
                 persistenceController: persistenceController
+            )
+
+            await startSummaryPreGeneration(
+                itemId: itemId,
+                title: item.title ?? "Untitled",
+                chunks: result.chunks,
+                sectionMarkers: result.sectionMarkers
             )
         }
 
@@ -534,12 +566,17 @@ public actor ReadingListManager {
 
     // MARK: - Delete Operations
 
-    /// Delete a reading item and its associated files (document + images)
+    /// Delete a reading item and its associated files (document + images + summaries)
     @MainActor
     public func deleteItem(_ item: ReadingListItem) throws {
         // Delete the document file if it exists
         if let fileURL = item.fileURL {
             try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        // Drop the summary sidecar so deleted documents leave nothing behind
+        if let itemId = item.id {
+            Task { await ReadingSummaryStore.shared.delete(itemId: itemId) }
         }
 
         // Delete associated image files
