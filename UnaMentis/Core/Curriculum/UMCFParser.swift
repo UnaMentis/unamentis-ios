@@ -882,13 +882,19 @@ public struct ReinforcementData: Codable, Sendable {
                   !correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 continue
             }
+            // A blank spokenCorrection must not replace a valid written
+            // correction downstream, so it is normalized to nil here.
+            let spokenCorrection = misconception.spokenCorrection.flatMap { spoken -> String? in
+                let trimmed = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : spoken
+            }
             misconceptions.append(
                 MisconceptionEntry(
                     id: misconception.id.value,
                     misconception: statement,
                     triggerPhrases: misconception.detectionPhrases,
                     correction: correction,
-                    spokenCorrection: misconception.spokenCorrection,
+                    spokenCorrection: spokenCorrection,
                     explanation: misconception.explanation
                 )
             )

@@ -24,13 +24,26 @@ if [ -z "${DEVELOPER_DIR:-}" ]; then
     esac
 fi
 
-# True when at least one iOS simulator runtime is installed. A machine can
-# have Xcode yet no iOS runtimes (the platform is a separate multi-GB
-# download); simulator tests cannot run there at all. The listing is captured
-# into a variable first so no pipeline is involved: grep -q under pipefail can
-# SIGPIPE the producer and report a false negative.
+# True when at least one AVAILABLE iOS simulator runtime is installed. A
+# machine can have Xcode yet no iOS runtimes (the platform is a separate
+# multi-GB download), and a runtime can be listed yet unavailable; simulator
+# tests cannot run in either case. The JSON listing's isAvailable flag is the
+# authoritative signal. The JSON is captured into a variable first so no
+# pipeline is involved under pipefail.
 ios_simulator_runtimes_installed() {
-    local runtimes
-    runtimes=$(xcrun simctl list runtimes 2>/dev/null || true)
-    [[ "$runtimes" == *"iOS"* ]]
+    local runtimes_json
+    runtimes_json=$(xcrun simctl list -j runtimes 2>/dev/null || true)
+    [ -n "$runtimes_json" ] || return 1
+    printf '%s' "$runtimes_json" | python3 -c '
+import json, sys
+try:
+    runtimes = json.load(sys.stdin).get("runtimes", [])
+except Exception:
+    sys.exit(1)
+ios_available = any(
+    r.get("isAvailable") and (r.get("platform") == "iOS" or str(r.get("name", "")).startswith("iOS"))
+    for r in runtimes
+)
+sys.exit(0 if ios_available else 1)
+'
 }
