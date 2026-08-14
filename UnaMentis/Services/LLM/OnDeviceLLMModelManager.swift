@@ -46,7 +46,16 @@ public struct OnDeviceLLMModelConfig: Sendable {
 
     /// Direct download URL from Hugging Face CDN, pinned to `revision`
     var downloadURL: URL {
-        URL(string: "https://huggingface.co/\(huggingFaceRepo)/resolve/\(revision)/\(filename)")!
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "huggingface.co"
+        components.path = "/\(huggingFaceRepo)/resolve/\(revision)/\(filename)"
+        guard let url = components.url else {
+            // Catalog entries are compile-time constants whose shape is
+            // asserted by tests; a nil here means a malformed entry.
+            preconditionFailure("Malformed model download URL for \(id)")
+        }
+        return url
     }
 
     /// Expected size in MB for display
@@ -546,9 +555,7 @@ public actor OnDeviceLLMModelManager {
                 try FileManager.default.removeItem(at: modelPath)
             }
             try FileManager.default.moveItem(at: stagingURL, to: modelPath)
-            try? config.expectedSHA256.lowercased().write(
-                to: verifiedSidecarPath, atomically: true, encoding: .utf8
-            )
+            writeVerifiedSidecar(expectedSHA256: config.expectedSHA256)
         } catch {
             try? FileManager.default.removeItem(at: stagingURL)
             logger.error("Integrity check failed for \(config.displayName): \(error.localizedDescription)")
@@ -568,16 +575,23 @@ public actor OnDeviceLLMModelManager {
     private func verifyExistingModelIfNeeded() async throws -> Bool {
         let expected = selectedModel.config.expectedSHA256.lowercased()
 
-        if let recorded = try? String(contentsOf: verifiedSidecarPath, encoding: .utf8),
-           recorded.trimmingCharacters(in: .whitespacesAndNewlines) == expected {
+        if sidecarMatchesCurrentFile(expected: expected) {
             return true
         }
 
         logger.info("Existing model has no matching verification record; hashing it against the pin")
         state = .verifying
-        let actual = try await Self.sha256Hex(ofFileAt: modelPath)
+        let actual: String
+        do {
+            actual = try await Self.sha256Hex(ofFileAt: modelPath)
+        } catch {
+            // A terminal state here matters: .verifying is treated as
+            // transient and would stick in the UI forever if hashing fails.
+            state = .error("Could not verify the on-device model. Please try again.")
+            throw error
+        }
         if actual == expected {
-            try? actual.write(to: verifiedSidecarPath, atomically: true, encoding: .utf8)
+            writeVerifiedSidecar(expectedSHA256: expected)
             return true
         }
 
@@ -586,6 +600,50 @@ public actor OnDeviceLLMModelManager {
         try? FileManager.default.removeItem(at: verifiedSidecarPath)
         state = .notDownloaded
         return false
+    }
+
+    // MARK: - Verified Sidecar
+
+    /// What the verified sidecar records: the digest plus the identity of the
+    /// file it was computed against, so the fast path can detect a file that
+    /// changed after verification without re-reading gigabytes.
+    private struct VerifiedModelSidecar: Codable {
+        let sha256: String
+        let sizeBytes: Int64
+        let modifiedAt: Date
+    }
+
+    private func fileIdentity(at url: URL) -> (size: Int64, modified: Date)? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int64,
+              let modified = attrs[.modificationDate] as? Date else { return nil }
+        return (size, modified)
+    }
+
+    private func writeVerifiedSidecar(expectedSHA256: String) {
+        guard let identity = fileIdentity(at: modelPath) else { return }
+        let sidecar = VerifiedModelSidecar(
+            sha256: expectedSHA256.lowercased(),
+            sizeBytes: identity.size,
+            modifiedAt: identity.modified
+        )
+        if let data = try? JSONEncoder().encode(sidecar) {
+            try? data.write(to: verifiedSidecarPath, options: .atomic)
+        }
+    }
+
+    /// True when the sidecar records the expected pin AND still describes the
+    /// file currently at modelPath (size and modification date unchanged).
+    private func sidecarMatchesCurrentFile(expected: String) -> Bool {
+        guard let data = try? Data(contentsOf: verifiedSidecarPath),
+              let sidecar = try? JSONDecoder().decode(VerifiedModelSidecar.self, from: data),
+              sidecar.sha256 == expected,
+              let identity = fileIdentity(at: modelPath),
+              identity.size == sidecar.sizeBytes,
+              abs(identity.modified.timeIntervalSince(sidecar.modifiedAt)) < 1.0 else {
+            return false
+        }
+        return true
     }
 
     /// Cancel ongoing download
@@ -667,6 +725,10 @@ public actor OnDeviceLLMModelManager {
         var hasher = SHA256()
         var chunksSinceYield = 0
         while true {
+            // Stop promptly when the surrounding task is cancelled instead of
+            // hashing the rest of a multi-gigabyte file (Task.yield alone does
+            // not observe cancellation).
+            try Task.checkCancellation()
             let chunk = try handle.read(upToCount: hashChunkSize)
             guard let chunk, !chunk.isEmpty else { break }
             hasher.update(data: chunk)

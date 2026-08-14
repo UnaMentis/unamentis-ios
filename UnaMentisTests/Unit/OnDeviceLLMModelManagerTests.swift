@@ -32,7 +32,7 @@ final class OnDeviceLLMModelManagerTests: XCTestCase {
 
     func testModelConfigDownloadURL() {
         let config = OnDeviceLLMModel.ministral3_3B.config
-        let expectedURL = "https://huggingface.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF/resolve/main/Ministral-3-3B-Instruct-2512-Q4_K_M.gguf"
+        let expectedURL = "https://huggingface.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF/resolve/\(config.revision)/Ministral-3-3B-Instruct-2512-Q4_K_M.gguf"
 
         XCTAssertEqual(config.downloadURL.absoluteString, expectedURL)
     }
