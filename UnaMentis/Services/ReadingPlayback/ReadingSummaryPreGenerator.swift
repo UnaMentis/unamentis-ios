@@ -132,8 +132,13 @@ public actor ReadingSummaryPreGenerator {
         await task.value
     }
 
-    /// Discard the stored summaries for an item
+    /// Discard the stored summaries for an item, cancelling any in-flight
+    /// generation first so a late per-section save cannot recreate the sidecar
+    /// for a deleted item.
     public func discard(itemId: UUID) async {
+        inProgressTasks[itemId]?.cancel()
+        inProgressTasks[itemId] = nil
+        progressMap[itemId] = nil
         await store.delete(itemId: itemId)
     }
 
@@ -170,24 +175,36 @@ public actor ReadingSummaryPreGenerator {
         chunks: [PreGenChunkSpec],
         ranges: [ReadingSectionRange]
     ) async {
-        var record = ReadingDocumentSummaryRecord(
+        // Start from the persisted record so a retry never destroys previously
+        // generated sections: a killed run's partial summaries stay usable for
+        // context until this run replaces them. Sections from a different
+        // chunking are cleared, since their ranges no longer mean anything.
+        var record = await store.load(itemId: itemId) ?? ReadingDocumentSummaryRecord(
             itemId: itemId,
             status: .inProgress,
-            totalChunks: chunks.count,
-            lastAttemptAt: Date()
+            totalChunks: chunks.count
         )
-        await store.save(record)
+        if record.totalChunks != chunks.count {
+            record.sections = []
+            record.outline = nil
+        }
+        record.status = .inProgress
+        record.totalChunks = chunks.count
+        record.lastAttemptAt = Date()
         progressMap[itemId] = (completed: 0, total: ranges.count)
 
-        // No LLM configured: leave the record pending so the next open retries.
+        // No LLM configured: leave the record pending so the next open retries,
+        // keeping whatever sections it already carries.
         guard let llm = await resolveLLM() else {
             logger.info("No LLM available, deferring summary generation for \(itemId)")
             record.status = .pending
             await store.save(record)
             return
         }
+        await store.save(record)
 
         var summaries: [ReadingSectionSummary] = []
+        var failedSections = 0
 
         for (position, range) in ranges.enumerated() {
             guard !Task.isCancelled else { break }
@@ -215,12 +232,20 @@ public actor ReadingSummaryPreGenerator {
                 record.sections = summaries
                 await store.save(record)
             } catch {
+                failedSections += 1
                 logger.warning(
                     "Section \(position) summary failed for \(itemId): \(error.localizedDescription)"
                 )
             }
 
             progressMap[itemId] = (completed: position + 1, total: ranges.count)
+        }
+
+        // A cancelled run must not write anything further: the item may have
+        // been deleted, and a partial record must stay retryable, not final.
+        guard !Task.isCancelled else {
+            logger.info("Summary generation cancelled for \(itemId)")
+            return
         }
 
         guard !summaries.isEmpty else {
@@ -232,12 +257,16 @@ public actor ReadingSummaryPreGenerator {
 
         record.outline = await buildOutline(title: title, summaries: summaries, llm: llm)
         record.sections = summaries
-        record.status = .completed
+        // Any failed section keeps the record retryable: marking it completed
+        // would make needsGeneration false forever and permanently strand the
+        // missing sections after one transient LLM failure. The partial
+        // sections stay usable for context in the meantime.
+        record.status = failedSections == 0 ? .completed : .failed
         record.generatedAt = Date()
         await store.save(record)
 
         logger.info(
-            "Summary generation complete for \(itemId): \(summaries.count)/\(ranges.count) sections"
+            "Summary generation \(failedSections == 0 ? "complete" : "partial (will retry)") for \(itemId): \(summaries.count)/\(ranges.count) sections"
         )
     }
 
@@ -327,9 +356,13 @@ public actor ReadingSummaryPreGenerator {
     }
 
     static func outlinePrompt(title: String, summaries: [ReadingSectionSummary]) -> String {
-        let body = summaries.map { summary in
+        // Numbered by position in this list, not by section index: skipped or
+        // failed sections leave index gaps, and a gapped prompt makes the model
+        // renumber contiguously anyway, misaligning every line after the gap.
+        // parseOutline maps positions back to section indexes.
+        let body = summaries.enumerated().map { position, summary in
             let label = summary.title.map { " (\($0))" } ?? ""
-            return "\(summary.index + 1)\(label): \(summary.summary)"
+            return "\(position + 1)\(label): \(summary.summary)"
         }.joined(separator: "\n")
 
         return """
@@ -382,11 +415,12 @@ public actor ReadingSummaryPreGenerator {
             return ReadingDocumentOutline(overview: overview, entries: [])
         }
 
-        let entries = summaries.map { summary in
+        // Positional mapping mirrors outlinePrompt's positional numbering.
+        let entries = summaries.enumerated().map { position, summary in
             ReadingOutlineEntry(
                 sectionIndex: summary.index,
                 title: summary.title,
-                line: lines[summary.index] ?? firstSentence(of: summary.summary)
+                line: lines[position] ?? firstSentence(of: summary.summary)
             )
         }
 
@@ -433,17 +467,10 @@ public actor ReadingSummaryPreGenerator {
 
     // MARK: - Default LLM Resolution
 
-    /// Resolve the summarization LLM from the same self-hosted settings the
+    /// Resolve the summarization LLM from the same shared resolution the
     /// reader's barge-in Q&A uses. Returns nil when no server is configured, so
     /// generation defers instead of failing against an unreachable host.
     public static let defaultLLMResolver: LLMResolver = {
-        let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
-        let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
-        guard selfHostedEnabled, !serverIP.isEmpty else { return nil }
-        let service: any LLMService = SelfHostedLLMService.ollama(
-            host: serverIP,
-            model: RemoteLLMModel.current
-        )
-        return service
+        SelfHostedLLMService.configuredReaderService()
     }
 }

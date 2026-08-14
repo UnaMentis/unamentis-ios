@@ -651,13 +651,10 @@ public final class ReadingPlaybackViewModel: ObservableObject {
     /// Build the LLM that answers conversational barge-ins, from the same
     /// self-hosted settings the learning session uses.
     private func makeReaderLLM() -> any LLMService {
-        let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
-        let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
-        let model = RemoteLLMModel.current
-        if selfHostedEnabled, !serverIP.isEmpty {
-            return SelfHostedLLMService.ollama(host: serverIP, model: model)
-        }
-        return SelfHostedLLMService.ollama(model: model)
+        // Shared resolution with the summary pre-generator; the Q&A path keeps
+        // its default-host fallback so a barge-in always attempts a response.
+        SelfHostedLLMService.configuredReaderService()
+            ?? SelfHostedLLMService.ollama(model: RemoteLLMModel.current)
     }
 
     /// Stop the barge-in pipeline and detach STT. Called when playback stops or

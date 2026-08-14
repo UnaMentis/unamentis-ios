@@ -574,9 +574,13 @@ public actor ReadingListManager {
             try? FileManager.default.removeItem(at: fileURL)
         }
 
-        // Drop the summary sidecar so deleted documents leave nothing behind
+        // Cancel any in-flight summary generation and drop the sidecar so
+        // deleted documents leave nothing behind. Going through the
+        // pre-generator matters: deleting only the file would let the running
+        // task's next per-section save recreate it for a document that no
+        // longer exists.
         if let itemId = item.id {
-            Task { await ReadingSummaryStore.shared.delete(itemId: itemId) }
+            Task { await ReadingSummaryPreGenerator.shared.discard(itemId: itemId) }
         }
 
         // Delete associated image files

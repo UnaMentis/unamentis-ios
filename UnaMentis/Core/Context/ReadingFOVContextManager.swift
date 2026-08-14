@@ -218,10 +218,20 @@ public actor ReadingFOVContextManager {
 
         // Granularity-aware trimming: distant summaries go first, then the outer
         // edges of the near window, and the outline is compressed last so the
-        // model never loses the document's overall shape.
+        // model never loses the document's overall shape. Pieces are dropped in
+        // batches sized by the measured overshoot before re-rendering, so the
+        // full context is not re-assembled once per dropped piece: this runs on
+        // every chunk change and barge-in turn inside the latency budget.
         var trimSteps = 0
-        while window.fullContext.count > maxTotalCharacters, trim(&parts) {
-            trimSteps += 1
+        var renderedCount = window.fullContext.count
+        while renderedCount > maxTotalCharacters {
+            let overshoot = renderedCount - maxTotalCharacters
+            var freed = 0
+            while freed < overshoot, let dropped = trim(&parts) {
+                trimSteps += 1
+                freed += dropped
+            }
+            guard freed > 0 else { break }
             window = makeWindow(
                 parts: parts,
                 title: title,
@@ -229,6 +239,7 @@ public actor ReadingFOVContextManager {
                 currentIndex: currentIndex,
                 totalChunks: chunks.count
             )
+            renderedCount = window.fullContext.count
         }
 
         logger.debug(
@@ -346,7 +357,10 @@ public actor ReadingFOVContextManager {
             }
         }
 
-        guard let summary, summary.hasContent else { return parts }
+        // A record built against a different chunking (re-import, chunker tuning
+        // change) would attribute summaries to the wrong positions; ignore it and
+        // let background regeneration replace it.
+        guard let summary, summary.hasContent, summary.totalChunks == chunks.count else { return parts }
 
         // Bands cover only what the near window does not already show at full
         // resolution, so nothing is said twice.
@@ -369,8 +383,11 @@ public actor ReadingFOVContextManager {
 
         if let outline = summary.outline {
             parts.outlineOverview = outline.overview
+            // The record comes from a JSON sidecar on disk; duplicate section
+            // indexes in a torn or hand-edited file must degrade, not trap.
             let rangeBySection = Dictionary(
-                uniqueKeysWithValues: summary.sections.map { ($0.index, $0) }
+                summary.sections.map { ($0.index, $0) },
+                uniquingKeysWith: { first, _ in first }
             )
             parts.outlineLines = outline.entries.map { entry in
                 let section = rangeBySection[entry.sectionIndex]
@@ -415,70 +432,47 @@ public actor ReadingFOVContextManager {
     // MARK: - Trimming
 
     /// Drop exactly one unit of context, cheapest first.
-    /// - Returns: false when nothing further can be given up.
-    private func trim(_ parts: inout ContextParts) -> Bool {
+    /// - Returns: the dropped text's character count, or nil when nothing
+    ///   further can be given up.
+    private func trim(_ parts: inout ContextParts) -> Int? {
         // 1. Distant micro-summaries, farthest first, in either direction.
-        if dropFarthest(&parts.earlier, &parts.upcoming) { return true }
+        if let dropped = dropFarthest(&parts.earlier, &parts.upcoming) { return dropped }
 
         // 2. Shrink the near window from its outer edges. The current chunk is
         //    the one thing the reader definitely asked about, so it always stays.
-        if dropFarthestNearWindowChunk(&parts) { return true }
+        if let dropped = dropFarthest(&parts.preceding, &parts.following) { return dropped }
 
         // 3. Compress the outline last, and only down to its overview line.
         if let farthest = parts.outlineLines.enumerated().max(by: { $0.element.distance < $1.element.distance }) {
+            let dropped = farthest.element.text.count
             parts.outlineLines.remove(at: farthest.offset)
-            return true
+            return dropped
         }
 
-        return false
+        return nil
     }
 
-    /// Remove the farthest entry across the two summary bands
-    private func dropFarthest(_ earlier: inout [Piece], _ upcoming: inout [Piece]) -> Bool {
-        let farthestEarlier = earlier.first?.distance
-        let farthestUpcoming = upcoming.last?.distance
+    /// Remove the farthest entry across a pair of bands ordered with the
+    /// farthest "before" piece first and the farthest "after" piece last, which
+    /// holds for both the summary bands and the raw near window.
+    /// - Returns: the removed text's character count, or nil when both are empty.
+    private func dropFarthest(_ before: inout [Piece], _ after: inout [Piece]) -> Int? {
+        let farthestBefore = before.first?.distance
+        let farthestAfter = after.last?.distance
 
-        switch (farthestEarlier, farthestUpcoming) {
-        case let (before?, after?):
+        switch (farthestBefore, farthestAfter) {
+        case let (beforeDistance?, afterDistance?):
             // Ties favor dropping backwards: the reader is heading forwards.
-            if before >= after {
-                earlier.removeFirst()
-            } else {
-                upcoming.removeLast()
+            if beforeDistance >= afterDistance {
+                return before.removeFirst().text.count
             }
-            return true
+            return after.removeLast().text.count
         case (_?, nil):
-            earlier.removeFirst()
-            return true
+            return before.removeFirst().text.count
         case (nil, _?):
-            upcoming.removeLast()
-            return true
+            return after.removeLast().text.count
         case (nil, nil):
-            return false
-        }
-    }
-
-    /// Remove the outermost chunk of the raw near window
-    private func dropFarthestNearWindowChunk(_ parts: inout ContextParts) -> Bool {
-        let farthestPreceding = parts.preceding.first?.distance
-        let farthestFollowing = parts.following.last?.distance
-
-        switch (farthestPreceding, farthestFollowing) {
-        case let (before?, after?):
-            if before >= after {
-                parts.preceding.removeFirst()
-            } else {
-                parts.following.removeLast()
-            }
-            return true
-        case (_?, nil):
-            parts.preceding.removeFirst()
-            return true
-        case (nil, _?):
-            parts.following.removeLast()
-            return true
-        case (nil, nil):
-            return false
+            return nil
         }
     }
 
@@ -595,7 +589,12 @@ public actor ReadingFOVContextManager {
             length += addition
         }
 
-        guard !kept.isEmpty else { return "" }
+        guard !kept.isEmpty else {
+            // No boundary exists inside the limit (URLs, base64, spaceless
+            // scripts): keep the nearest raw characters rather than silently
+            // emptying the band, matching the old suffix-truncation guarantee.
+            return keepingTail ? String(text.suffix(limit)) : String(text.prefix(limit))
+        }
         let restored = keepingTail ? Array(kept.reversed()) : kept
         return restored.joined(separator: " ")
     }

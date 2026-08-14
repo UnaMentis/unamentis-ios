@@ -568,6 +568,21 @@ public actor ReadingTextChunker {
             searchFrom = match.index
         }
 
+        // Substring matching can anchor to the wrong chunk when heading titles
+        // also appear earlier in the text; a table of contents is the classic
+        // case, pinning every marker to the same chunk. Markers that are not
+        // strictly increasing describe a structure the document does not have,
+        // and wrong structure is worse than none: discard them and let the
+        // section grouper fall back to evenly sized sections.
+        var lastIndex: Int32 = -1
+        for marker in markers {
+            guard marker.chunkIndex > lastIndex else {
+                logger.warning("Discarding markdown section markers: non-increasing chunk anchors (likely a table of contents)")
+                return []
+            }
+            lastIndex = marker.chunkIndex
+        }
+
         return markers
     }
 

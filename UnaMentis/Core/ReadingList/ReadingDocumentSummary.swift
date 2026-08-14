@@ -352,11 +352,17 @@ public enum ReadingSectionGrouper {
     }
 
     /// Fold undersized ranges into the preceding one so no section is too small
-    /// to be worth its own summary.
+    /// to be worth its own summary. Merging stops growing a section at
+    /// maxChunksPerSection: without that cap, a document with dense headings
+    /// (every range undersized) folds cumulatively into one giant section whose
+    /// summary then only describes the head of its truncated input.
     private static func merge(_ ranges: [ReadingSectionRange]) -> [ReadingSectionRange] {
         var merged: [ReadingSectionRange] = []
         for range in ranges {
-            if range.chunkCount < minChunksPerSection, let previous = merged.popLast() {
+            if range.chunkCount < minChunksPerSection,
+               let previous = merged.last,
+               previous.chunkCount + range.chunkCount <= maxChunksPerSection {
+                merged.removeLast()
                 merged.append(ReadingSectionRange(
                     startChunkIndex: previous.startChunkIndex,
                     endChunkIndex: range.endChunkIndex,
