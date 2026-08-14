@@ -83,10 +83,24 @@ public struct MappedPDFImage: Sendable {
     public let height: Int
 }
 
-/// Result of processing a PDF with both text chunks and images
+/// Result of processing a document: text chunks, images, and captured structure
 public struct PDFProcessingResult: Sendable {
     public let chunks: [TextChunkResult]
     public let images: [MappedPDFImage]
+
+    /// Section boundaries recovered from the source (markdown headings, PDF
+    /// outline). Empty when the format carries no usable structure.
+    public let sectionMarkers: [DocumentSectionMarker]
+
+    public init(
+        chunks: [TextChunkResult],
+        images: [MappedPDFImage],
+        sectionMarkers: [DocumentSectionMarker] = []
+    ) {
+        self.chunks = chunks
+        self.images = images
+        self.sectionMarkers = sectionMarkers
+    }
 }
 
 /// Raw image data extracted from a PDF page before chunk mapping
@@ -457,7 +471,10 @@ public actor ReadingTextChunker {
         // Non-PDF sources have no inline images
         guard sourceType == .pdf else {
             let chunks = try await processDocument(from: url, sourceType: sourceType)
-            return PDFProcessingResult(chunks: chunks, images: [])
+            let markers = sourceType == .markdown
+                ? markdownSectionMarkers(from: url, chunks: chunks)
+                : []
+            return PDFProcessingResult(chunks: chunks, images: [], sectionMarkers: markers)
         }
 
         guard let pdfDocument = PDFDocument(url: url) else {
@@ -506,7 +523,159 @@ public actor ReadingTextChunker {
             pageBoundaries: pageBoundaries
         )
 
-        return PDFProcessingResult(chunks: chunks, images: mappedImages)
+        // Recover section structure from the PDF's own outline when it has one
+        let markers = pdfSectionMarkers(
+            from: pdfDocument,
+            chunks: chunks,
+            pageBoundaries: pageBoundaries
+        )
+
+        return PDFProcessingResult(
+            chunks: chunks,
+            images: mappedImages,
+            sectionMarkers: markers
+        )
+    }
+
+    // MARK: - Structure Capture
+
+    /// Recover section markers from markdown headings.
+    ///
+    /// Runs alongside the chunker rather than inside it: headings are read from
+    /// the raw source, then matched to the chunk that carries the heading text
+    /// after MarkdownStripper has flattened it. The chunking path is untouched.
+    private func markdownSectionMarkers(
+        from url: URL,
+        chunks: [TextChunkResult]
+    ) -> [DocumentSectionMarker] {
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+
+        let headings = markdownHeadings(in: raw)
+        guard !headings.isEmpty, !chunks.isEmpty else { return [] }
+
+        var markers: [DocumentSectionMarker] = []
+        var searchFrom = 0
+
+        for heading in headings {
+            guard let match = chunks[searchFrom...].first(
+                where: { $0.text.contains(heading.title) }
+            ) else { continue }
+            markers.append(DocumentSectionMarker(
+                title: heading.title,
+                level: heading.level,
+                chunkIndex: Int32(match.index)
+            ))
+            searchFrom = match.index
+        }
+
+        // Substring matching can anchor to the wrong chunk when heading titles
+        // also appear earlier in the text; a table of contents is the classic
+        // case, pinning every marker to the same chunk. Markers that are not
+        // strictly increasing describe a structure the document does not have,
+        // and wrong structure is worse than none: discard them and let the
+        // section grouper fall back to evenly sized sections.
+        var lastIndex: Int32 = -1
+        for marker in markers {
+            guard marker.chunkIndex > lastIndex else {
+                logger.warning("Discarding markdown section markers: non-increasing chunk anchors (likely a table of contents)")
+                return []
+            }
+            lastIndex = marker.chunkIndex
+        }
+
+        return markers
+    }
+
+    /// Extract ATX headings from raw markdown, with syntax stripped from the title
+    private func markdownHeadings(in text: String) -> [(level: Int, title: String)] {
+        let pattern = #"(?m)^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return [] }
+
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
+        let stripper = MarkdownStripper()
+
+        let matches = regex.matches(in: text, options: [], range: range)
+        return matches.compactMap { match -> (level: Int, title: String)? in
+            guard match.numberOfRanges >= 3 else { return nil }
+            let level = nsText.substring(with: match.range(at: 1)).count
+            let rawTitle = nsText.substring(with: match.range(at: 2))
+            let title = stripper.stripMarkdown(rawTitle)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else { return nil }
+            return (level: level, title: title)
+        }
+    }
+
+    /// Recover section markers from a PDF's embedded outline (table of contents).
+    ///
+    /// Outline destinations resolve to pages, so markers land on the chunk that
+    /// starts the page. Like the image mapping above, this is approximate because
+    /// page boundaries are measured before whitespace normalization.
+    private func pdfSectionMarkers(
+        from pdfDocument: PDFDocument,
+        chunks: [TextChunkResult],
+        pageBoundaries: [(pageIndex: Int, charStart: Int64, charEnd: Int64)]
+    ) -> [DocumentSectionMarker] {
+        guard let root = pdfDocument.outlineRoot, !chunks.isEmpty else { return [] }
+
+        var markers: [DocumentSectionMarker] = []
+        collectOutline(
+            node: root,
+            level: 0,
+            pdfDocument: pdfDocument,
+            chunks: chunks,
+            pageBoundaries: pageBoundaries,
+            into: &markers
+        )
+
+        // One marker per chunk, keeping the shallowest (most significant) heading
+        var byChunk: [Int32: DocumentSectionMarker] = [:]
+        for marker in markers {
+            if let existing = byChunk[marker.chunkIndex], existing.level <= marker.level { continue }
+            byChunk[marker.chunkIndex] = marker
+        }
+        return byChunk.values.sorted { $0.chunkIndex < $1.chunkIndex }
+    }
+
+    /// Depth-first walk of a PDF outline tree
+    private func collectOutline(
+        node: PDFOutline,
+        level: Int,
+        pdfDocument: PDFDocument,
+        chunks: [TextChunkResult],
+        pageBoundaries: [(pageIndex: Int, charStart: Int64, charEnd: Int64)],
+        into markers: inout [DocumentSectionMarker]
+    ) {
+        // The root node itself is a container, not a heading.
+        if level > 0,
+           let label = node.label?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !label.isEmpty,
+           let page = node.destination?.page {
+            let pageIndex = pdfDocument.index(for: page)
+            if let boundary = pageBoundaries.first(where: { $0.pageIndex == pageIndex }) {
+                let chunkIndex = chunks.lastIndex(
+                    where: { $0.characterOffset <= boundary.charStart }
+                ) ?? 0
+                markers.append(DocumentSectionMarker(
+                    title: label,
+                    level: level,
+                    chunkIndex: Int32(chunks[chunkIndex].index)
+                ))
+            }
+        }
+
+        for childIndex in 0..<node.numberOfChildren {
+            guard let child = node.child(at: childIndex) else { continue }
+            collectOutline(
+                node: child,
+                level: level + 1,
+                pdfDocument: pdfDocument,
+                chunks: chunks,
+                pageBoundaries: pageBoundaries,
+                into: &markers
+            )
+        }
     }
 
     /// Extract images from all pages of a PDF

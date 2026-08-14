@@ -22,6 +22,33 @@ public struct ReadingVisualAssetData: Identifiable, Sendable {
     public let altText: String?
 }
 
+// MARK: - Reader Context Prompt Box
+
+/// Thread-safe holder for the reader's foveated system prompt.
+///
+/// BargeInCoordinator takes its system prompt as a synchronous @Sendable
+/// closure, which cannot await an actor to rebuild the context. The view model
+/// pushes each freshly assembled context in here and the closure reads the
+/// latest value under a lock.
+final class ReaderContextPromptBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var prompt: String = ""
+
+    /// The most recently assembled foveated context, or "" before the first build
+    var value: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return prompt
+    }
+
+    /// Replace the stored context
+    func update(_ newValue: String) {
+        lock.lock()
+        prompt = newValue
+        lock.unlock()
+    }
+}
+
 // MARK: - Reading Playback View Model
 
 /// View model for the reading playback interface
@@ -91,6 +118,19 @@ public final class ReadingPlaybackViewModel: ObservableObject {
     /// conversation -> execute or answer). Same pipeline every narrating surface uses.
     private var bargeInCoordinator: BargeInCoordinator?
 
+    /// Foveated context for barge-in Q&A: outline + summaries + near window.
+    private let fovContextManager = ReadingFOVContextManager()
+
+    /// Precomputed outline and section summaries for this document, when generated
+    private var summaryRecord: ReadingDocumentSummaryRecord?
+
+    /// Holds the current foveated system prompt for the barge-in responder, which
+    /// reads it from a synchronous @Sendable closure and so cannot await an actor.
+    private let readerContextPrompt = ReaderContextPromptBox()
+
+    /// Serializes context refreshes so a burst of chunk changes does not pile up
+    private var contextRefreshTask: Task<Void, Never>?
+
     // MARK: - Initialization
 
     public init(item: ReadingListItem) {
@@ -134,6 +174,11 @@ public final class ReadingPlaybackViewModel: ObservableObject {
             // Load visual assets and set images for current chunk
             loadVisualAssets()
             updateCurrentChunkImages(for: currentChunkIndex)
+
+            // Load any precomputed outline and summaries, and generate them
+            // retroactively for items imported before this existed. Both are
+            // background work; playback never waits on them.
+            await loadOrGenerateSummaries()
 
             // Create playback service
             let service = ReadingPlaybackService()
@@ -240,6 +285,62 @@ public final class ReadingPlaybackViewModel: ObservableObject {
     /// Update the current chunk images for display
     private func updateCurrentChunkImages(for index: Int32) {
         currentChunkImages = allVisualAssets.filter { $0.chunkIndex == index }
+    }
+
+    // MARK: - Foveated Context
+
+    /// Load precomputed summaries for this document and, if they are missing or
+    /// stale, ask the pre-generator to build them in the background. Items
+    /// imported before summary generation existed pick them up here.
+    private func loadOrGenerateSummaries() async {
+        guard let itemId = item.id, !chunks.isEmpty else { return }
+
+        summaryRecord = await ReadingSummaryPreGenerator.shared.summaryRecord(itemId: itemId)
+        refreshReaderContextPrompt()
+
+        let specs = chunks.map { PreGenChunkSpec(index: $0.index, text: $0.text) }
+        await ReadingSummaryPreGenerator.shared.preGenerate(
+            itemId: itemId,
+            title: item.title ?? "Untitled",
+            chunks: specs
+        )
+
+        // Pick up the results once generation settles, without blocking playback.
+        // The task inherits main-actor isolation from this view model.
+        Task { [weak self] in
+            await ReadingSummaryPreGenerator.shared.waitForGeneration(itemId: itemId)
+            let record = await ReadingSummaryPreGenerator.shared.summaryRecord(itemId: itemId)
+            guard let self else { return }
+            self.summaryRecord = record
+            self.refreshReaderContextPrompt()
+        }
+    }
+
+    /// Rebuild the foveated system prompt for the current reading position.
+    /// Cheap string assembly, so it is safe to run on every chunk change.
+    private func refreshReaderContextPrompt() {
+        guard !chunks.isEmpty else { return }
+
+        contextRefreshTask?.cancel()
+        let snapshot = chunks
+        let index = currentChunkIndex
+        let title = item.title ?? "this reading"
+        let author = item.author
+        let record = summaryRecord
+        let manager = fovContextManager
+        let box = readerContextPrompt
+
+        contextRefreshTask = Task {
+            let window = await manager.buildContext(
+                chunks: snapshot,
+                currentIndex: index,
+                title: title,
+                author: author,
+                summary: record
+            )
+            guard !Task.isCancelled else { return }
+            box.update(window.fullContext)
+        }
     }
 
     // MARK: - Playback Control
@@ -455,6 +556,9 @@ public final class ReadingPlaybackViewModel: ObservableObject {
                     self?.currentChunkText = weakChunks[Int(index)].text
                 }
                 self?.updateCurrentChunkImages(for: index)
+                // Re-foveate around the new position so a barge-in always sees
+                // the right near window.
+                self?.refreshReaderContextPrompt()
             },
             onError: { [weak self] error in
                 self?.state = .error(error.localizedDescription)
@@ -519,13 +623,20 @@ public final class ReadingPlaybackViewModel: ObservableObject {
         await attachOnDeviceSTTIfAvailable()
         guard let tts = await getTTSService() else { return }
         let title = item.title ?? "this reading"
+        let contextBox = readerContextPrompt
+        refreshReaderContextPrompt()
         let coordinator = BargeInCoordinator(
             audioEngine: engine,
             llm: makeReaderLLM(),
             tts: tts,
             validCommands: [.bookmark, .flag],
+            // The foveated context (outline, summaries, near window) is the
+            // system prompt. Falls back to a plain prompt until the first
+            // assembly lands, so barge-in is never blocked on it.
             systemPrompt: { _ in
-                "You are a helpful reading assistant. The user paused while listening to "
+                let foveated = contextBox.value
+                if !foveated.isEmpty { return foveated }
+                return "You are a helpful reading assistant. The user paused while listening to "
                     + "\"\(title)\" to ask a question or give an instruction. Answer concisely "
                     + "and conversationally - this is a short spoken exchange, then they resume listening."
             },
@@ -540,13 +651,10 @@ public final class ReadingPlaybackViewModel: ObservableObject {
     /// Build the LLM that answers conversational barge-ins, from the same
     /// self-hosted settings the learning session uses.
     private func makeReaderLLM() -> any LLMService {
-        let selfHostedEnabled = UserDefaults.standard.bool(forKey: "selfHostedEnabled")
-        let serverIP = UserDefaults.standard.string(forKey: "primaryServerIP") ?? ""
-        let model = RemoteLLMModel.current
-        if selfHostedEnabled, !serverIP.isEmpty {
-            return SelfHostedLLMService.ollama(host: serverIP, model: model)
-        }
-        return SelfHostedLLMService.ollama(model: model)
+        // Shared resolution with the summary pre-generator; the Q&A path keeps
+        // its default-host fallback so a barge-in always attempts a response.
+        SelfHostedLLMService.configuredReaderService()
+            ?? SelfHostedLLMService.ollama(model: RemoteLLMModel.current)
     }
 
     /// Stop the barge-in pipeline and detach STT. Called when playback stops or
