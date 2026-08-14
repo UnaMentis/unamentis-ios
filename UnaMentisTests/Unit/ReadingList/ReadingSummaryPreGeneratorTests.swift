@@ -97,8 +97,13 @@ final class ReadingSummaryPreGeneratorTests: XCTestCase {
 
         XCTAssertEqual(sections.first?.startChunkIndex, 0)
         XCTAssertNil(sections.first?.title, "Front matter before the first heading has no title")
-        XCTAssertEqual(sections.count, 2)
+        // Chapter 1 spans 20 chunks, above maxChunksPerSection, so it splits:
+        // front matter, the titled first piece, and an untitled continuation.
+        XCTAssertEqual(sections.count, 3)
         XCTAssertEqual(sections[1].title, "Chapter 1")
+        XCTAssertEqual(sections[1].startChunkIndex, 10)
+        XCTAssertNil(sections[2].title, "Continuation pieces carry no heading")
+        XCTAssertEqual(sections.last?.endChunkIndex, 29)
     }
 
     func testGrouping_splitsOversizedMarkerSections() {
