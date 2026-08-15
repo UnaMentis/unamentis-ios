@@ -130,6 +130,8 @@ enum KBGoldenParityMatrix {
         c("nearmiss-diff-place", "France", "Germany", nil, .place, .standard),
         c("nearmiss-diff-number", "100", "1000", nil, .numeric, .standard),
         c("nearmiss-substring", "car", "carbon", nil, .text, .standard),
+        c("nearmiss-iran-iraq", "Iraq", "Iran", nil, .place, .standard),
+        c("nearmiss-austria-australia", "Austria", "Australia", nil, .place, .standard),
         c("nearmiss-close-sci", "helium", "hydrogen", nil, .scientific, .standard),
 
         // MARK: - Empty / garbage input
@@ -145,7 +147,10 @@ enum KBGoldenParityMatrix {
         c("strict-typo-levenshtein-passes", "Mississipi", "Mississippi", nil, .text, .strict),
         c("strict-synonym-rejected", "USA", "United States", nil, .place, .strict),
         c("strict-acceptable-ok", "CO2", "carbon dioxide", ["CO2"], .text, .strict),
-        c("strict-nearphonetic-levenshtein-passes", "Steven", "Stephen", nil, .person, .strict),
+        // The strict profile gates the phonetic tier, and the fuzzy tolerance
+        // (one edit on a 7-character answer) is smaller than this pair's
+        // distance of two, so strict now rejects the phonetic variant.
+        c("strict-nearphonetic-rejected", "Steven", "Stephen", nil, .person, .strict),
 
         // MARK: - Lenient profile (enhanced tiers on; embeddings/LLM absent so
         // behavior equals standard for algorithmic cases)

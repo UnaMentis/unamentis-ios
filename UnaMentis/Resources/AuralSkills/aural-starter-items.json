@@ -1,0 +1,773 @@
+[
+  {
+    "template": {
+      "kind": "interval",
+      "styles": [
+        "melodic-asc"
+      ],
+      "roots": [
+        "C4"
+      ],
+      "tempo": 80,
+      "difficulty": 1,
+      "examTags": [
+        "abrsm.g1",
+        "abrsm.g2"
+      ]
+    }
+  },
+  {
+    "template": {
+      "kind": "interval",
+      "styles": [
+        "melodic-asc",
+        "melodic-desc"
+      ],
+      "roots": [
+        "E4",
+        "G3"
+      ],
+      "tempo": 88,
+      "difficulty": 2,
+      "examTags": [
+        "abrsm.g3",
+        "abrsm.g4"
+      ]
+    }
+  },
+  {
+    "template": {
+      "kind": "interval",
+      "styles": [
+        "harmonic"
+      ],
+      "roots": [
+        "C4"
+      ],
+      "tempo": 76,
+      "difficulty": 2,
+      "examTags": [
+        "abrsm.g4"
+      ]
+    }
+  },
+  {
+    "template": {
+      "kind": "interval",
+      "styles": [
+        "harmonic",
+        "melodic-desc"
+      ],
+      "roots": [
+        "F#3"
+      ],
+      "tempo": 96,
+      "difficulty": 3,
+      "examTags": [
+        "abrsm.g5",
+        "abrsm.g6"
+      ]
+    }
+  },
+  {
+    "template": {
+      "kind": "triad",
+      "qualities": [
+        "major",
+        "minor"
+      ],
+      "styles": [
+        "harmonic"
+      ],
+      "roots": [
+        "C4",
+        "F4"
+      ],
+      "tempo": 76,
+      "difficulty": 1,
+      "examTags": [
+        "abrsm.g1"
+      ]
+    }
+  },
+  {
+    "template": {
+      "kind": "triad",
+      "qualities": [
+        "major",
+        "minor",
+        "diminished",
+        "augmented"
+      ],
+      "styles": [
+        "harmonic",
+        "melodic-asc"
+      ],
+      "roots": [
+        "E4",
+        "A3"
+      ],
+      "tempo": 84,
+      "difficulty": 2,
+      "examTags": [
+        "abrsm.g5"
+      ]
+    }
+  },
+  {
+    "template": {
+      "kind": "tonality",
+      "qualities": [
+        "major",
+        "minor"
+      ],
+      "styles": [
+        "harmonic"
+      ],
+      "roots": [
+        "C4",
+        "E4",
+        "A3"
+      ],
+      "tempo": 76,
+      "difficulty": 1,
+      "examTags": [
+        "abrsm.g1"
+      ]
+    }
+  },
+  {
+    "template": {
+      "kind": "solfege",
+      "degrees": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "roots": [
+        "C4",
+        "G3"
+      ],
+      "tempo": 80,
+      "difficulty": 2,
+      "examTags": [
+        "abrsm.g4"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "cadence-perfect-c",
+      "kind": "cadence",
+      "prompt": {
+        "synthesis": {
+          "chords": [
+            [
+              "C4",
+              "E4",
+              "G4"
+            ],
+            [
+              "G3",
+              "B3",
+              "D4",
+              "G4"
+            ],
+            [
+              "C4",
+              "E4",
+              "G4",
+              "C5"
+            ]
+          ],
+          "style": "progression",
+          "tempo": 72,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "perfect cadence",
+        "acceptable": [
+          "authentic cadence",
+          "V I",
+          "five one",
+          "full close"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "sol",
+          "do"
+        ],
+        "coaching": "A perfect cadence moves from five to one, sol to do. It sounds fully finished."
+      },
+      "difficulty": 2,
+      "skills": [
+        "cadence"
+      ],
+      "examTags": [
+        "abrsm.g6"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "cadence-plagal-c",
+      "kind": "cadence",
+      "prompt": {
+        "synthesis": {
+          "chords": [
+            [
+              "C4",
+              "E4",
+              "G4"
+            ],
+            [
+              "F3",
+              "A3",
+              "C4",
+              "F4"
+            ],
+            [
+              "C4",
+              "E4",
+              "G4",
+              "C5"
+            ]
+          ],
+          "style": "progression",
+          "tempo": 72,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "plagal cadence",
+        "acceptable": [
+          "amen cadence",
+          "IV I",
+          "four one"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "fa",
+          "do"
+        ],
+        "coaching": "A plagal cadence moves from four to one, fa to do, the gentle amen ending."
+      },
+      "difficulty": 2,
+      "skills": [
+        "cadence"
+      ],
+      "examTags": [
+        "abrsm.g6"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "cadence-imperfect-c",
+      "kind": "cadence",
+      "prompt": {
+        "synthesis": {
+          "chords": [
+            [
+              "C4",
+              "E4",
+              "G4"
+            ],
+            [
+              "F3",
+              "A3",
+              "C4"
+            ],
+            [
+              "G3",
+              "B3",
+              "D4",
+              "G4"
+            ]
+          ],
+          "style": "progression",
+          "tempo": 72,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "imperfect cadence",
+        "acceptable": [
+          "half cadence",
+          "half close",
+          "I V"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "do",
+          "sol"
+        ],
+        "coaching": "An imperfect cadence stops on five, on sol. It sounds like a comma, not a full stop."
+      },
+      "difficulty": 2,
+      "skills": [
+        "cadence"
+      ],
+      "examTags": [
+        "abrsm.g6"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "cadence-interrupted-c",
+      "kind": "cadence",
+      "prompt": {
+        "synthesis": {
+          "chords": [
+            [
+              "C4",
+              "E4",
+              "G4"
+            ],
+            [
+              "G3",
+              "B3",
+              "D4",
+              "F4"
+            ],
+            [
+              "A3",
+              "C4",
+              "E4",
+              "A4"
+            ]
+          ],
+          "style": "progression",
+          "tempo": 72,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "interrupted cadence",
+        "acceptable": [
+          "deceptive cadence",
+          "V vi",
+          "five six"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "sol",
+          "la"
+        ],
+        "coaching": "An interrupted cadence promises home but lands on six, la, instead of do."
+      },
+      "difficulty": 2,
+      "skills": [
+        "cadence"
+      ],
+      "examTags": [
+        "abrsm.g6"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "cadence-perfect-g",
+      "kind": "cadence",
+      "prompt": {
+        "synthesis": {
+          "chords": [
+            [
+              "G3",
+              "B3",
+              "D4"
+            ],
+            [
+              "D3",
+              "F#3",
+              "A3",
+              "D4"
+            ],
+            [
+              "G3",
+              "B3",
+              "D4",
+              "G4"
+            ]
+          ],
+          "style": "progression",
+          "tempo": 72,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "perfect cadence",
+        "acceptable": [
+          "authentic cadence",
+          "V I",
+          "five one",
+          "full close"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "sol",
+          "do"
+        ],
+        "coaching": "A perfect cadence moves from five to one, sol to do. It sounds fully finished."
+      },
+      "difficulty": 2,
+      "skills": [
+        "cadence"
+      ],
+      "examTags": [
+        "abrsm.g6"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "cadence-plagal-g",
+      "kind": "cadence",
+      "prompt": {
+        "synthesis": {
+          "chords": [
+            [
+              "G3",
+              "B3",
+              "D4"
+            ],
+            [
+              "C4",
+              "E4",
+              "G4"
+            ],
+            [
+              "G3",
+              "B3",
+              "D4",
+              "G4"
+            ]
+          ],
+          "style": "progression",
+          "tempo": 72,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "plagal cadence",
+        "acceptable": [
+          "amen cadence",
+          "IV I",
+          "four one"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "fa",
+          "do"
+        ],
+        "coaching": "A plagal cadence moves from four to one, fa to do, the gentle amen ending."
+      },
+      "difficulty": 2,
+      "skills": [
+        "cadence"
+      ],
+      "examTags": [
+        "abrsm.g6"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "cadence-imperfect-g",
+      "kind": "cadence",
+      "prompt": {
+        "synthesis": {
+          "chords": [
+            [
+              "G3",
+              "B3",
+              "D4"
+            ],
+            [
+              "C4",
+              "E4",
+              "G4"
+            ],
+            [
+              "D4",
+              "F#4",
+              "A4",
+              "D5"
+            ]
+          ],
+          "style": "progression",
+          "tempo": 72,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "imperfect cadence",
+        "acceptable": [
+          "half cadence",
+          "half close",
+          "I V"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "do",
+          "sol"
+        ],
+        "coaching": "An imperfect cadence stops on five, on sol. It sounds like a comma, not a full stop."
+      },
+      "difficulty": 2,
+      "skills": [
+        "cadence"
+      ],
+      "examTags": [
+        "abrsm.g6"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "cadence-interrupted-g",
+      "kind": "cadence",
+      "prompt": {
+        "synthesis": {
+          "chords": [
+            [
+              "G3",
+              "B3",
+              "D4"
+            ],
+            [
+              "D4",
+              "F#4",
+              "A4",
+              "C5"
+            ],
+            [
+              "E4",
+              "G4",
+              "B4",
+              "E5"
+            ]
+          ],
+          "style": "progression",
+          "tempo": 72,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "interrupted cadence",
+        "acceptable": [
+          "deceptive cadence",
+          "V vi",
+          "five six"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "sol",
+          "la"
+        ],
+        "coaching": "An interrupted cadence promises home but lands on six, la, instead of do."
+      },
+      "difficulty": 2,
+      "skills": [
+        "cadence"
+      ],
+      "examTags": [
+        "abrsm.g6"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "tonality-melody-major-c",
+      "kind": "tonality",
+      "prompt": {
+        "synthesis": {
+          "notes": [
+            "C4",
+            "E4",
+            "G4",
+            "E4",
+            "D4",
+            "C4"
+          ],
+          "style": "melodic",
+          "tempo": 100,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "major",
+        "acceptable": [
+          "major key",
+          "maj"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "do",
+          "mi",
+          "sol",
+          "re"
+        ],
+        "coaching": "The melody outlines do, mi, sol with the bright raised third: major."
+      },
+      "difficulty": 1,
+      "skills": [
+        "tonality.melody"
+      ],
+      "examTags": [
+        "abrsm.g2"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "tonality-melody-minor-c",
+      "kind": "tonality",
+      "prompt": {
+        "synthesis": {
+          "notes": [
+            "C4",
+            "Eb4",
+            "G4",
+            "Eb4",
+            "D4",
+            "C4"
+          ],
+          "style": "melodic",
+          "tempo": 100,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "minor",
+        "acceptable": [
+          "minor key",
+          "min"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "do",
+          "me",
+          "sol",
+          "re"
+        ],
+        "coaching": "The third is lowered: me instead of mi. That darker color is minor."
+      },
+      "difficulty": 1,
+      "skills": [
+        "tonality.melody"
+      ],
+      "examTags": [
+        "abrsm.g2"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "tonality-melody-major-g",
+      "kind": "tonality",
+      "prompt": {
+        "synthesis": {
+          "notes": [
+            "G3",
+            "A3",
+            "B3",
+            "C4",
+            "D4",
+            "B3",
+            "G3"
+          ],
+          "style": "melodic",
+          "tempo": 100,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "major",
+        "acceptable": [
+          "major key",
+          "maj"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "do",
+          "re",
+          "mi",
+          "fa",
+          "sol"
+        ],
+        "coaching": "Step up the scale and listen to the third: mi, bright and major."
+      },
+      "difficulty": 2,
+      "skills": [
+        "tonality.melody"
+      ],
+      "examTags": [
+        "abrsm.g2"
+      ]
+    }
+  },
+  {
+    "item": {
+      "id": "tonality-melody-minor-d",
+      "kind": "tonality",
+      "prompt": {
+        "synthesis": {
+          "notes": [
+            "D4",
+            "E4",
+            "F4",
+            "G4",
+            "A4",
+            "F4",
+            "D4"
+          ],
+          "style": "melodic",
+          "tempo": 100,
+          "timbre": "sine"
+        }
+      },
+      "answer": {
+        "primary": "minor",
+        "acceptable": [
+          "minor key",
+          "min"
+        ]
+      },
+      "solfege": {
+        "degrees": [
+          "do",
+          "re",
+          "me",
+          "fa",
+          "sol"
+        ],
+        "coaching": "Step up the scale and listen to the third: me, lowered and minor."
+      },
+      "difficulty": 2,
+      "skills": [
+        "tonality.melody"
+      ],
+      "examTags": [
+        "abrsm.g2"
+      ]
+    }
+  }
+]

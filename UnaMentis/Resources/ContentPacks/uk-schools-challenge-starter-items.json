@@ -1,0 +1,296 @@
+[
+  {
+    "id": "uksc-001",
+    "text": "Which element has the chemical symbol O and makes up about 21 percent of the atmosphere?",
+    "answer": { "primary": "oxygen", "acceptable": ["O"] },
+    "domain": "science",
+    "bonus": {
+      "leadIn": "Three questions on the periodic table.",
+      "parts": [
+        { "text": "Which element has the symbol Fe?", "answer": { "primary": "iron" } },
+        { "text": "Which element has the symbol Na?", "answer": { "primary": "sodium" } },
+        { "text": "Which element has the symbol Au?", "answer": { "primary": "gold" } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-002",
+    "text": "Which English king had six wives and broke with the Roman Catholic Church?",
+    "answer": { "primary": "Henry VIII", "acceptable": ["Henry the Eighth", "Henry 8"] },
+    "domain": "history",
+    "bonus": {
+      "leadIn": "Three questions on the Tudor monarchs.",
+      "parts": [
+        { "text": "Which daughter of Henry the Eighth reigned as the Virgin Queen?", "answer": { "primary": "Elizabeth I", "acceptable": ["Elizabeth the First", "Queen Elizabeth I"] } },
+        { "text": "Which Catholic queen, nicknamed Bloody, preceded Elizabeth?", "answer": { "primary": "Mary I", "acceptable": ["Mary the First", "Bloody Mary", "Mary Tudor"] } },
+        { "text": "Which king began the Tudor dynasty by winning the Battle of Bosworth?", "answer": { "primary": "Henry VII", "acceptable": ["Henry the Seventh", "Henry Tudor"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-003",
+    "text": "What is the capital city of Scotland?",
+    "answer": { "primary": "Edinburgh" },
+    "domain": "geography",
+    "bonus": {
+      "leadIn": "Three questions on capitals of the United Kingdom and Ireland.",
+      "parts": [
+        { "text": "What is the capital of Wales?", "answer": { "primary": "Cardiff" } },
+        { "text": "What is the capital of Northern Ireland?", "answer": { "primary": "Belfast" } },
+        { "text": "What is the capital of the Republic of Ireland?", "answer": { "primary": "Dublin" } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-004",
+    "text": "Which author created the detective Sherlock Holmes?",
+    "answer": { "primary": "Arthur Conan Doyle", "acceptable": ["Conan Doyle", "Sir Arthur Conan Doyle"] },
+    "domain": "literature",
+    "bonus": {
+      "leadIn": "Three questions on British authors.",
+      "parts": [
+        { "text": "Which author wrote Pride and Prejudice?", "answer": { "primary": "Jane Austen", "acceptable": ["Austen"] } },
+        { "text": "Which author wrote Oliver Twist and Great Expectations?", "answer": { "primary": "Charles Dickens", "acceptable": ["Dickens"] } },
+        { "text": "Which author wrote the Harry Potter series?", "answer": { "primary": "J.K. Rowling", "acceptable": ["Rowling", "Joanne Rowling"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-005",
+    "text": "In mathematics, what is the value of seven multiplied by eight?",
+    "answer": { "primary": "56", "acceptable": ["fifty-six"] },
+    "domain": "mathematics",
+    "bonus": {
+      "leadIn": "Three quick calculations.",
+      "parts": [
+        { "text": "What is nine squared?", "answer": { "primary": "81", "acceptable": ["eighty-one"] } },
+        { "text": "What is one hundred divided by four?", "answer": { "primary": "25", "acceptable": ["twenty-five"] } },
+        { "text": "What is the square root of one hundred forty-four?", "answer": { "primary": "12", "acceptable": ["twelve"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-006",
+    "text": "Which planet is known as the Red Planet?",
+    "answer": { "primary": "Mars" },
+    "domain": "science",
+    "bonus": {
+      "leadIn": "Three questions on the solar system.",
+      "parts": [
+        { "text": "Which is the largest planet in the solar system?", "answer": { "primary": "Jupiter" } },
+        { "text": "Which planet is famous for its prominent rings?", "answer": { "primary": "Saturn" } },
+        { "text": "Which planet is closest to the Sun?", "answer": { "primary": "Mercury" } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-007",
+    "text": "Which river flows through London?",
+    "answer": { "primary": "Thames", "acceptable": ["River Thames"] },
+    "domain": "geography",
+    "bonus": {
+      "leadIn": "Three questions on rivers of Europe.",
+      "parts": [
+        { "text": "Which river flows through Paris?", "answer": { "primary": "Seine" } },
+        { "text": "Which river flows through Rome?", "answer": { "primary": "Tiber" } },
+        { "text": "Which river flows through Vienna and Budapest?", "answer": { "primary": "Danube" } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-008",
+    "text": "Who was the British Prime Minister during most of the Second World War?",
+    "answer": { "primary": "Winston Churchill", "acceptable": ["Churchill"] },
+    "domain": "history",
+    "bonus": {
+      "leadIn": "Three questions on twentieth-century leaders.",
+      "parts": [
+        { "text": "Who was the first female British Prime Minister?", "answer": { "primary": "Margaret Thatcher", "acceptable": ["Thatcher"] } },
+        { "text": "Which American president led the country through most of World War Two?", "answer": { "primary": "Franklin Roosevelt", "acceptable": ["FDR", "Franklin D. Roosevelt", "Roosevelt"] } },
+        { "text": "Which Soviet leader led the USSR during World War Two?", "answer": { "primary": "Joseph Stalin", "acceptable": ["Stalin"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-009",
+    "text": "What is the largest ocean on Earth?",
+    "answer": { "primary": "Pacific Ocean", "acceptable": ["Pacific"] },
+    "domain": "geography",
+    "bonus": {
+      "leadIn": "Three questions on the world's oceans.",
+      "parts": [
+        { "text": "What is the second-largest ocean?", "answer": { "primary": "Atlantic Ocean", "acceptable": ["Atlantic"] } },
+        { "text": "Which ocean lies to the south of India?", "answer": { "primary": "Indian Ocean", "acceptable": ["Indian"] } },
+        { "text": "Which frozen ocean surrounds the North Pole?", "answer": { "primary": "Arctic Ocean", "acceptable": ["Arctic"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-010",
+    "text": "In biology, what pigment makes plant leaves green?",
+    "answer": { "primary": "chlorophyll" },
+    "domain": "science",
+    "bonus": {
+      "leadIn": "Three questions on the human body.",
+      "parts": [
+        { "text": "Which organ pumps blood around the body?", "answer": { "primary": "heart" } },
+        { "text": "Which organ is the body's largest internal organ and filters toxins from the blood?", "answer": { "primary": "liver" } },
+        { "text": "How many bones does an adult human skeleton contain?", "answer": { "primary": "206", "acceptable": ["two hundred and six", "two hundred six"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-011",
+    "text": "Which artist painted the Sunflowers series and The Starry Night?",
+    "answer": { "primary": "Vincent van Gogh", "acceptable": ["van Gogh", "Gogh"] },
+    "domain": "arts",
+    "bonus": {
+      "leadIn": "Three questions on famous artists.",
+      "parts": [
+        { "text": "Which Spanish artist co-founded Cubism?", "answer": { "primary": "Pablo Picasso", "acceptable": ["Picasso"] } },
+        { "text": "Which Italian painted the Mona Lisa?", "answer": { "primary": "Leonardo da Vinci", "acceptable": ["Leonardo", "da Vinci"] } },
+        { "text": "Which British artist is known for landscapes like The Hay Wain?", "answer": { "primary": "John Constable", "acceptable": ["Constable"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-012",
+    "text": "What is the chemical formula for water?",
+    "answer": { "primary": "H2O", "acceptable": ["H two O"] },
+    "domain": "science",
+    "bonus": {
+      "leadIn": "Three questions on common compounds.",
+      "parts": [
+        { "text": "What is the common name for the compound sodium chloride?", "answer": { "primary": "salt", "acceptable": ["table salt"] } },
+        { "text": "What gas do plants absorb during photosynthesis?", "answer": { "primary": "carbon dioxide", "acceptable": ["CO2"] } },
+        { "text": "What gas do humans need to breathe to survive?", "answer": { "primary": "oxygen" } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-013",
+    "text": "Which mountain is the highest in the British Isles?",
+    "answer": { "primary": "Ben Nevis" },
+    "domain": "geography",
+    "bonus": {
+      "leadIn": "Three questions on mountains of the world.",
+      "parts": [
+        { "text": "Which is the highest mountain on Earth?", "answer": { "primary": "Mount Everest", "acceptable": ["Everest"] } },
+        { "text": "Which is the highest mountain in the Alps?", "answer": { "primary": "Mont Blanc" } },
+        { "text": "Which is the highest mountain in Africa?", "answer": { "primary": "Mount Kilimanjaro", "acceptable": ["Kilimanjaro"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-014",
+    "text": "Which Shakespeare tragedy centres on the doomed love of the heirs of the feuding Montague and Capulet families?",
+    "answer": { "primary": "Romeo and Juliet" },
+    "domain": "literature",
+    "bonus": {
+      "leadIn": "Three questions on Shakespeare.",
+      "parts": [
+        { "text": "In which city is Romeo and Juliet set?", "answer": { "primary": "Verona" } },
+        { "text": "Which Danish prince delivers the To be or not to be soliloquy?", "answer": { "primary": "Hamlet" } },
+        { "text": "Which London theatre is closely associated with Shakespeare's plays?", "answer": { "primary": "Globe Theatre", "acceptable": ["the Globe"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-015",
+    "text": "What is the currency used in the United Kingdom?",
+    "answer": { "primary": "pound sterling", "acceptable": ["pound", "British pound", "sterling"] },
+    "domain": "socialStudies",
+    "bonus": {
+      "leadIn": "Three questions on world currencies.",
+      "parts": [
+        { "text": "What currency is used in Japan?", "answer": { "primary": "yen" } },
+        { "text": "What currency is used in the United States?", "answer": { "primary": "dollar", "acceptable": ["US dollar"] } },
+        { "text": "What currency is used across most of the European Union?", "answer": { "primary": "euro" } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-016",
+    "text": "In which year did the Second World War end?",
+    "answer": { "primary": "1945", "acceptable": ["nineteen forty-five"] },
+    "domain": "history",
+    "bonus": {
+      "leadIn": "Three questions on twentieth-century dates.",
+      "parts": [
+        { "text": "In which year did the First World War begin?", "answer": { "primary": "1914", "acceptable": ["nineteen fourteen"] } },
+        { "text": "In which year did the Berlin Wall fall?", "answer": { "primary": "1989", "acceptable": ["nineteen eighty-nine"] } },
+        { "text": "In which year did humans first land on the Moon?", "answer": { "primary": "1969", "acceptable": ["nineteen sixty-nine"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-017",
+    "text": "Which gas, with the symbol CO2, do humans exhale?",
+    "answer": { "primary": "carbon dioxide", "acceptable": ["CO2"] },
+    "domain": "science",
+    "bonus": {
+      "leadIn": "Three questions on scientists.",
+      "parts": [
+        { "text": "Which scientist proposed the theory of gravity after watching an apple fall?", "answer": { "primary": "Isaac Newton", "acceptable": ["Newton"] } },
+        { "text": "Which scientist proposed evolution by natural selection?", "answer": { "primary": "Charles Darwin", "acceptable": ["Darwin"] } },
+        { "text": "Which scientist devised the equation E equals m c squared?", "answer": { "primary": "Albert Einstein", "acceptable": ["Einstein"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-018",
+    "text": "What is the capital of France?",
+    "answer": { "primary": "Paris" },
+    "domain": "geography",
+    "bonus": {
+      "leadIn": "Three questions on European capitals.",
+      "parts": [
+        { "text": "What is the capital of Germany?", "answer": { "primary": "Berlin" } },
+        { "text": "What is the capital of Italy?", "answer": { "primary": "Rome" } },
+        { "text": "What is the capital of Spain?", "answer": { "primary": "Madrid" } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-019",
+    "text": "Which composer, despite becoming deaf, wrote nine symphonies?",
+    "answer": { "primary": "Ludwig van Beethoven", "acceptable": ["Beethoven"] },
+    "domain": "arts",
+    "bonus": {
+      "leadIn": "Three questions on classical music.",
+      "parts": [
+        { "text": "Which Austrian child prodigy wrote The Magic Flute?", "answer": { "primary": "Wolfgang Amadeus Mozart", "acceptable": ["Mozart"] } },
+        { "text": "Which composer wrote The Four Seasons?", "answer": { "primary": "Antonio Vivaldi", "acceptable": ["Vivaldi"] } },
+        { "text": "Which German composer wrote the Messiah oratorio?", "answer": { "primary": "George Frideric Handel", "acceptable": ["Handel"] } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-020",
+    "text": "How many players are on a football team on the pitch at one time?",
+    "answer": { "primary": "11", "acceptable": ["eleven"] },
+    "domain": "socialStudies",
+    "bonus": {
+      "leadIn": "Three questions on sport.",
+      "parts": [
+        { "text": "In which sport would you perform a slam dunk?", "answer": { "primary": "basketball" } },
+        { "text": "How many points is a try worth in rugby union?", "answer": { "primary": "5", "acceptable": ["five"] } },
+        { "text": "In tennis, what term describes a score of zero?", "answer": { "primary": "love" } }
+      ]
+    }
+  },
+  {
+    "id": "uksc-021",
+    "text": "Which sea separates Great Britain from mainland Europe to the east?",
+    "answer": { "primary": "North Sea" },
+    "domain": "geography",
+    "bonus": {
+      "leadIn": "Three questions on the geography of the British Isles.",
+      "parts": [
+        { "text": "Which is the largest lake in the British Isles by area?", "answer": { "primary": "Lough Neagh" } },
+        { "text": "Which is the longest river in the United Kingdom?", "answer": { "primary": "River Severn", "acceptable": ["Severn"] } },
+        { "text": "Which island lies between Great Britain and Ireland in the Irish Sea?", "answer": { "primary": "Isle of Man" } }
+      ]
+    }
+  }
+]

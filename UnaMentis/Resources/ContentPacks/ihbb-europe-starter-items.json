@@ -1,0 +1,482 @@
+[
+  {
+    "id": "ihbb-001",
+    "text": "This ruler moved his capital to a city he named after himself and legalized Christianity with the Edict of Milan. He convened the Council of Nicaea in 325. For 10 points, name this first Christian Roman emperor.",
+    "answer": { "primary": "Constantine the Great", "acceptable": ["Constantine", "Constantine I"] },
+    "domain": "history",
+    "powerMarkIndex": 95,
+    "bonus": {
+      "leadIn": "Answer these questions about the Roman Empire in Europe.",
+      "parts": [
+        { "text": "This wall in northern Britain marked the empire's frontier against the Picts.", "answer": { "primary": "Hadrian's Wall" } },
+        { "text": "This eternal city was the empire's original capital.", "answer": { "primary": "Rome" } },
+        { "text": "This Germanic leader sacked Rome in 410, an early sign of imperial decline.", "answer": { "primary": "Alaric", "acceptable": ["Alaric I"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-002",
+    "text": "This 1815 battle in present-day Belgium ended a French emperor's Hundred Days. The Duke of Wellington and Prussian forces under Blucher defeated Napoleon. For 10 points, name this decisive battle.",
+    "answer": { "primary": "Battle of Waterloo", "acceptable": ["Waterloo"] },
+    "domain": "history",
+    "powerMarkIndex": 90,
+    "bonus": {
+      "leadIn": "Answer these questions about the Napoleonic Wars.",
+      "parts": [
+        { "text": "Napoleon was exiled first to this Mediterranean island before his return.", "answer": { "primary": "Elba" } },
+        { "text": "After Waterloo, Napoleon was exiled to this remote South Atlantic island, where he died.", "answer": { "primary": "Saint Helena", "acceptable": ["St. Helena"] } },
+        { "text": "This 1805 naval battle saw Nelson defeat the French and Spanish fleets off Spain.", "answer": { "primary": "Battle of Trafalgar", "acceptable": ["Trafalgar"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-003",
+    "text": "This river flows through ten countries and four capitals, more than any other in the world, including Vienna and Budapest. For 10 points, name this second-longest river in Europe.",
+    "answer": { "primary": "Danube", "acceptable": ["Danube River"] },
+    "domain": "geography",
+    "powerMarkIndex": 85,
+    "bonus": {
+      "leadIn": "Answer these questions about European rivers.",
+      "parts": [
+        { "text": "This river flows past Cologne and forms part of the border between France and Germany.", "answer": { "primary": "Rhine", "acceptable": ["Rhine River"] } },
+        { "text": "This longest river in Europe flows through Russia into the Caspian Sea.", "answer": { "primary": "Volga", "acceptable": ["Volga River"] } },
+        { "text": "This river flows through Paris on its way to the English Channel.", "answer": { "primary": "Seine" } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-004",
+    "text": "This event began in 1789 with the storming of a Parisian fortress and prison. It led to the execution of Louis the Sixteenth and the rise of Napoleon. For 10 points, name this revolution.",
+    "answer": { "primary": "French Revolution" },
+    "domain": "history",
+    "powerMarkIndex": 88,
+    "bonus": {
+      "leadIn": "Answer these questions about the French Revolution.",
+      "parts": [
+        { "text": "This fortress and prison was stormed on July 14, 1789.", "answer": { "primary": "Bastille" } },
+        { "text": "This device became the symbol of the Reign of Terror's executions.", "answer": { "primary": "guillotine" } },
+        { "text": "This radical Jacobin leader was executed after presiding over the Terror.", "answer": { "primary": "Maximilien Robespierre", "acceptable": ["Robespierre"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-005",
+    "text": "This peninsula in southern Europe is home to Portugal and Spain and is separated from Africa by a narrow strait. For 10 points, name this peninsula.",
+    "answer": { "primary": "Iberian Peninsula", "acceptable": ["Iberia"] },
+    "domain": "geography",
+    "powerMarkIndex": 78,
+    "bonus": {
+      "leadIn": "Answer these questions about Spain and Portugal.",
+      "parts": [
+        { "text": "This Portuguese capital at the mouth of the Tagus was rebuilt after a devastating 1755 earthquake.", "answer": { "primary": "Lisbon", "acceptable": ["Lisboa"] } },
+        { "text": "This Catalan city is home to the long-unfinished Sagrada Familia church.", "answer": { "primary": "Barcelona" } },
+        { "text": "This narrow strait separates Spain from Morocco.", "answer": { "primary": "Strait of Gibraltar", "acceptable": ["Gibraltar"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-006",
+    "text": "This queen ruled England for over 63 years during an era of industrial and imperial expansion that bears her name. For 10 points, name this monarch whose reign spanned much of the 19th century.",
+    "answer": { "primary": "Queen Victoria", "acceptable": ["Victoria"] },
+    "domain": "history",
+    "powerMarkIndex": 80,
+    "bonus": {
+      "leadIn": "Answer these questions about nineteenth-century Britain.",
+      "parts": [
+        { "text": "Victoria's husband, this prince consort, championed the Great Exhibition of 1851.", "answer": { "primary": "Prince Albert", "acceptable": ["Albert"] } },
+        { "text": "This vast glass and iron building in Hyde Park housed the Great Exhibition.", "answer": { "primary": "Crystal Palace" } },
+        { "text": "This Conservative prime minister and novelist had Victoria proclaimed Empress of India.", "answer": { "primary": "Benjamin Disraeli", "acceptable": ["Disraeli"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-007",
+    "text": "This Italian city built on a lagoon is famous for its canals and gondolas and was once a powerful maritime republic. For 10 points, name this city on the Adriatic.",
+    "answer": { "primary": "Venice", "acceptable": ["Venezia"] },
+    "domain": "geography",
+    "powerMarkIndex": 75,
+    "bonus": {
+      "leadIn": "Answer these questions about Italian cities.",
+      "parts": [
+        { "text": "This Tuscan city of the Medici is crowned by Brunelleschi's cathedral dome.", "answer": { "primary": "Florence", "acceptable": ["Firenze"] } },
+        { "text": "This southern Italian city sits on a bay in the shadow of Mount Vesuvius.", "answer": { "primary": "Naples", "acceptable": ["Napoli"] } },
+        { "text": "This northern city is home to the La Scala opera house and to Italian fashion.", "answer": { "primary": "Milan", "acceptable": ["Milano"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-008",
+    "text": "This cultural rebirth began in Italy in the 14th century and revived classical learning and art, producing figures like Leonardo and Michelangelo. For 10 points, name this period whose name means rebirth.",
+    "answer": { "primary": "Renaissance" },
+    "domain": "history",
+    "powerMarkIndex": 82,
+    "bonus": {
+      "leadIn": "Answer these questions about the Italian Renaissance.",
+      "parts": [
+        { "text": "This Florentine family patronized much Renaissance art and produced several popes.", "answer": { "primary": "Medici", "acceptable": ["House of Medici", "de' Medici"] } },
+        { "text": "This artist painted the ceiling of the Sistine Chapel.", "answer": { "primary": "Michelangelo", "acceptable": ["Michelangelo Buonarroti"] } },
+        { "text": "This author wrote The Prince, a treatise on political power.", "answer": { "primary": "Niccolo Machiavelli", "acceptable": ["Machiavelli"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-009",
+    "text": "This 1517 movement was sparked when a German monk nailed ninety-five theses to a church door in Wittenberg. For 10 points, name this schism that produced Protestant churches.",
+    "answer": { "primary": "Protestant Reformation", "acceptable": ["Reformation"] },
+    "domain": "history",
+    "powerMarkIndex": 85,
+    "bonus": {
+      "leadIn": "Answer these questions about the Reformation.",
+      "parts": [
+        { "text": "This monk posted the ninety-five theses and later translated the Bible into German.", "answer": { "primary": "Martin Luther", "acceptable": ["Luther"] } },
+        { "text": "This French reformer led the church in Geneva and taught predestination.", "answer": { "primary": "John Calvin", "acceptable": ["Calvin", "Jean Calvin"] } },
+        { "text": "This Catholic council, first meeting in 1545, answered the Reformation with internal reform.", "answer": { "primary": "Council of Trent", "acceptable": ["Trent"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-010",
+    "text": "This mountain range separates the Iberian Peninsula, meaning Spain and Portugal, from France, and the small country of Andorra lies along its crest. For 10 points, name this range not to be confused with the Alps.",
+    "answer": { "primary": "Pyrenees", "acceptable": ["Pyrenees Mountains"] },
+    "domain": "geography",
+    "powerMarkIndex": 70,
+    "bonus": {
+      "leadIn": "Answer these questions about European mountains.",
+      "parts": [
+        { "text": "This range curves through Austria, Switzerland, and northern Italy.", "answer": { "primary": "Alps" } },
+        { "text": "This range running north to south through Russia is often taken as Europe's eastern edge.", "answer": { "primary": "Ural Mountains", "acceptable": ["Urals"] } },
+        { "text": "This sharply pyramid-shaped peak stands on the border of Switzerland and Italy.", "answer": { "primary": "Matterhorn" } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-011",
+    "text": "This treaty signed in 1919 formally ended the First World War and imposed harsh terms on Germany. For 10 points, name this treaty negotiated at a French palace.",
+    "answer": { "primary": "Treaty of Versailles", "acceptable": ["Versailles"] },
+    "domain": "history",
+    "powerMarkIndex": 78,
+    "bonus": {
+      "leadIn": "Answer these questions about the peace that followed the First World War.",
+      "parts": [
+        { "text": "This international body created by the treaty was a forerunner of the United Nations.", "answer": { "primary": "League of Nations" } },
+        { "text": "This American president brought his Fourteen Points to the peace conference.", "answer": { "primary": "Woodrow Wilson", "acceptable": ["Wilson"] } },
+        { "text": "The treaty required Germany to make these payments for war damages.", "answer": { "primary": "reparations" } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-012",
+    "text": "This composer wrote nine symphonies while going deaf and lived much of his life in Vienna. For 10 points, name this German composer of the Ode to Joy.",
+    "answer": { "primary": "Ludwig van Beethoven", "acceptable": ["Beethoven"] },
+    "domain": "arts",
+    "powerMarkIndex": 72,
+    "bonus": {
+      "leadIn": "Answer these questions about Vienna and its residents.",
+      "parts": [
+        { "text": "This Austrian composer of The Marriage of Figaro died in Vienna in 1791.", "answer": { "primary": "Wolfgang Amadeus Mozart", "acceptable": ["Mozart"] } },
+        { "text": "This composer called the father of the symphony taught the young Beethoven in Vienna.", "answer": { "primary": "Joseph Haydn", "acceptable": ["Haydn"] } },
+        { "text": "This Viennese doctor founded psychoanalysis.", "answer": { "primary": "Sigmund Freud", "acceptable": ["Freud"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-013",
+    "text": "This Scandinavian people raided and traded across Europe from the 8th to 11th centuries, reaching as far as North America. For 10 points, name these seafarers.",
+    "answer": { "primary": "Vikings", "acceptable": ["Norse", "Norsemen"] },
+    "domain": "history",
+    "powerMarkIndex": 75,
+    "bonus": {
+      "leadIn": "Answer these questions about the Norse world.",
+      "parts": [
+        { "text": "This one-eyed god ruled the Norse pantheon.", "answer": { "primary": "Odin", "acceptable": ["Woden", "Wotan"] } },
+        { "text": "This son of Erik the Red is said to have reached North America around the year 1000.", "answer": { "primary": "Leif Erikson", "acceptable": ["Leif Eriksson", "Leif"] } },
+        { "text": "These Icelandic prose narratives record the feuds and voyages of Norse families.", "answer": { "primary": "sagas", "acceptable": ["saga", "Icelandic sagas"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-014",
+    "text": "This is the smallest independent state in the world by area and the seat of the Catholic Church, located within Rome. For 10 points, name this walled city-state.",
+    "answer": { "primary": "Vatican City", "acceptable": ["Vatican", "Vatican City State"] },
+    "domain": "geography",
+    "powerMarkIndex": 68,
+    "bonus": {
+      "leadIn": "Answer these questions about the Vatican.",
+      "parts": [
+        { "text": "This great basilica in Vatican City is topped by a dome that Michelangelo designed.", "answer": { "primary": "St. Peter's Basilica", "acceptable": ["Saint Peter's", "St. Peter's"] } },
+        { "text": "This chapel holds Michelangelo's ceiling and hosts the conclave that elects a pope.", "answer": { "primary": "Sistine Chapel" } },
+        { "text": "This brightly uniformed corps has guarded the pope since 1506.", "answer": { "primary": "Swiss Guard", "acceptable": ["Pontifical Swiss Guard"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-015",
+    "text": "This 1348 pandemic, spread by fleas on rats, killed a third of Europe's population. For 10 points, name this plague.",
+    "answer": { "primary": "Black Death", "acceptable": ["bubonic plague", "the Plague"] },
+    "domain": "history",
+    "powerMarkIndex": 70,
+    "bonus": {
+      "leadIn": "Answer these questions about plague in medieval Europe.",
+      "parts": [
+        { "text": "This Italian author's Decameron frames its tales around young Florentines fleeing the plague.", "answer": { "primary": "Giovanni Boccaccio", "acceptable": ["Boccaccio"] } },
+        { "text": "Arriving ships were isolated for forty days, giving English this word for enforced isolation.", "answer": { "primary": "quarantine" } },
+        { "text": "Bubonic plague takes its name from these swollen lymph nodes.", "answer": { "primary": "buboes", "acceptable": ["bubo"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-016",
+    "text": "This body of water lies between Europe and Africa and connects to the Atlantic through the Strait of Gibraltar. For 10 points, name this sea.",
+    "answer": { "primary": "Mediterranean Sea", "acceptable": ["Mediterranean"] },
+    "domain": "geography",
+    "powerMarkIndex": 60,
+    "bonus": {
+      "leadIn": "Answer these questions about Mediterranean islands.",
+      "parts": [
+        { "text": "This largest Mediterranean island lies off the toe of Italy and holds Mount Etna.", "answer": { "primary": "Sicily", "acceptable": ["Sicilia"] } },
+        { "text": "This Greek island south of the mainland was the home of the Minoan civilization.", "answer": { "primary": "Crete", "acceptable": ["Kriti"] } },
+        { "text": "This French island was the birthplace of Napoleon.", "answer": { "primary": "Corsica", "acceptable": ["Corse"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-017",
+    "text": "This English playwright wrote Hamlet and Macbeth and worked at the Globe Theatre. For 10 points, name this Bard of Avon.",
+    "answer": { "primary": "William Shakespeare", "acceptable": ["Shakespeare"] },
+    "domain": "literature",
+    "powerMarkIndex": 58,
+    "bonus": {
+      "leadIn": "Answer these questions about English literature.",
+      "parts": [
+        { "text": "This poet wrote the epic Paradise Lost after going blind.", "answer": { "primary": "John Milton", "acceptable": ["Milton"] } },
+        { "text": "This author of The Canterbury Tales wrote in Middle English.", "answer": { "primary": "Geoffrey Chaucer", "acceptable": ["Chaucer"] } },
+        { "text": "Shakespeare wrote over a hundred and fifty examples of this fourteen-line poetic form.", "answer": { "primary": "sonnet", "acceptable": ["sonnets"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-018",
+    "text": "This alliance of Britain, France, and Russia opposed the Central Powers in the First World War. For 10 points, name this triple grouping.",
+    "answer": { "primary": "Triple Entente", "acceptable": ["Entente", "Allies"] },
+    "domain": "history",
+    "powerMarkIndex": 65,
+    "bonus": {
+      "leadIn": "Answer these questions about the First World War.",
+      "parts": [
+        { "text": "The war followed the assassination of this Austrian archduke in Sarajevo in 1914.", "answer": { "primary": "Franz Ferdinand", "acceptable": ["Archduke Franz Ferdinand"] } },
+        { "text": "This 1916 battle on a French river cost the British nearly sixty thousand casualties on its first day.", "answer": { "primary": "Battle of the Somme", "acceptable": ["Somme"] } },
+        { "text": "This style of static, dug-in warfare defined the Western Front.", "answer": { "primary": "trench warfare", "acceptable": ["trenches"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-019",
+    "text": "This currency was introduced in 1999 and is now used by most member states of the European Union. For 10 points, name this currency.",
+    "answer": { "primary": "euro" },
+    "domain": "socialStudies",
+    "powerMarkIndex": 55,
+    "bonus": {
+      "leadIn": "Answer these questions about the European Union.",
+      "parts": [
+        { "text": "This Belgian capital hosts the European Commission.", "answer": { "primary": "Brussels", "acceptable": ["Bruxelles"] } },
+        { "text": "This 1992 treaty, signed in a Dutch city, created the European Union.", "answer": { "primary": "Maastricht Treaty", "acceptable": ["Treaty of Maastricht", "Maastricht"] } },
+        { "text": "This agreement abolished passport checks at many internal European borders.", "answer": { "primary": "Schengen Agreement", "acceptable": ["Schengen"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-020",
+    "text": "This canal in Venice, spanned by the Rialto Bridge, is the city's main waterway. For 10 points, give this two-word name meaning the large channel.",
+    "answer": { "primary": "Grand Canal" },
+    "domain": "geography",
+    "powerMarkIndex": 60,
+    "bonus": {
+      "leadIn": "Answer these questions about the sights of Venice.",
+      "parts": [
+        { "text": "This square is the city's great public space, fronted by a domed basilica.", "answer": { "primary": "St. Mark's Square", "acceptable": ["Piazza San Marco", "Saint Mark's Square"] } },
+        { "text": "This enclosed bridge, named for the sound prisoners supposedly made, links the Doge's Palace to a prison.", "answer": { "primary": "Bridge of Sighs", "acceptable": ["Ponte dei Sospiri"] } },
+        { "text": "This was the title of the elected ruler of the Venetian Republic.", "answer": { "primary": "Doge" } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-021",
+    "text": "This wall divided a German capital during the Cold War until crowds tore it down in 1989. For 10 points, name this barrier.",
+    "answer": { "primary": "Berlin Wall" },
+    "domain": "history",
+    "powerMarkIndex": 55,
+    "bonus": {
+      "leadIn": "Answer these questions about divided Germany.",
+      "parts": [
+        { "text": "This 1948 operation flew food and fuel into West Berlin during a Soviet blockade.", "answer": { "primary": "Berlin Airlift", "acceptable": ["Airlift"] } },
+        { "text": "This was the best-known crossing point between East and West Berlin.", "answer": { "primary": "Checkpoint Charlie" } },
+        { "text": "This 1990 process joined East and West Germany into a single state again.", "answer": { "primary": "German reunification", "acceptable": ["reunification", "unification"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-022",
+    "text": "This tower in Paris, built for the 1889 World's Fair, is a global icon of France. For 10 points, name this iron lattice tower.",
+    "answer": { "primary": "Eiffel Tower", "acceptable": ["Tour Eiffel"] },
+    "domain": "arts",
+    "powerMarkIndex": 52,
+    "bonus": {
+      "leadIn": "Answer these questions about Paris landmarks.",
+      "parts": [
+        { "text": "This former royal palace is now the most visited art museum in the world.", "answer": { "primary": "Louvre", "acceptable": ["Musee du Louvre"] } },
+        { "text": "This Gothic cathedral on an island in the Seine burned in 2019 and reopened in 2024.", "answer": { "primary": "Notre-Dame de Paris", "acceptable": ["Notre Dame", "Notre-Dame"] } },
+        { "text": "This triumphal arch stands at the western end of the Champs-Elysees.", "answer": { "primary": "Arc de Triomphe" } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-023",
+    "text": "This peninsula includes Norway and Sweden and is known for fjords and long winters. For 10 points, name this northern European peninsula.",
+    "answer": { "primary": "Scandinavian Peninsula", "acceptable": ["Scandinavia"] },
+    "domain": "geography",
+    "powerMarkIndex": 58,
+    "bonus": {
+      "leadIn": "Answer these questions about the Nordic countries.",
+      "parts": [
+        { "text": "This Nordic country of thousands of lakes has its capital at Helsinki.", "answer": { "primary": "Finland" } },
+        { "text": "This island nation of volcanoes and geysers has its capital at Reykjavik.", "answer": { "primary": "Iceland" } },
+        { "text": "This word names the steep-sided coastal inlet carved by glaciers that Norway is famous for.", "answer": { "primary": "fjord", "acceptable": ["fjords"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-024",
+    "text": "This Polish-born scientist won Nobel Prizes in both physics and chemistry for her work on radioactivity. For 10 points, name this discoverer of polonium and radium.",
+    "answer": { "primary": "Marie Curie", "acceptable": ["Curie", "Maria Sklodowska-Curie"] },
+    "domain": "science",
+    "powerMarkIndex": 60,
+    "bonus": {
+      "leadIn": "Answer these questions about European scientists.",
+      "parts": [
+        { "text": "This Polish astronomer placed the Sun rather than the Earth at the center of the heavens.", "answer": { "primary": "Nicolaus Copernicus", "acceptable": ["Copernicus"] } },
+        { "text": "This German-born physicist published the special theory of relativity in 1905.", "answer": { "primary": "Albert Einstein", "acceptable": ["Einstein"] } },
+        { "text": "This Scottish researcher discovered penicillin in 1928.", "answer": { "primary": "Alexander Fleming", "acceptable": ["Fleming"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-025",
+    "text": "This 1066 battle saw William the Conqueror defeat King Harold, bringing Norman rule to England. For 10 points, name this battle.",
+    "answer": { "primary": "Battle of Hastings", "acceptable": ["Hastings"] },
+    "domain": "history",
+    "powerMarkIndex": 55,
+    "bonus": {
+      "leadIn": "Answer these questions about the Norman Conquest.",
+      "parts": [
+        { "text": "This embroidered cloth over sixty meters long depicts the conquest in pictures.", "answer": { "primary": "Bayeux Tapestry" } },
+        { "text": "This 1086 survey recorded who held which land across England.", "answer": { "primary": "Domesday Book", "acceptable": ["Doomsday Book"] } },
+        { "text": "William was duke of this region of northern France before he became king.", "answer": { "primary": "Normandy", "acceptable": ["Normandie"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-026",
+    "text": "This body of water separates Britain from France and is crossed by a railway tunnel; its narrowest point is the Strait of Dover. For 10 points, name this channel, called La Manche in French.",
+    "answer": { "primary": "English Channel", "acceptable": ["the Channel", "La Manche"] },
+    "domain": "geography",
+    "powerMarkIndex": 50,
+    "bonus": {
+      "leadIn": "Answer these questions about crossing the Channel.",
+      "parts": [
+        { "text": "This rail tunnel beneath the Channel opened in 1994.", "answer": { "primary": "Channel Tunnel", "acceptable": ["Chunnel", "Eurotunnel"] } },
+        { "text": "This English port sits at the Channel's narrowest point below chalk cliffs.", "answer": { "primary": "Dover" } },
+        { "text": "This French port opposite Dover was England's last possession in France, lost in 1558.", "answer": { "primary": "Calais" } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-027",
+    "text": "This empire ruled much of southeastern Europe from Istanbul until its collapse after World War One. For 10 points, name this Turkish empire.",
+    "answer": { "primary": "Ottoman Empire", "acceptable": ["Ottomans"] },
+    "domain": "history",
+    "powerMarkIndex": 55,
+    "bonus": {
+      "leadIn": "Answer these questions about the Ottomans in Europe.",
+      "parts": [
+        { "text": "This sultan known as the Magnificent ruled at the empire's height in the sixteenth century.", "answer": { "primary": "Suleiman the Magnificent", "acceptable": ["Suleiman", "Suleyman"] } },
+        { "text": "This domed former church in Istanbul became a mosque after the conquest of 1453.", "answer": { "primary": "Hagia Sophia", "acceptable": ["Ayasofya"] } },
+        { "text": "This Habsburg capital withstood an Ottoman siege in 1683 that marked the limit of Ottoman expansion.", "answer": { "primary": "Vienna", "acceptable": ["Wien"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-028",
+    "text": "This artist painted the Mona Lisa and designed flying machines centuries ahead of their time. For 10 points, name this Italian polymath.",
+    "answer": { "primary": "Leonardo da Vinci", "acceptable": ["Leonardo", "da Vinci"] },
+    "domain": "arts",
+    "powerMarkIndex": 50,
+    "bonus": {
+      "leadIn": "Answer these questions about Renaissance art.",
+      "parts": [
+        { "text": "This Leonardo mural in Milan shows Christ at table with his apostles.", "answer": { "primary": "The Last Supper", "acceptable": ["Last Supper"] } },
+        { "text": "This sculptor carved the marble David that stood in Florence.", "answer": { "primary": "Michelangelo", "acceptable": ["Michelangelo Buonarroti"] } },
+        { "text": "This Florentine painter of The Birth of Venus worked for the Medici.", "answer": { "primary": "Sandro Botticelli", "acceptable": ["Botticelli"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-029",
+    "text": "This lake is the largest in Europe and lies entirely within Russia near St. Petersburg. For 10 points, name this lake.",
+    "answer": { "primary": "Lake Ladoga", "acceptable": ["Ladoga"] },
+    "domain": "geography",
+    "powerMarkIndex": 45,
+    "bonus": {
+      "leadIn": "Answer these questions about Russia.",
+      "parts": [
+        { "text": "This tsar called the Great founded a new capital on the Baltic in 1703.", "answer": { "primary": "Peter the Great", "acceptable": ["Peter I", "Peter"] } },
+        { "text": "This Siberian lake is the deepest lake in the world.", "answer": { "primary": "Lake Baikal", "acceptable": ["Baikal"] } },
+        { "text": "This fortified complex beside Red Square houses the Russian government.", "answer": { "primary": "Kremlin", "acceptable": ["Moscow Kremlin"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-030",
+    "text": "This alliance of Western nations was formed in 1949 to counter Soviet influence. For 10 points, name this organization abbreviated NATO.",
+    "answer": { "primary": "NATO", "acceptable": ["North Atlantic Treaty Organization"] },
+    "domain": "socialStudies",
+    "powerMarkIndex": 48,
+    "bonus": {
+      "leadIn": "Answer these questions about international organizations.",
+      "parts": [
+        { "text": "This body founded in 1945 has a Security Council with five permanent members.", "answer": { "primary": "United Nations", "acceptable": ["UN"] } },
+        { "text": "This Nordic country ended decades of nonalignment by joining NATO in 2023.", "answer": { "primary": "Finland" } },
+        { "text": "This numbered article of the North Atlantic Treaty treats an attack on one member as an attack on all.", "answer": { "primary": "Article 5", "acceptable": ["Article Five", "five", "5"] } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-031",
+    "text": "This ancient Greek city-state was known for its military discipline and its warriors at Thermopylae. For 10 points, name this rival of Athens.",
+    "answer": { "primary": "Sparta" },
+    "domain": "history",
+    "powerMarkIndex": 55,
+    "bonus": {
+      "leadIn": "Answer these questions about ancient Greece.",
+      "parts": [
+        { "text": "This long fifth-century war pitted Sparta and its allies against Athens.", "answer": { "primary": "Peloponnesian War" } },
+        { "text": "This Athenian philosopher was condemned to drink hemlock.", "answer": { "primary": "Socrates" } },
+        { "text": "This Athenian leader oversaw the building of the Parthenon.", "answer": { "primary": "Pericles" } }
+      ]
+    }
+  },
+  {
+    "id": "ihbb-032",
+    "text": "This tower in London held prisoners and now guards the Crown Jewels. For 10 points, name this fortress on the Thames.",
+    "answer": { "primary": "Tower of London" },
+    "domain": "geography",
+    "powerMarkIndex": 45,
+    "bonus": {
+      "leadIn": "Answer these questions about London.",
+      "parts": [
+        { "text": "This bridge with two towers and a roadway that lifts stands beside the Tower of London.", "answer": { "primary": "Tower Bridge" } },
+        { "text": "This palace is the sovereign's official London residence.", "answer": { "primary": "Buckingham Palace" } },
+        { "text": "This 1666 disaster destroyed much of the medieval city.", "answer": { "primary": "Great Fire of London", "acceptable": ["Great Fire"] } }
+      ]
+    }
+  }
+]

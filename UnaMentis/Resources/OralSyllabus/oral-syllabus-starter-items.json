@@ -1,0 +1,249 @@
+[
+  {
+    "id": "en-photosynthesis",
+    "title": "how photosynthesis powers life on Earth",
+    "locale": "en-US",
+    "domain": "science",
+    "summary": "Photosynthesis converts light energy, water, and carbon dioxide into glucose and oxygen in the chloroplasts of plants, algae, and some bacteria. The light-dependent reactions capture energy; the Calvin cycle fixes carbon. It is the base of most food chains and the source of atmospheric oxygen.",
+    "juryQuestions": [
+      "Trace the path of a carbon atom from the air into a glucose molecule.",
+      "Why are the light-dependent and light-independent reactions separated?",
+      "How would a drought affect the rate of photosynthesis, and why?",
+      "What limits photosynthesis on a bright but cold day?",
+      "How does photosynthesis connect to the oxygen you are breathing now?",
+      "Why is chlorophyll green rather than black?"
+    ],
+    "rubricHints": [
+      "Strong answers name the energy source and trace a full input-to-output loop.",
+      "Clear answers separate the two reaction stages without jargon dumps."
+    ]
+  },
+  {
+    "id": "en-plate-tectonics",
+    "title": "plate tectonics and the shaping of continents",
+    "locale": "en-US",
+    "domain": "science",
+    "summary": "Earth's lithosphere is broken into plates that move over the asthenosphere. Convergent, divergent, and transform boundaries produce mountains, ocean ridges, earthquakes, and volcanoes. The theory unified continental drift and seafloor spreading.",
+    "juryQuestions": [
+      "What evidence first suggested that continents had moved?",
+      "Contrast what happens at convergent versus divergent boundaries.",
+      "Why do earthquakes cluster along certain lines on a world map?",
+      "How does seafloor spreading provide a record of Earth's magnetic field?",
+      "Predict the geological future of a divergent boundary running through a continent.",
+      "Why was continental drift rejected before the 1960s?"
+    ],
+    "rubricHints": [
+      "Strong answers link a mechanism to an observable landform.",
+      "Reward candidates who cite specific evidence rather than restating the theory."
+    ]
+  },
+  {
+    "id": "en-antibiotic-resistance",
+    "title": "antibiotic resistance as an evolutionary problem",
+    "locale": "en-US",
+    "domain": "science",
+    "summary": "Bacteria evolve resistance to antibiotics through mutation and horizontal gene transfer. Overuse and incomplete courses select for resistant strains. Resistance is a public-health threat requiring stewardship, new drugs, and diagnostics.",
+    "juryQuestions": [
+      "Explain how natural selection produces a resistant bacterial population.",
+      "Why does stopping a course of antibiotics early encourage resistance?",
+      "How can bacteria share resistance without reproducing?",
+      "What trade-offs come with developing new antibiotics?",
+      "How would you argue for antibiotic stewardship to a skeptical audience?",
+      "Why is resistance called an evolutionary arms race?"
+    ],
+    "rubricHints": [
+      "Strong answers connect a molecular mechanism to a population outcome.",
+      "Reward a clear cause-and-effect chain from use to resistance."
+    ]
+  },
+  {
+    "id": "en-climate-feedback",
+    "title": "feedback loops in the climate system",
+    "locale": "en-US",
+    "domain": "science",
+    "summary": "The climate contains positive feedbacks (ice-albedo, water vapor) that amplify change and negative feedbacks that damp it. Understanding feedbacks is central to projecting warming and to distinguishing weather from climate.",
+    "juryQuestions": [
+      "Explain the ice-albedo feedback and why it is self-reinforcing.",
+      "Give an example of a negative feedback in the climate system.",
+      "Why does water vapor act as a feedback rather than a driver?",
+      "How do feedbacks complicate predicting future temperatures?",
+      "Argue whether tipping points make gradual policy responses inadequate.",
+      "How would you distinguish a feedback from a forcing to a general audience?"
+    ],
+    "rubricHints": [
+      "Strong answers define the loop direction and give a concrete instance.",
+      "Reward candidates who separate drivers from feedbacks cleanly."
+    ]
+  },
+  {
+    "id": "en-quantum-uncertainty",
+    "title": "the uncertainty principle and what it means",
+    "locale": "en-US",
+    "domain": "science",
+    "summary": "Heisenberg's uncertainty principle sets a fundamental limit on simultaneously knowing complementary properties such as position and momentum. It is a property of nature, not of measurement clumsiness, and underpins quantum behavior.",
+    "juryQuestions": [
+      "Restate the uncertainty principle without using equations.",
+      "Why is uncertainty a feature of nature rather than of our instruments?",
+      "How does the principle relate to the wave nature of particles?",
+      "What everyday intuition does quantum uncertainty violate?",
+      "Argue for or against the claim that quantum mechanics is 'random'.",
+      "How would you explain complementary properties to a younger student?"
+    ],
+    "rubricHints": [
+      "Strong answers stress that the limit is fundamental, not practical.",
+      "Reward careful language about probability versus determinism."
+    ]
+  },
+  {
+    "id": "en-industrial-revolution",
+    "title": "the causes and consequences of the Industrial Revolution",
+    "locale": "en-US",
+    "domain": "history",
+    "summary": "Beginning in 18th-century Britain, mechanization, steam power, and factory production transformed economies and societies. It raised living standards over the long run while producing urban squalor, child labor, and new class tensions.",
+    "juryQuestions": [
+      "Why did the Industrial Revolution begin in Britain specifically?",
+      "Weigh the human costs of industrialization against its long-term gains.",
+      "How did factory work change the daily life of ordinary families?",
+      "What role did access to coal and colonies play?",
+      "Argue whether the revolution was inevitable or contingent.",
+      "How did contemporaries react to mechanization?"
+    ],
+    "rubricHints": [
+      "Strong answers balance costs and benefits with specifics.",
+      "Reward causal arguments over lists of facts."
+    ]
+  },
+  {
+    "id": "en-democracy-athens",
+    "title": "Athenian democracy and its limits",
+    "locale": "en-US",
+    "domain": "history",
+    "summary": "Classical Athens developed direct democracy where citizens debated and voted on policy. Participation excluded women, slaves, and foreigners. It is both a foundation for modern democratic ideals and a cautionary example of exclusion.",
+    "juryQuestions": [
+      "How did direct democracy in Athens differ from modern representative systems?",
+      "Who was excluded from Athenian citizenship, and why does that matter?",
+      "What were the strengths of decision-making by assembly?",
+      "How might direct democracy fail in a large modern state?",
+      "Argue whether Athens deserves to be called a democracy at all.",
+      "What lessons does Athenian democracy hold for us today?"
+    ],
+    "rubricHints": [
+      "Strong answers hold the ideal and its exclusions in tension.",
+      "Reward comparison with modern institutions."
+    ]
+  },
+  {
+    "id": "en-tragedy-genre",
+    "title": "what makes a story a tragedy",
+    "locale": "en-US",
+    "domain": "literature",
+    "summary": "From Aristotle onward, tragedy has centered on a protagonist whose downfall stems from character and circumstance, producing catharsis in the audience. The genre spans Greek drama, Shakespeare, and modern reinterpretations.",
+    "juryQuestions": [
+      "What distinguishes tragedy from mere misfortune?",
+      "Explain the idea of a tragic flaw with an example.",
+      "How does catharsis function for an audience?",
+      "Can a modern story be a tragedy without a noble hero?",
+      "Argue whether tragedy requires an unhappy ending.",
+      "How does dramatic irony deepen a tragedy?"
+    ],
+    "rubricHints": [
+      "Strong answers ground abstract claims in a specific text.",
+      "Reward a working definition defended with an example."
+    ]
+  },
+  {
+    "id": "en-social-contract",
+    "title": "the social contract and the basis of political authority",
+    "locale": "en-US",
+    "domain": "philosophy",
+    "summary": "Social contract theory (Hobbes, Locke, Rousseau) grounds the legitimacy of government in an agreement among people who trade some freedom for security and order. The thinkers disagree on the state of nature and the limits of authority.",
+    "juryQuestions": [
+      "How do Hobbes and Locke differ on the state of nature?",
+      "What justifies the authority of a government under contract theory?",
+      "When, if ever, does the contract permit rebellion?",
+      "Is the social contract a historical event or a useful fiction?",
+      "Argue whether people truly consent to be governed.",
+      "How does Rousseau's general will differ from majority rule?"
+    ],
+    "rubricHints": [
+      "Strong answers attribute positions to the right thinkers.",
+      "Reward candidates who take and defend a stance."
+    ]
+  },
+  {
+    "id": "en-language-thought",
+    "title": "does the language we speak shape how we think",
+    "locale": "en-US",
+    "domain": "linguistics",
+    "summary": "The linguistic relativity hypothesis asks whether the structure of a language influences its speakers' cognition. Evidence is mixed: strong determinism is largely rejected, but weaker effects on color, space, and time appear in experiments.",
+    "juryQuestions": [
+      "State the linguistic relativity hypothesis in your own words.",
+      "What is the difference between strong and weak relativity?",
+      "Give one experimental finding that supports a weak effect.",
+      "Why is strong linguistic determinism largely rejected?",
+      "Argue whether translation between languages is ever perfect.",
+      "How would you design a study to test relativity?"
+    ],
+    "rubricHints": [
+      "Strong answers distinguish strong from weak claims.",
+      "Reward use of evidence over intuition."
+    ]
+  },
+  {
+    "id": "en-ai-ethics",
+    "title": "the ethics of automated decision-making",
+    "locale": "en-US",
+    "domain": "philosophy",
+    "summary": "As algorithms decide on loans, hiring, and sentencing, questions of fairness, accountability, transparency, and bias become urgent. Automated systems can scale both good judgment and harm, and responsibility is often diffuse.",
+    "juryQuestions": [
+      "What makes an automated decision fair or unfair?",
+      "Who is accountable when an algorithm causes harm?",
+      "Why can a system be biased even without biased intent?",
+      "Should high-stakes decisions ever be fully automated?",
+      "Argue for a right to an explanation from automated systems.",
+      "How do you weigh efficiency against fairness in automation?"
+    ],
+    "rubricHints": [
+      "Strong answers separate fairness, accountability, and transparency.",
+      "Reward concrete scenarios over slogans."
+    ]
+  },
+  {
+    "id": "fr-liberte-expression",
+    "title": "la liberté d'expression et ses limites",
+    "locale": "fr-FR",
+    "domain": "philosophy",
+    "summary": "La liberté d'expression est un pilier des sociétés démocratiques, mais elle rencontre des limites : diffamation, incitation à la haine, protection de la vie privée. Le débat oppose la libre circulation des idées à la protection des personnes.",
+    "juryQuestions": [
+      "Pourquoi la liberté d'expression est-elle essentielle en démocratie ?",
+      "Quelles limites à la liberté d'expression vous paraissent légitimes ?",
+      "La censure peut-elle jamais se justifier ?",
+      "Comment distinguer une opinion d'une incitation à la haine ?",
+      "Défendez ou critiquez l'idée d'une liberté d'expression absolue.",
+      "Comment les réseaux sociaux transforment-ils ce débat ?"
+    ],
+    "rubricHints": [
+      "Une bonne réponse tient ensemble le principe et ses limites.",
+      "Valoriser les exemples concrets plutôt que les généralités."
+    ]
+  },
+  {
+    "id": "fr-progres-technique",
+    "title": "le progrès technique est-il toujours un progrès",
+    "locale": "fr-FR",
+    "domain": "philosophy",
+    "summary": "Le progrès technique améliore les conditions de vie mais soulève des inquiétudes : dépendance, chômage, atteintes à l'environnement. La question distingue progrès technique et progrès moral ou social.",
+    "juryQuestions": [
+      "Distinguez progrès technique et progrès moral.",
+      "Le progrès technique crée-t-il autant de problèmes qu'il en résout ?",
+      "Peut-on refuser une innovation technique ?",
+      "Comment évaluer si une technique représente un progrès ?",
+      "Défendez une position sur l'automatisation du travail.",
+      "Le progrès technique menace-t-il la liberté humaine ?"
+    ],
+    "rubricHints": [
+      "Une bonne réponse définit le mot progrès avant d'argumenter.",
+      "Valoriser une position défendue avec nuance."
+    ]
+  }
+]

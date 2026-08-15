@@ -13,6 +13,12 @@
 // importPack parses and integrity-checks a PackManifest (section 7); download
 // wires to the existing ModuleService/ModuleRegistry server path. The canonical
 // question transformer layer (section 5.3) is a later phase.
+//
+// Integrity is checked at IMPORT and again at every LOAD (files on disk change
+// after import), and the declared schema's major version is checked against
+// what this build understands, so the header's promise ("a corrupt or
+// mismatched pack is refused with a user-visible error, never loaded silently")
+// holds on both paths.
 
 import CryptoKit
 import Foundation
@@ -155,6 +161,9 @@ public enum ContentStoreError: Error, LocalizedError, Equatable {
     case licenseMissing
     case itemsUnreadable(String)
     case downloadUnavailable(String)
+    /// The pack declares a schema this build cannot load (malformed, or a major
+    /// version newer than the host understands).
+    case schemaUnsupported(String)
 
     public var errorDescription: String? {
         switch self {
@@ -163,13 +172,15 @@ public enum ContentStoreError: Error, LocalizedError, Equatable {
         case .manifestUnreadable(let reason):
             return "Pack manifest could not be read: \(reason)."
         case .integrityMismatch:
-            return "This content pack failed its integrity check and was not imported."
+            return "This content pack failed its integrity check and was not loaded."
         case .licenseMissing:
             return "This content pack is missing required license information."
         case .itemsUnreadable(let reason):
             return "Pack items could not be read: \(reason)."
         case .downloadUnavailable(let reason):
             return "Pack download is unavailable: \(reason)."
+        case .schemaUnsupported(let schema):
+            return "This content pack needs a newer version of the app (schema \(schema))."
         }
     }
 }
@@ -260,6 +271,12 @@ public actor DefaultContentStoreService: ContentStoreService {
             guard let data = try? Data(contentsOf: manifestURL),
                   let manifest = try? JSONDecoder().decode(PackManifest.self, from: data),
                   importedPacks[manifest.packId] == nil else { continue }
+            // A pack whose schema this build cannot load is not offered at all,
+            // rather than handed out and failing later inside a module.
+            guard Self.isSchemaSupported(manifest.schema) else {
+                logger.warning("Skipping pack \(manifest.packId): unsupported schema \(manifest.schema)")
+                continue
+            }
             handles.append(ContentPackHandle(
                 packId: manifest.packId,
                 name: manifest.name,
@@ -315,6 +332,12 @@ public actor DefaultContentStoreService: ContentStoreService {
             throw ContentStoreError.licenseMissing
         }
 
+        // Schema compatibility is the store's job (section 5.3), so it is
+        // actually checked here rather than merely claimed in the header.
+        guard Self.isSchemaSupported(manifest.schema) else {
+            throw ContentStoreError.schemaUnsupported(manifest.schema)
+        }
+
         guard let itemsData = try? Data(contentsOf: itemsURL) else {
             throw ContentStoreError.itemsUnreadable("missing items.json")
         }
@@ -349,9 +372,24 @@ public actor DefaultContentStoreService: ContentStoreService {
     // MARK: Items
 
     public func items<T: PackItem>(_ type: T.Type, from handle: ContentPackHandle, query: ItemQuery) async throws -> [T] {
+        // A limit of zero or less asks for nothing. Passing it through reached
+        // Array.prefix(-1), which traps.
+        if let limit = query.limit, limit <= 0 {
+            return []
+        }
+
+        guard Self.isSchemaSupported(handle.schema) else {
+            throw ContentStoreError.schemaUnsupported(handle.schema)
+        }
         guard let url = handle.itemsURL, let data = try? Data(contentsOf: url) else {
             throw ContentStoreError.itemsUnreadable(handle.packId)
         }
+
+        // Re-verify integrity at LOAD time, not only at import. Files on disk
+        // change after import (sync, partial write, tampering), and the store
+        // promises a corrupt pack is never loaded silently.
+        try verifyIntegrityIfManifestPresent(for: url, data: data)
+
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
@@ -375,10 +413,67 @@ public actor DefaultContentStoreService: ContentStoreService {
         return items
     }
 
+    // MARK: Integrity and Schema
+
+    /// The item-schema major version this build can load.
+    static let supportedSchemaMajor = 1
+
+    /// Whether the host can load a pack declaring `schema`.
+    ///
+    /// Schemas are `"<name>/<major>"` (for example "canonical-question/1"). A
+    /// malformed schema, or a major version newer than this build, is refused:
+    /// loading unknown-shaped items would fail deep inside a module instead of
+    /// as a clear, user-visible store error.
+    static func isSchemaSupported(_ schema: String) -> Bool {
+        let parts = schema.split(separator: "/")
+        guard parts.count == 2, !parts[0].isEmpty,
+              let major = Int(parts[1]), major > 0 else { return false }
+        return major <= supportedSchemaMajor
+    }
+
+    /// Re-verify a pack payload against its manifest hash when a manifest sits
+    /// beside the items file. Packs ship either as `<dir>/manifest.json` +
+    /// `<dir>/items.json` (imported and bundled folder packs) or as flat
+    /// `<name>-manifest.json` + `<name>-items.json` resources; both are checked.
+    /// A pack with no manifest beside it (the bundled KB sample) is loaded as
+    /// before.
+    private func verifyIntegrityIfManifestPresent(for itemsURL: URL, data: Data) throws {
+        guard let manifestURL = Self.manifestURL(besides: itemsURL, fileManager: fileManager),
+              let manifestData = try? Data(contentsOf: manifestURL),
+              let manifest = try? JSONDecoder().decode(PackManifest.self, from: manifestData) else {
+            return
+        }
+        guard Self.isSchemaSupported(manifest.schema) else {
+            throw ContentStoreError.schemaUnsupported(manifest.schema)
+        }
+        let expected = manifest.integrity.sha256.lowercased()
+        guard !expected.isEmpty else { return }
+        let actual = Self.sha256Hex(data)
+        guard actual == expected else {
+            logger.error("Pack \(manifest.packId) failed its load-time integrity check")
+            throw ContentStoreError.integrityMismatch(expected: expected, actual: actual)
+        }
+    }
+
+    /// The manifest that belongs to an items file, in either pack layout.
+    static func manifestURL(besides itemsURL: URL, fileManager: FileManager) -> URL? {
+        let directory = itemsURL.deletingLastPathComponent()
+        let sibling = directory.appendingPathComponent("manifest.json")
+        if fileManager.fileExists(atPath: sibling.path) {
+            return sibling
+        }
+        let name = itemsURL.deletingPathExtension().lastPathComponent
+        guard name.hasSuffix("-items") else { return nil }
+        let flat = directory
+            .appendingPathComponent(name.replacingOccurrences(of: "-items", with: "-manifest"))
+            .appendingPathExtension("json")
+        return fileManager.fileExists(atPath: flat.path) ? flat : nil
+    }
+
     // MARK: Helpers
 
     private func sanitized(_ component: String) -> String {
-        component.replacingOccurrences(of: "/", with: "_")
+        ModuleStorePath.safeComponent(component)
     }
 
     /// Lowercase hex SHA-256 of the given data.

@@ -1,0 +1,18 @@
+{
+  "formatId": "ihbb-europe",
+  "engine": "quiz-match/1",
+  "phases": ["oral"],
+  "buzz": { "mode": "individual", "lockout": true, "recognitionRequired": false },
+  "scoring": {
+    "correct": 10,
+    "incorrect": -5,
+    "power": null,
+    "bonus": { "partCount": 3, "pointsPerPart": 10 }
+  },
+  "rebound": { "enabled": true, "order": "next-team" },
+  "conference": null,
+  "written": null,
+  "oral": { "questions": 24, "answerSilenceSec": 2.5, "maxUtteranceSec": 60, "answerTimeoutSec": 5 },
+  "questionForm": "pyramidal",
+  "evaluation": { "profile": "qb-standard", "tiers": ["textExact", "textFuzzy"] }
+}

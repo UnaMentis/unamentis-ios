@@ -100,6 +100,15 @@ public struct ConformanceVoiceScript: Sendable {
 public struct ConformanceRunResult: Sendable, Equatable {
     /// Whether the primary activity reached its natural completion (summary
     /// spoken, no error). The core UM-Voice pass/fail signal.
+    ///
+    /// This MUST be tracked, never assumed. An activity driven by an engine
+    /// reports true only when it OBSERVED the engine's terminal event
+    /// (`.matchEnded` / `.roundEnded` / `.sessionEnded`); an event loop also
+    /// exits when the stream simply finishes (engine error, early teardown,
+    /// cancellation), and that is not completion. An activity that owns its own
+    /// loop reports true only when it reached its summary point, either by
+    /// running its scheduled rounds or by honoring a quit that ends it cleanly.
+    /// Hardcoding `true` here makes the UM-Voice gate vacuous.
     public let completed: Bool
 
     /// Number of learner responses the activity evaluated (attempts). UM-Voice
@@ -107,7 +116,10 @@ public struct ConformanceRunResult: Sendable, Equatable {
     public let attemptsEvaluated: Int
 
     /// The module-scoped voice states the activity entered, in first-seen order.
-    /// Lets the suite confirm the activity actually drove distinct states.
+    /// Lets the suite confirm the activity actually drove distinct states, so
+    /// these must be recorded as the run enters them (from observed engine
+    /// transitions, or from the states the activity sets on the session), never
+    /// listed up front as an aspiration.
     public let voiceStatesEntered: [ModuleVoiceState]
 
     /// The unified commands the activity observed and acted on during the run

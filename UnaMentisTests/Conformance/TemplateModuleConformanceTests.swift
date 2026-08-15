@@ -57,4 +57,53 @@ final class TemplateModuleConformanceTests: XCTestCase {
         let attemptTelemetry = await harness.telemetryRecorder.attemptCount(module: module.manifest.id)
         XCTAssertEqual(attemptTelemetry, 3)
     }
+
+    /// Completion must be TRACKED, never assumed. A drill torn down while it is
+    /// listening never reaches its summary, so it must report
+    /// `completed == false`; a driver that hardcodes `true` would make the
+    /// UM-Voice completion check pass vacuously for every module.
+    func testTemplate_drillCancelledMidListenReportsIncomplete() async throws {
+        // A session of its own: no scripted transcripts and no echo mode, so
+        // `listen` parks until the run is cancelled. That is exactly the
+        // mid-activity teardown the conformance gate must be able to see.
+        let session = ScriptedVoiceSession()
+        let host = harness.host
+        let moduleId = ExampleEchoModule().manifest.id
+
+        let runTask = Task {
+            try await EchoDrill.run(
+                moduleId: moduleId,
+                host: host,
+                session: session,
+                rounds: 3,
+                claimedCommands: []
+            )
+        }
+
+        // Let the drill speak its first prompt and park in `listen`, bounded so
+        // a drill that never speaks fails the test instead of hanging it.
+        var waited = 0
+        while await session.spokenTexts.isEmpty, waited < 400 {
+            waited += 1
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        let spokenBeforeCancel = await session.spokenTexts
+        XCTAssertFalse(
+            spokenBeforeCancel.isEmpty,
+            "The drill must speak its first prompt before the run is cancelled."
+        )
+
+        runTask.cancel()
+        let result = try await runTask.value
+
+        XCTAssertFalse(
+            result.completed,
+            "A drill torn down mid-listen must report completed == false; hardcoding it true makes the "
+                + "UM-Voice completion check vacuous for every module."
+        )
+        XCTAssertEqual(
+            result.attemptsEvaluated, 0,
+            "No response was captured, so no attempt was evaluated."
+        )
+    }
 }

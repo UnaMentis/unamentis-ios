@@ -1,0 +1,553 @@
+[
+  {
+    "id": "voc-001",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "In the sentence, the scientist gave a terse reply and left the room. What does terse most nearly mean here? Answer in one word.",
+    "answer": "curt",
+    "acceptable": [
+      "brief",
+      "short",
+      "concise",
+      "abrupt",
+      "blunt"
+    ]
+  },
+  {
+    "id": "voc-002",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The novel's prose was so lucid that even young readers followed it easily. What does lucid mean here? One word.",
+    "answer": "clear",
+    "acceptable": [
+      "understandable",
+      "plain",
+      "transparent"
+    ]
+  },
+  {
+    "id": "voc-003",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "Her candid opinion surprised the committee. What does candid mean here? One word.",
+    "answer": "honest",
+    "acceptable": [
+      "frank",
+      "truthful",
+      "open",
+      "direct"
+    ]
+  },
+  {
+    "id": "voc-004",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The soil was too arid to grow anything. What does arid mean here? One word.",
+    "answer": "dry",
+    "acceptable": [
+      "parched",
+      "barren"
+    ]
+  },
+  {
+    "id": "voc-005",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "He gave a cursory glance at the report before signing it. What does cursory mean here? One word.",
+    "answer": "quick",
+    "acceptable": [
+      "hasty",
+      "brief",
+      "superficial",
+      "rushed"
+    ]
+  },
+  {
+    "id": "voc-006",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The crowd grew restive as the delay stretched on. What does restive mean here? One word.",
+    "answer": "restless",
+    "acceptable": [
+      "impatient",
+      "uneasy",
+      "agitated"
+    ]
+  },
+  {
+    "id": "voc-007",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The evidence was compelling and changed the jury's mind. What does compelling mean here? One word.",
+    "answer": "convincing",
+    "acceptable": [
+      "persuasive",
+      "forceful"
+    ]
+  },
+  {
+    "id": "voc-008",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The general ordered a prudent retreat rather than a risky charge. What does prudent mean here? One word.",
+    "answer": "cautious",
+    "acceptable": [
+      "careful",
+      "sensible",
+      "wise",
+      "sober"
+    ]
+  },
+  {
+    "id": "voc-009",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "Their friendship was fleeting, lasting only a summer. What does fleeting mean here? One word.",
+    "answer": "brief",
+    "acceptable": [
+      "short",
+      "temporary",
+      "momentary",
+      "transient"
+    ]
+  },
+  {
+    "id": "voc-010",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The mayor's speech was full of vague promises. What does vague mean here? One word.",
+    "answer": "unclear",
+    "acceptable": [
+      "ambiguous",
+      "imprecise",
+      "indefinite"
+    ]
+  },
+  {
+    "id": "voc-011",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The critic praised the film's novel approach to an old story. What does novel mean here? One word.",
+    "answer": "new",
+    "acceptable": [
+      "original",
+      "fresh",
+      "innovative"
+    ]
+  },
+  {
+    "id": "voc-012",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "A frugal shopper, she never bought what she did not need. What does frugal mean here? One word.",
+    "answer": "thrifty",
+    "acceptable": [
+      "economical",
+      "sparing",
+      "careful"
+    ]
+  },
+  {
+    "id": "voc-013",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The instructions were redundant, repeating the same step twice. What does redundant mean here? One word.",
+    "answer": "repetitive",
+    "acceptable": [
+      "repeated",
+      "superfluous",
+      "unnecessary"
+    ]
+  },
+  {
+    "id": "voc-014",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "His tone was cordial and put the guests at ease. What does cordial mean here? One word.",
+    "answer": "friendly",
+    "acceptable": [
+      "warm",
+      "gracious",
+      "polite"
+    ]
+  },
+  {
+    "id": "voc-015",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The lawyer's argument was cogent and hard to refute. What does cogent mean here? One word.",
+    "answer": "logical",
+    "acceptable": [
+      "convincing",
+      "compelling",
+      "sound",
+      "clear"
+    ]
+  },
+  {
+    "id": "voc-016",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "She remained impartial while judging the contest. What does impartial mean here? One word.",
+    "answer": "fair",
+    "acceptable": [
+      "unbiased",
+      "neutral",
+      "objective",
+      "evenhanded"
+    ]
+  },
+  {
+    "id": "voc-017",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The hikers found the trail arduous and stopped often to rest. What does arduous mean here? One word.",
+    "answer": "difficult",
+    "acceptable": [
+      "hard",
+      "strenuous",
+      "grueling",
+      "taxing"
+    ]
+  },
+  {
+    "id": "voc-018",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The report gave an ample supply of examples. What does ample mean here? One word.",
+    "answer": "plentiful",
+    "acceptable": [
+      "abundant",
+      "generous",
+      "enough",
+      "sufficient"
+    ]
+  },
+  {
+    "id": "voc-019",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The witness gave a coherent account of the accident. What does coherent mean here? One word.",
+    "answer": "logical",
+    "acceptable": [
+      "clear",
+      "consistent",
+      "orderly",
+      "organized"
+    ]
+  },
+  {
+    "id": "voc-020",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The old bridge was precarious and swayed in the wind. What does precarious mean here? One word.",
+    "answer": "unstable",
+    "acceptable": [
+      "unsafe",
+      "shaky",
+      "risky",
+      "insecure"
+    ]
+  },
+  {
+    "id": "voc-021",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The teacher's feedback was candid but constructive. What does constructive mean here? One word.",
+    "answer": "helpful",
+    "acceptable": [
+      "useful",
+      "productive",
+      "positive"
+    ]
+  },
+  {
+    "id": "voc-022",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The diplomat spoke with tact to avoid offense. What does tact mean here? One word.",
+    "answer": "sensitivity",
+    "acceptable": [
+      "diplomacy",
+      "delicacy",
+      "discretion"
+    ]
+  },
+  {
+    "id": "voc-023",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The volcano lay dormant for a century before erupting. What does dormant mean here? One word.",
+    "answer": "inactive",
+    "acceptable": [
+      "sleeping",
+      "resting",
+      "quiet",
+      "latent"
+    ]
+  },
+  {
+    "id": "voc-024",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The manager was meticulous about every detail. What does meticulous mean here? One word.",
+    "answer": "careful",
+    "acceptable": [
+      "thorough",
+      "precise",
+      "painstaking",
+      "exacting"
+    ]
+  },
+  {
+    "id": "voc-025",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The audience sat in rapt attention throughout the play. What does rapt mean here? One word.",
+    "answer": "absorbed",
+    "acceptable": [
+      "engrossed",
+      "attentive",
+      "fascinated",
+      "captivated"
+    ]
+  },
+  {
+    "id": "voc-026",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The paint gave off a pungent smell. What does pungent mean here? One word.",
+    "answer": "sharp",
+    "acceptable": [
+      "strong",
+      "harsh",
+      "acrid",
+      "biting"
+    ]
+  },
+  {
+    "id": "voc-027",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The professor was known for her erudite lectures. What does erudite mean here? One word.",
+    "answer": "learned",
+    "acceptable": [
+      "scholarly",
+      "knowledgeable",
+      "educated"
+    ]
+  },
+  {
+    "id": "voc-028",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The storm's aftermath left the town desolate. What does desolate mean here? One word.",
+    "answer": "deserted",
+    "acceptable": [
+      "barren",
+      "empty",
+      "bleak",
+      "abandoned"
+    ]
+  },
+  {
+    "id": "voc-029",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "Her explanation was succinct and left nothing out. What does succinct mean here? One word.",
+    "answer": "concise",
+    "acceptable": [
+      "brief",
+      "terse",
+      "short",
+      "compact"
+    ]
+  },
+  {
+    "id": "voc-030",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The scientist remained skeptical of the bold claim. What does skeptical mean here? One word.",
+    "answer": "doubtful",
+    "acceptable": [
+      "unconvinced",
+      "dubious",
+      "wary",
+      "questioning"
+    ]
+  },
+  {
+    "id": "voc-031",
+    "skillTag": "transitions",
+    "domain": "expression-of-ideas",
+    "prompt": "The results were promising. blank, more testing was needed before any conclusion. Which transition fits: however, therefore, or for example?",
+    "answer": "however",
+    "acceptable": [
+      "nevertheless",
+      "nonetheless"
+    ]
+  },
+  {
+    "id": "voc-032",
+    "skillTag": "transitions",
+    "domain": "expression-of-ideas",
+    "prompt": "The road was closed. blank, we had to take a longer route. Which transition fits: therefore, however, or similarly?",
+    "answer": "therefore",
+    "acceptable": [
+      "thus",
+      "consequently",
+      "so",
+      "as a result"
+    ]
+  },
+  {
+    "id": "voc-033",
+    "skillTag": "transitions",
+    "domain": "expression-of-ideas",
+    "prompt": "She loves hiking. blank, her brother prefers swimming. Which transition fits: in contrast, for instance, or as a result?",
+    "answer": "in contrast",
+    "acceptable": [
+      "by contrast",
+      "on the other hand",
+      "conversely"
+    ]
+  },
+  {
+    "id": "voc-034",
+    "skillTag": "transitions",
+    "domain": "expression-of-ideas",
+    "prompt": "The plan saved money. blank, it cut delivery time in half. Which transition fits: in addition, however, or therefore?",
+    "answer": "in addition",
+    "acceptable": [
+      "additionally",
+      "moreover",
+      "furthermore",
+      "also"
+    ]
+  },
+  {
+    "id": "voc-035",
+    "skillTag": "transitions",
+    "domain": "expression-of-ideas",
+    "prompt": "Many birds migrate south. blank, some geese travel thousands of miles. Which transition fits: for example, however, or in contrast?",
+    "answer": "for example",
+    "acceptable": [
+      "for instance",
+      "specifically"
+    ]
+  },
+  {
+    "id": "voc-036",
+    "skillTag": "transitions",
+    "domain": "expression-of-ideas",
+    "prompt": "He studied all week. blank, he passed the exam easily. Which transition fits: as a result, however, or in contrast?",
+    "answer": "as a result",
+    "acceptable": [
+      "therefore",
+      "consequently",
+      "thus"
+    ]
+  },
+  {
+    "id": "voc-037",
+    "skillTag": "central-ideas",
+    "domain": "information-and-ideas",
+    "prompt": "A short text argues that city gardens cool neighborhoods and feed families. In one word, is the author's view of city gardens positive or negative?",
+    "answer": "positive",
+    "acceptable": [
+      "favorable",
+      "supportive",
+      "approving"
+    ]
+  },
+  {
+    "id": "voc-038",
+    "skillTag": "central-ideas",
+    "domain": "information-and-ideas",
+    "prompt": "A passage lists the costs and delays of a new highway with no benefits. In one word, is the author's tone toward the highway approving or critical?",
+    "answer": "critical",
+    "acceptable": [
+      "negative",
+      "disapproving",
+      "skeptical"
+    ]
+  },
+  {
+    "id": "voc-039",
+    "skillTag": "central-ideas",
+    "domain": "information-and-ideas",
+    "prompt": "A text describes a scientist testing an idea again and again before accepting it. In one word, what quality does the scientist show: patience or recklessness?",
+    "answer": "patience",
+    "acceptable": [
+      "persistence",
+      "diligence",
+      "care"
+    ]
+  },
+  {
+    "id": "voc-040",
+    "skillTag": "boundaries",
+    "domain": "standard-english-conventions",
+    "prompt": "Listen to this sentence: the rain stopped the game continued. Is that one correct sentence, or two sentences run together? Say correct or run-on.",
+    "answer": "run-on",
+    "acceptable": [
+      "run on",
+      "runon",
+      "run-on sentence",
+      "two sentences",
+      "run together"
+    ]
+  },
+  {
+    "id": "voc-041",
+    "skillTag": "boundaries",
+    "domain": "standard-english-conventions",
+    "prompt": "In the sentence, the dog wagged its tail, does the word its show possession, or is it a contraction? Say possession or contraction.",
+    "answer": "possession",
+    "acceptable": [
+      "possessive",
+      "shows possession",
+      "it is possessive"
+    ]
+  },
+  {
+    "id": "voc-042",
+    "skillTag": "boundaries",
+    "domain": "standard-english-conventions",
+    "prompt": "Choose the correct verb: The list of names blank on the desk. Is it is or are?",
+    "answer": "is",
+    "acceptable": []
+  },
+  {
+    "id": "voc-043",
+    "skillTag": "form-structure-sense",
+    "domain": "standard-english-conventions",
+    "prompt": "Choose the correct word: Each of the students blank a book. Is it has or have?",
+    "answer": "has",
+    "acceptable": []
+  },
+  {
+    "id": "voc-044",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The critic called the ending abrupt and unsatisfying. What does abrupt mean here? One word.",
+    "answer": "sudden",
+    "acceptable": [
+      "hasty",
+      "unexpected",
+      "quick"
+    ]
+  },
+  {
+    "id": "voc-045",
+    "skillTag": "words-in-context",
+    "domain": "craft-and-structure",
+    "prompt": "The committee reached a unanimous decision. What does unanimous mean here? One word.",
+    "answer": "unified",
+    "acceptable": [
+      "agreed",
+      "undivided",
+      "united"
+    ]
+  }
+]

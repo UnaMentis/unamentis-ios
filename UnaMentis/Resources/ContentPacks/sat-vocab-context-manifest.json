@@ -1,0 +1,15 @@
+{
+  "packId": "sat-vocab-context",
+  "name": "SAT Vocabulary in Context",
+  "version": "1.0.0",
+  "schema": "drill-items/1",
+  "locale": "en-US",
+  "license": {
+    "spdx": "CC-BY-4.0",
+    "attribution": "UnaMentis"
+  },
+  "integrity": {
+    "sha256": "8019dcd6d5a79c22ea830a885d63514001137f11bb2e3aec2653e322aa8d3a21"
+  },
+  "itemCount": 45
+}

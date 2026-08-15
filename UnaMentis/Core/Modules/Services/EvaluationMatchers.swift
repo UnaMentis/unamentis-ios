@@ -27,9 +27,27 @@ struct EvalPhoneticMatcher: Sendable {
         return context.result()
     }
 
+    /// Double Metaphone codes WITHOUT the 4-character truncation `metaphone`
+    /// applies. Matching compares these: two answers whose codes agree only
+    /// because both were cut to four characters are not phonetically the same
+    /// word. That truncation let "Austria" match "Australia" (both truncate to
+    /// ASTR, full codes ASTR and ASTRL), a false accept on a real geography
+    /// answer. Every genuine variant pair (Stephen/Steven, Philadelphia/
+    /// Filadelfia, Christopher/Kristopher, receive/recieve) agrees at full
+    /// length, so tolerance for real misspellings is unchanged.
+    func fullCodes(_ text: String) -> (primary: String, secondary: String?) {
+        let cleaned = text.uppercased().filter { $0.isLetter }
+        guard !cleaned.isEmpty else { return ("", nil) }
+
+        var context = MetaphoneContext(text: cleaned)
+        processInitialExceptions(&context)
+        processMainLoop(&context)
+        return context.fullResult()
+    }
+
     func arePhoneticMatch(_ str1: String, _ str2: String) -> Bool {
-        let codes1 = metaphone(str1)
-        let codes2 = metaphone(str2)
+        let codes1 = fullCodes(str1)
+        let codes2 = fullCodes(str2)
 
         guard !codes1.primary.isEmpty && !codes2.primary.isEmpty else { return false }
 
@@ -305,10 +323,16 @@ private struct MetaphoneContext {
         secondary.append(code)
     }
 
+    /// The classic 4-character Double Metaphone codes.
     func result() -> (primary: String, secondary: String?) {
         let primaryCode = String(primary.prefix(4))
         let secondaryCode = secondary.isEmpty || secondary == primary ? nil : String(secondary.prefix(4))
         return (primaryCode, secondaryCode)
+    }
+
+    /// The untruncated codes, used for match decisions.
+    func fullResult() -> (primary: String, secondary: String?) {
+        (primary, secondary.isEmpty || secondary == primary ? nil : secondary)
     }
 }
 

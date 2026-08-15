@@ -1,4 +1,5 @@
 {
+  "_fixture": "Test fixture only. This descriptor exists to prove the quiz-match engine runs a format it was not written for, and it is referenced only by QuizMatchEngineTests and QuizMatchFormatDescriptorTests. The shipping NAQT format is qb-naqt.json; the only difference here is the placeholder kb-standard evaluation profile. Do not point production code at this file.",
   "formatId": "qb-naqt-skeleton",
   "engine": "quiz-match/1",
   "phases": ["oral"],

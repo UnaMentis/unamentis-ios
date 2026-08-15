@@ -1,0 +1,16 @@
+{
+  "formatId": "fr-grand-oral",
+  "engine": "oral-exam/1",
+  "language": "fr-FR",
+  "stages": [
+    { "kind": "preparation", "seconds": 1200 },
+    { "kind": "presentation", "seconds": 600, "notesAllowed": false },
+    { "kind": "questioning", "seconds": 600, "style": "jury", "followUpDepth": 2 }
+  ],
+  "rubric": ["structure", "clarity", "argumentation", "interaction", "delivery"],
+  "examiner": { "personaCount": 2, "register": "formal" },
+  "evaluation": {
+    "tiers": ["llmRubric"],
+    "deliveryMetrics": ["pace", "fillerWords", "hesitations"]
+  }
+}

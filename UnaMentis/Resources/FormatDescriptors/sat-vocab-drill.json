@@ -1,0 +1,14 @@
+{
+  "formatId": "sat-vocab-drill",
+  "engine": "drill/1",
+  "itemTypes": ["drill-items/1"],
+  "sessionShapes": [
+    { "kind": "count", "value": 10 }
+  ],
+  "schedulingPolicy": "review",
+  "voice": {
+    "answerSilenceSec": 1.6,
+    "maxUtteranceSec": 12.0,
+    "answerTimeoutSec": 20.0
+  }
+}

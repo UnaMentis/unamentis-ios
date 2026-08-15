@@ -1,0 +1,497 @@
+[
+  {
+    "id": "naqt-lit-001",
+    "text": "This author wrote of a governess who fears for two children at the country house of Bly. In another work, an American named Christopher Newman seeks a wife in Paris. This author of The Turn of the Screw and The American also created Isabel Archer. For 10 points, name this expatriate author of The Portrait of a Lady.",
+    "answer": { "primary": "Henry James", "acceptable": ["James"] },
+    "domain": "literature",
+    "powerMarkIndex": 120,
+    "bonus": {
+      "leadIn": "Answer these questions about ghost stories in literature.",
+      "parts": [
+        { "text": "This Charles Dickens novella features the spirits of Christmas Past, Present, and Yet to Come.", "answer": { "primary": "A Christmas Carol" } },
+        { "text": "In this Shakespeare play, the ghost of the murdered king appears to his son and demands revenge.", "answer": { "primary": "Hamlet" } },
+        { "text": "This American author wrote the ghostly short story The Legend of Sleepy Hollow.", "answer": { "primary": "Washington Irving", "acceptable": ["Irving"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-hist-001",
+    "text": "During this war, a surprise attack crossed a frozen river on Christmas night to capture Hessian troops at Trenton. This conflict saw a harsh winter at Valley Forge and ended with a surrender at Yorktown. For 10 points, name this war in which thirteen colonies won independence from Britain.",
+    "answer": { "primary": "American Revolutionary War", "acceptable": ["American Revolution", "War of Independence", "American War of Independence"] },
+    "domain": "history",
+    "powerMarkIndex": 95,
+    "bonus": {
+      "leadIn": "Answer these questions about the American founding.",
+      "parts": [
+        { "text": "This document adopted in 1776 declared the colonies' separation from Britain.", "answer": { "primary": "Declaration of Independence" } },
+        { "text": "This Virginian was the principal author of that document.", "answer": { "primary": "Thomas Jefferson", "acceptable": ["Jefferson"] } },
+        { "text": "This 1787 gathering in Philadelphia drafted the United States Constitution.", "answer": { "primary": "Constitutional Convention", "acceptable": ["Philadelphia Convention"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-sci-001",
+    "text": "This organelle contains cristae, folds of its inner membrane that increase surface area for the electron transport chain. Often called the powerhouse of the cell, it produces ATP through cellular respiration. For 10 points, name this double-membraned organelle.",
+    "answer": { "primary": "mitochondria", "acceptable": ["mitochondrion"] },
+    "domain": "science",
+    "powerMarkIndex": 88,
+    "bonus": {
+      "leadIn": "Answer these questions about cell biology.",
+      "parts": [
+        { "text": "This green pigment in chloroplasts captures light energy for photosynthesis.", "answer": { "primary": "chlorophyll" } },
+        { "text": "This process by which cells divide to produce two identical daughter cells is not meiosis.", "answer": { "primary": "mitosis" } },
+        { "text": "This molecule carries genetic information and has a double helix structure.", "answer": { "primary": "DNA", "acceptable": ["deoxyribonucleic acid"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-sci-002",
+    "text": "This element has 79 protons and is prized for its resistance to corrosion. With the symbol Au, it has long been used as currency and in jewelry. For 10 points, name this precious yellow metal.",
+    "answer": { "primary": "gold", "acceptable": ["Au"] },
+    "domain": "science",
+    "powerMarkIndex": 48,
+    "bonus": {
+      "leadIn": "Answer these questions about metals.",
+      "parts": [
+        { "text": "This metal is liquid at room temperature and was once used in thermometers.", "answer": { "primary": "mercury", "acceptable": ["Hg"] } },
+        { "text": "This reddish metal is used for household electrical wiring and for water pipes.", "answer": { "primary": "copper", "acceptable": ["Cu"] } },
+        { "text": "This element with the symbol Ag conducts electricity better than any other metal.", "answer": { "primary": "silver" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-geo-001",
+    "text": "This river's annual flooding once deposited fertile black silt across a valley of ancient farmers. The longest river in Africa, it flows north through Egypt to the Mediterranean Sea. For 10 points, name this river on which the pyramids of Giza were built.",
+    "answer": { "primary": "Nile River", "acceptable": ["Nile"] },
+    "domain": "geography",
+    "powerMarkIndex": 90,
+    "bonus": {
+      "leadIn": "Answer these questions about rivers and the cities on them.",
+      "parts": [
+        { "text": "This South American river carries more water than any other and drains a vast rainforest.", "answer": { "primary": "Amazon River", "acceptable": ["Amazon"] } },
+        { "text": "This river flows through Baghdad and joins the Euphrates before reaching the Persian Gulf.", "answer": { "primary": "Tigris", "acceptable": ["Tigris River"] } },
+        { "text": "This Egyptian port founded by Alexander the Great stands on the Mediterranean coast west of the Nile delta.", "answer": { "primary": "Alexandria" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-fa-001",
+    "text": "This artist cut off part of his own ear during a period of mental crisis in Arles. He painted swirling night skies and a series of sunflowers in bold yellows. For 10 points, name this Dutch post-Impressionist painter of The Starry Night.",
+    "answer": { "primary": "Vincent van Gogh", "acceptable": ["van Gogh", "Gogh"] },
+    "domain": "arts",
+    "powerMarkIndex": 85,
+    "bonus": {
+      "leadIn": "Answer these questions about famous paintings.",
+      "parts": [
+        { "text": "This Leonardo da Vinci portrait of a smiling woman hangs in the Louvre.", "answer": { "primary": "Mona Lisa", "acceptable": ["La Gioconda"] } },
+        { "text": "This Norwegian artist depicted a figure clutching its face on a bridge in The Scream.", "answer": { "primary": "Edvard Munch", "acceptable": ["Munch"] } },
+        { "text": "This Spanish artist painted the anti-war mural Guernica.", "answer": { "primary": "Pablo Picasso", "acceptable": ["Picasso"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-math-001",
+    "text": "This constant appears in the formula for the area of a circle, where area equals it times the radius squared. Its decimal expansion begins three point one four one five nine. For 10 points, name this irrational constant, the ratio of a circle's circumference to its diameter.",
+    "answer": { "primary": "pi", "acceptable": ["π"] },
+    "domain": "mathematics",
+    "powerMarkIndex": 100,
+    "bonus": {
+      "leadIn": "Answer these questions about the parts of a circle.",
+      "parts": [
+        { "text": "This segment runs from the center of a circle to any point on the circle.", "answer": { "primary": "radius" } },
+        { "text": "This word names the distance all the way around a circle.", "answer": { "primary": "circumference" } },
+        { "text": "This portion of a circle's edge between two points is measured in degrees or in length.", "answer": { "primary": "arc" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-lit-002",
+    "text": "This novel's narrator Nick Carraway rents a house next to a mysterious millionaire who throws lavish parties. That neighbor pines for Daisy Buchanan across the bay. For 10 points, name this F. Scott Fitzgerald novel about Jay Gatsby.",
+    "answer": { "primary": "The Great Gatsby", "acceptable": ["Great Gatsby"] },
+    "domain": "literature",
+    "powerMarkIndex": 92,
+    "bonus": {
+      "leadIn": "Answer these questions about American novels of the 1920s.",
+      "parts": [
+        { "text": "Fitzgerald set The Great Gatsby in this decade known for jazz and prohibition.", "answer": { "primary": "the 1920s", "acceptable": ["1920s", "Roaring Twenties", "Jazz Age"] } },
+        { "text": "This constitutional amendment established the prohibition of alcohol.", "answer": { "primary": "Eighteenth Amendment", "acceptable": ["18th Amendment"] } },
+        { "text": "West Egg and East Egg are fictional communities on this New York island east of Manhattan.", "answer": { "primary": "Long Island" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-hist-002",
+    "text": "This leader crossed the Rubicon river with his legion in defiance of the Senate, sparking civil war. Later declared dictator, he was assassinated on the Ides of March. For 10 points, name this Roman general who conquered Gaul.",
+    "answer": { "primary": "Julius Caesar", "acceptable": ["Caesar", "Gaius Julius Caesar"] },
+    "domain": "history",
+    "powerMarkIndex": 85,
+    "bonus": {
+      "leadIn": "Answer these questions about ancient Rome.",
+      "parts": [
+        { "text": "This first Roman emperor was the adopted heir of Julius Caesar.", "answer": { "primary": "Augustus", "acceptable": ["Octavian", "Gaius Octavius"] } },
+        { "text": "This large amphitheater in Rome hosted gladiatorial games.", "answer": { "primary": "Colosseum", "acceptable": ["Flavian Amphitheatre"] } },
+        { "text": "Roman roads famously all led to this capital city.", "answer": { "primary": "Rome" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-sci-003",
+    "text": "This scientist's namesake equation relates energy to mass times the speed of light squared. He described gravity as the curvature of spacetime in his general theory of relativity. For 10 points, name this physicist born in Germany.",
+    "answer": { "primary": "Albert Einstein", "acceptable": ["Einstein"] },
+    "domain": "science",
+    "powerMarkIndex": 80,
+    "bonus": {
+      "leadIn": "Answer these questions about physics.",
+      "parts": [
+        { "text": "Werner Heisenberg's uncertainty principle belongs to this branch of physics, which describes matter at the smallest scales.", "answer": { "primary": "quantum mechanics", "acceptable": ["quantum physics", "quantum theory"] } },
+        { "text": "This is the approximate speed of light in a vacuum, in kilometers per second.", "answer": { "primary": "300000", "acceptable": ["300,000", "three hundred thousand", "299792", "299,792"] } },
+        { "text": "This German physicist gives his name to the constant relating a photon's energy to its frequency.", "answer": { "primary": "Max Planck", "acceptable": ["Planck"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-geo-002",
+    "text": "This country is the only one to span an entire continent. Its interior outback is home to Uluru, and its Great Barrier Reef lies off the northeast coast. For 10 points, name this nation whose capital is Canberra.",
+    "answer": { "primary": "Australia", "acceptable": ["Commonwealth of Australia"] },
+    "domain": "geography",
+    "powerMarkIndex": 78,
+    "bonus": {
+      "leadIn": "Answer these questions about Australia and its neighbors.",
+      "parts": [
+        { "text": "This neighboring country is made up of a North Island and a South Island.", "answer": { "primary": "New Zealand" } },
+        { "text": "This indigenous people of New Zealand perform the challenge dance called the haka.", "answer": { "primary": "Maori" } },
+        { "text": "This building with sail-shaped shells stands on a harbor in Australia's largest city.", "answer": { "primary": "Sydney Opera House", "acceptable": ["Opera House"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-lit-003",
+    "text": "This playwright's tragic heroes include a Danish prince and a Scottish thane who murders a king. He also wrote of star-crossed lovers in Verona. For 10 points, name this English author of Romeo and Juliet.",
+    "answer": { "primary": "William Shakespeare", "acceptable": ["Shakespeare"] },
+    "domain": "literature",
+    "powerMarkIndex": 75,
+    "bonus": {
+      "leadIn": "Answer these questions about Shakespeare's plays.",
+      "parts": [
+        { "text": "In this tragedy, a Moorish general is deceived by Iago into murdering his wife Desdemona.", "answer": { "primary": "Othello" } },
+        { "text": "This comedy features the fairy king Oberon and the mischievous Puck.", "answer": { "primary": "A Midsummer Night's Dream", "acceptable": ["Midsummer Night's Dream"] } },
+        { "text": "This aging king divides his kingdom among his daughters Goneril, Regan, and Cordelia.", "answer": { "primary": "King Lear", "acceptable": ["Lear"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-hist-003",
+    "text": "This document's signing was forced upon a king at Runnymede in 1215. It limited royal power and influenced later constitutional traditions. For 10 points, name this Latin-named English charter whose name means Great Charter.",
+    "answer": { "primary": "Magna Carta" },
+    "domain": "history",
+    "powerMarkIndex": 88,
+    "bonus": {
+      "leadIn": "Answer these questions about medieval England.",
+      "parts": [
+        { "text": "This king was forced by his barons to seal Magna Carta.", "answer": { "primary": "King John", "acceptable": ["John", "John I"] } },
+        { "text": "This 1066 battle brought Norman rule to England.", "answer": { "primary": "Battle of Hastings", "acceptable": ["Hastings"] } },
+        { "text": "This survey of English landholding was compiled for William the Conqueror in 1086.", "answer": { "primary": "Domesday Book", "acceptable": ["Doomsday Book"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-sci-004",
+    "text": "This force keeps planets in orbit and was described by an English scientist watching a falling apple. Its acceleration near Earth's surface is about nine point eight meters per second squared. For 10 points, name this attractive force between masses.",
+    "answer": { "primary": "gravity", "acceptable": ["gravitation", "gravitational force"] },
+    "domain": "science",
+    "powerMarkIndex": 90,
+    "bonus": {
+      "leadIn": "Answer these questions about forces and motion.",
+      "parts": [
+        { "text": "This English scientist's three laws of motion explain how forces change an object's velocity.", "answer": { "primary": "Isaac Newton", "acceptable": ["Newton"] } },
+        { "text": "This force opposes the sliding of one surface across another.", "answer": { "primary": "friction" } },
+        { "text": "This quantity equals mass times velocity and is conserved in collisions.", "answer": { "primary": "momentum" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-fa-002",
+    "text": "This composer went deaf yet continued to write, completing a symphony whose fourth movement sets the Ode to Joy. He also wrote the Moonlight Sonata. For 10 points, name this German composer of the Ninth Symphony.",
+    "answer": { "primary": "Ludwig van Beethoven", "acceptable": ["Beethoven"] },
+    "domain": "arts",
+    "powerMarkIndex": 85,
+    "bonus": {
+      "leadIn": "Answer these questions about classical composers.",
+      "parts": [
+        { "text": "This Austrian prodigy wrote The Magic Flute and a famous Requiem before dying young.", "answer": { "primary": "Wolfgang Amadeus Mozart", "acceptable": ["Mozart"] } },
+        { "text": "This German composer wrote the Brandenburg Concertos and many works for organ.", "answer": { "primary": "Johann Sebastian Bach", "acceptable": ["Bach"] } },
+        { "text": "This Russian composer wrote the 1812 Overture and the ballet Swan Lake.", "answer": { "primary": "Pyotr Ilyich Tchaikovsky", "acceptable": ["Tchaikovsky"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-math-002",
+    "text": "This theorem relates the squares of the two shorter sides of a right triangle to the square of the hypotenuse. For 10 points, name this theorem attributed to a Greek mathematician.",
+    "answer": { "primary": "Pythagorean theorem", "acceptable": ["Pythagoras' theorem"] },
+    "domain": "mathematics",
+    "powerMarkIndex": 70,
+    "bonus": {
+      "leadIn": "Answer these questions about triangles.",
+      "parts": [
+        { "text": "This is the name of the longest side of a right triangle, the side opposite the right angle.", "answer": { "primary": "hypotenuse" } },
+        { "text": "The three interior angles of any triangle add up to this many degrees.", "answer": { "primary": "180", "acceptable": ["one hundred eighty", "180 degrees"] } },
+        { "text": "This word describes a triangle whose three sides are all the same length.", "answer": { "primary": "equilateral" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-geo-003",
+    "text": "This mountain on the border of Nepal and Tibet is the highest above sea level, at over eight thousand eight hundred meters. For 10 points, name this Himalayan peak first summited by Hillary and Norgay.",
+    "answer": { "primary": "Mount Everest", "acceptable": ["Everest", "Sagarmatha", "Chomolungma"] },
+    "domain": "geography",
+    "powerMarkIndex": 72,
+    "bonus": {
+      "leadIn": "Answer these questions about mountains outside the Himalayas.",
+      "parts": [
+        { "text": "This dormant volcano in Tanzania is the highest mountain in Africa.", "answer": { "primary": "Mount Kilimanjaro", "acceptable": ["Kilimanjaro"] } },
+        { "text": "This peak on the border of France and Italy is the highest in the Alps.", "answer": { "primary": "Mont Blanc" } },
+        { "text": "This range runs the length of South America's western edge.", "answer": { "primary": "Andes", "acceptable": ["Andes Mountains"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-hist-004",
+    "text": "This empire was ruled from Constantinople and preserved Roman law under Justinian. It fell to the Ottomans in 1453. For 10 points, name this eastern continuation of the Roman Empire.",
+    "answer": { "primary": "Byzantine Empire", "acceptable": ["Byzantium", "Eastern Roman Empire"] },
+    "domain": "history",
+    "powerMarkIndex": 82,
+    "bonus": {
+      "leadIn": "Answer these questions about world capitals.",
+      "parts": [
+        { "text": "Constantinople is the former name of this largest city in modern Turkey.", "answer": { "primary": "Istanbul" } },
+        { "text": "This city on the Seine is the capital of France.", "answer": { "primary": "Paris" } },
+        { "text": "This city is the capital of Japan.", "answer": { "primary": "Tokyo" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-sci-005",
+    "text": "This gas makes up about 78 percent of Earth's atmosphere and has the symbol N. It is largely inert at room temperature. For 10 points, name this element with atomic number seven.",
+    "answer": { "primary": "nitrogen", "acceptable": ["N"] },
+    "domain": "science",
+    "powerMarkIndex": 68,
+    "bonus": {
+      "leadIn": "Answer these questions about the atmosphere.",
+      "parts": [
+        { "text": "This gas makes up about 21 percent of the air and is consumed in respiration.", "answer": { "primary": "oxygen", "acceptable": ["O2"] } },
+        { "text": "This layer of the atmosphere above the troposphere holds the ozone that absorbs ultraviolet light.", "answer": { "primary": "stratosphere" } },
+        { "text": "Bacteria convert atmospheric nitrogen into compounds plants can use in this two-word process.", "answer": { "primary": "nitrogen fixation", "acceptable": ["fixation"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-lit-004",
+    "text": "In this novel, the fisherman Santiago battles a giant marlin over three days at sea. For 10 points, name this short Ernest Hemingway work about an old man.",
+    "answer": { "primary": "The Old Man and the Sea", "acceptable": ["Old Man and the Sea"] },
+    "domain": "literature",
+    "powerMarkIndex": 62,
+    "bonus": {
+      "leadIn": "Answer these questions about Ernest Hemingway.",
+      "parts": [
+        { "text": "This Hemingway novel of the Spanish Civil War takes its title from a John Donne meditation.", "answer": { "primary": "For Whom the Bell Tolls" } },
+        { "text": "This Hemingway novel of the First World War follows an ambulance driver and a nurse in Italy.", "answer": { "primary": "A Farewell to Arms", "acceptable": ["Farewell to Arms"] } },
+        { "text": "Hemingway won this Swedish prize for literature in 1954.", "answer": { "primary": "Nobel Prize", "acceptable": ["Nobel Prize in Literature", "Nobel"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-geo-004",
+    "text": "This desert is the largest hot desert in the world, stretching across northern Africa. For 10 points, name this desert whose name is also the Arabic word for desert.",
+    "answer": { "primary": "Sahara", "acceptable": ["Sahara Desert"] },
+    "domain": "geography",
+    "powerMarkIndex": 60,
+    "bonus": {
+      "leadIn": "Answer these questions about deserts and dry lands.",
+      "parts": [
+        { "text": "This cold desert of Mongolia and northern China is famous for dinosaur fossils.", "answer": { "primary": "Gobi", "acceptable": ["Gobi Desert"] } },
+        { "text": "This desert in northern Chile is among the driest places on Earth.", "answer": { "primary": "Atacama", "acceptable": ["Atacama Desert"] } },
+        { "text": "This semi-arid belt of grassland just south of the Sahara has suffered severe droughts.", "answer": { "primary": "Sahel" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-hist-005",
+    "text": "This 1929 event saw stock prices collapse on Black Tuesday, beginning a worldwide economic depression. For 10 points, name this stock market crash.",
+    "answer": { "primary": "Wall Street Crash of 1929", "acceptable": ["Stock Market Crash of 1929", "Great Crash", "Wall Street Crash"] },
+    "domain": "history",
+    "powerMarkIndex": 65,
+    "bonus": {
+      "leadIn": "Answer these questions about the Great Depression.",
+      "parts": [
+        { "text": "This president's New Deal answered the Depression with public works and relief programs.", "answer": { "primary": "Franklin Roosevelt", "acceptable": ["FDR", "Franklin D. Roosevelt", "Roosevelt"] } },
+        { "text": "This drought and dust storm disaster struck the southern Great Plains in the 1930s.", "answer": { "primary": "Dust Bowl" } },
+        { "text": "This New Deal program, created in 1935, still pays retirement benefits to older Americans.", "answer": { "primary": "Social Security" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-sci-006",
+    "text": "This planet is the largest in the solar system and features a Great Red Spot, a persistent storm. For 10 points, name this gas giant named for the king of the Roman gods.",
+    "answer": { "primary": "Jupiter" },
+    "domain": "science",
+    "powerMarkIndex": 65,
+    "bonus": {
+      "leadIn": "Answer these questions about the planets and their moons.",
+      "parts": [
+        { "text": "This planet is famous for its bright system of rings.", "answer": { "primary": "Saturn" } },
+        { "text": "This is the smallest planet and the closest to the Sun.", "answer": { "primary": "Mercury" } },
+        { "text": "This moon of Jupiter is the largest moon in the solar system.", "answer": { "primary": "Ganymede" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-fa-003",
+    "text": "This ballet by Tchaikovsky features a Sugar Plum Fairy and a battle with the Mouse King on Christmas Eve. For 10 points, name this holiday ballet.",
+    "answer": { "primary": "The Nutcracker", "acceptable": ["Nutcracker"] },
+    "domain": "arts",
+    "powerMarkIndex": 62,
+    "bonus": {
+      "leadIn": "Answer these questions about ballet.",
+      "parts": [
+        { "text": "This Tchaikovsky ballet features the enchanted princess Odette and the sorcerer Rothbart.", "answer": { "primary": "Swan Lake" } },
+        { "text": "This Russian composer's ballet The Rite of Spring caused an uproar at its 1913 premiere.", "answer": { "primary": "Igor Stravinsky", "acceptable": ["Stravinsky"] } },
+        { "text": "This French word names a spin on one foot, often performed in a series.", "answer": { "primary": "pirouette" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-lit-005",
+    "text": "This poet wrote The Raven, whose narrator is tormented by a bird intoning nevermore. For 10 points, name this American author of gothic tales.",
+    "answer": { "primary": "Edgar Allan Poe", "acceptable": ["Poe"] },
+    "domain": "literature",
+    "powerMarkIndex": 55,
+    "bonus": {
+      "leadIn": "Answer these questions about American poets.",
+      "parts": [
+        { "text": "This poet of Leaves of Grass celebrated himself in Song of Myself.", "answer": { "primary": "Walt Whitman", "acceptable": ["Whitman"] } },
+        { "text": "This reclusive poet of Amherst wrote Because I could not stop for Death.", "answer": { "primary": "Emily Dickinson", "acceptable": ["Dickinson"] } },
+        { "text": "This New England poet wrote The Road Not Taken and Stopping by Woods on a Snowy Evening.", "answer": { "primary": "Robert Frost", "acceptable": ["Frost"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-hist-006",
+    "text": "This wall divided a German city from 1961 until its fall in 1989. For 10 points, name this Cold War barrier.",
+    "answer": { "primary": "Berlin Wall" },
+    "domain": "history",
+    "powerMarkIndex": 50,
+    "bonus": {
+      "leadIn": "Answer these questions about the Cold War.",
+      "parts": [
+        { "text": "This 1962 crisis brought the superpowers close to nuclear war over missiles on a Caribbean island.", "answer": { "primary": "Cuban Missile Crisis" } },
+        { "text": "This Soviet leader's policies of glasnost and perestroika preceded the collapse of the USSR.", "answer": { "primary": "Mikhail Gorbachev", "acceptable": ["Gorbachev"] } },
+        { "text": "This alliance of Eastern Bloc states was the Soviet answer to NATO.", "answer": { "primary": "Warsaw Pact" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-sci-007",
+    "text": "This subatomic particle carries a negative charge and orbits the nucleus. For 10 points, name this light particle whose flow constitutes electric current.",
+    "answer": { "primary": "electron" },
+    "domain": "science",
+    "powerMarkIndex": 55,
+    "bonus": {
+      "leadIn": "Answer these questions about the structure of the atom.",
+      "parts": [
+        { "text": "This positively charged nuclear particle determines an element's atomic number.", "answer": { "primary": "proton" } },
+        { "text": "This uncharged nuclear particle was identified by James Chadwick in 1932.", "answer": { "primary": "neutron" } },
+        { "text": "Atoms of one element that differ in their number of neutrons are called these.", "answer": { "primary": "isotopes", "acceptable": ["isotope"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-geo-005",
+    "text": "This is the most populous country in the world and is home to the Himalayas' southern slopes and the Ganges River. For 10 points, name this South Asian nation whose capital is New Delhi.",
+    "answer": { "primary": "India", "acceptable": ["Republic of India", "Bharat"] },
+    "domain": "geography",
+    "powerMarkIndex": 60,
+    "bonus": {
+      "leadIn": "Answer these questions about South Asia.",
+      "parts": [
+        { "text": "This seasonal wind system brings heavy summer rains to the subcontinent.", "answer": { "primary": "monsoon" } },
+        { "text": "This white marble mausoleum at Agra was built by the emperor Shah Jahan.", "answer": { "primary": "Taj Mahal" } },
+        { "text": "This country west of India has its capital at Islamabad.", "answer": { "primary": "Pakistan" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-math-003",
+    "text": "This number, the base of the natural logarithm, is approximately two point seven one eight. For 10 points, name this constant sometimes called Euler's number.",
+    "answer": { "primary": "e", "acceptable": ["Euler's number"] },
+    "domain": "mathematics",
+    "powerMarkIndex": 58,
+    "bonus": {
+      "leadIn": "Answer these questions about mathematics beyond arithmetic.",
+      "parts": [
+        { "text": "This branch of mathematics, developed by Newton and Leibniz, studies rates of change.", "answer": { "primary": "calculus" } },
+        { "text": "This function is the inverse of exponentiation and turns products into sums.", "answer": { "primary": "logarithm", "acceptable": ["log"] } },
+        { "text": "This Swiss mathematician's famous identity links e, i, pi, one, and zero.", "answer": { "primary": "Leonhard Euler", "acceptable": ["Euler"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-lit-006",
+    "text": "This novel opens with the line Call me Ishmael and follows Captain Ahab's hunt for a white whale. For 10 points, name this Herman Melville novel.",
+    "answer": { "primary": "Moby-Dick", "acceptable": ["Moby Dick"] },
+    "domain": "literature",
+    "powerMarkIndex": 52,
+    "bonus": {
+      "leadIn": "Answer these questions about famous opening lines.",
+      "parts": [
+        { "text": "This Dickens novel of two cities opens, it was the best of times, it was the worst of times.", "answer": { "primary": "A Tale of Two Cities", "acceptable": ["Tale of Two Cities"] } },
+        { "text": "This Jane Austen novel opens with a truth universally acknowledged about a single man of good fortune.", "answer": { "primary": "Pride and Prejudice" } },
+        { "text": "This George Orwell novel opens on a bright cold April day with the clocks striking thirteen.", "answer": { "primary": "1984", "acceptable": ["Nineteen Eighty-Four", "nineteen eighty four"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-sci-008",
+    "text": "This scientist proposed the theory of evolution by natural selection after voyaging on the Beagle. For 10 points, name this author of On the Origin of Species.",
+    "answer": { "primary": "Charles Darwin", "acceptable": ["Darwin"] },
+    "domain": "science",
+    "powerMarkIndex": 55,
+    "bonus": {
+      "leadIn": "Answer these questions about evolution and heredity.",
+      "parts": [
+        { "text": "This Austrian monk's experiments with pea plants founded the study of heredity.", "answer": { "primary": "Gregor Mendel", "acceptable": ["Mendel"] } },
+        { "text": "Darwin studied finches on this Pacific island group that belongs to Ecuador.", "answer": { "primary": "Galapagos Islands", "acceptable": ["Galapagos"] } },
+        { "text": "This word names a heritable change in a DNA sequence, the raw material of variation.", "answer": { "primary": "mutation" } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-hist-007",
+    "text": "This Egyptian queen allied with Julius Caesar and later Mark Antony before her death by an asp's bite. For 10 points, name this last pharaoh of the Ptolemaic dynasty.",
+    "answer": { "primary": "Cleopatra", "acceptable": ["Cleopatra VII"] },
+    "domain": "history",
+    "powerMarkIndex": 58,
+    "bonus": {
+      "leadIn": "Answer these questions about ancient Egypt and its rediscovery.",
+      "parts": [
+        { "text": "This stone found in 1799 carried the same decree in Greek and in Egyptian scripts.", "answer": { "primary": "Rosetta Stone" } },
+        { "text": "Howard Carter found this boy king's nearly intact tomb in 1922.", "answer": { "primary": "Tutankhamun", "acceptable": ["King Tut", "Tutankhamen", "Tut"] } },
+        { "text": "This French scholar used the Rosetta Stone to decipher hieroglyphs in the 1820s.", "answer": { "primary": "Jean-Francois Champollion", "acceptable": ["Champollion"] } }
+      ]
+    }
+  },
+  {
+    "id": "naqt-fa-004",
+    "text": "This instrument has eighty-eight keys and both black and white notes, and is central to works by Chopin. For 10 points, name this keyboard instrument.",
+    "answer": { "primary": "piano", "acceptable": ["pianoforte"] },
+    "domain": "arts",
+    "powerMarkIndex": 50,
+    "bonus": {
+      "leadIn": "Answer these questions about instruments of the orchestra.",
+      "parts": [
+        { "text": "This is the largest and lowest-pitched bowed string instrument in the orchestra.", "answer": { "primary": "double bass", "acceptable": ["contrabass", "upright bass", "string bass"] } },
+        { "text": "This double-reed woodwind usually sounds the tuning note the orchestra tunes to.", "answer": { "primary": "oboe" } },
+        { "text": "The timpani, snare drum, and cymbals all belong to this family of instruments.", "answer": { "primary": "percussion" } }
+      ]
+    }
+  }
+]

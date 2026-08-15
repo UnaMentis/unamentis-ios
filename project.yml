@@ -69,12 +69,6 @@ targets:
           - "**/Testing/LatencyHarness/TestHooks.swift"  # Has duplicate provider extensions
           # ManagedObjects included now - using manual classes with no auto-generation
           - "**/SelfHostedSTTService.swift"  # Has duplicate STTMetrics/STTError types
-          # Modules/KnowledgeBowl - exclude entire substructure, keep only KnowledgeBowlModule.swift
-          # The module facade references Core/ and UI/ versions for actual implementation
-          - "Modules/KnowledgeBowl/Models/**"    # Duplicates of Core/KnowledgeBowl/
-          - "Modules/KnowledgeBowl/Views/**"     # Duplicates of UI/KnowledgeBowl/
-          - "Modules/KnowledgeBowl/Services/**"  # Duplicates of Services/KnowledgeBowl/
-          - "Modules/KnowledgeBowl/Engine/**"    # Duplicates of Services/KnowledgeBowl/
       - path: Shared
         excludes:
           - "**/.DS_Store"
@@ -82,6 +76,89 @@ targets:
         buildPhase: resources
         type: folder
       - path: UnaMentis/Resources/kb-sample-questions.json
+        buildPhase: resources
+        type: file
+      # Quiz-match format descriptors (MODULE_SDK_SPEC.md section 6.1)
+      - path: UnaMentis/Resources/FormatDescriptors/kb-colorado.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/FormatDescriptors/qb-naqt-skeleton.json
+        buildPhase: resources
+        type: file
+      # Quiz Bowl module format descriptors (Module A)
+      - path: UnaMentis/Resources/FormatDescriptors/qb-naqt.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/FormatDescriptors/qb-acf.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/FormatDescriptors/ihbb-europe.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/FormatDescriptors/uk-schools-challenge.json
+        buildPhase: resources
+        type: file
+      # Quiz Bowl bundled content packs (manifest + items per pack)
+      - path: UnaMentis/Resources/ContentPacks/qb-starter-naqt-manifest.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/ContentPacks/qb-starter-naqt-items.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/ContentPacks/ihbb-europe-starter-manifest.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/ContentPacks/ihbb-europe-starter-items.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/ContentPacks/uk-schools-challenge-starter-manifest.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/ContentPacks/uk-schools-challenge-starter-items.json
+        buildPhase: resources
+        type: file
+      # Drill format descriptors (MODULE_SDK_SPEC.md section 6.3)
+      - path: UnaMentis/Resources/FormatDescriptors/sat-vocab-drill.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/FormatDescriptors/sat-math-mental.json
+        buildPhase: resources
+        type: file
+      # SAT Prep content packs (drill-items/1, CC-BY-4.0, attribution UnaMentis)
+      - path: UnaMentis/Resources/ContentPacks/sat-vocab-context-items.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/ContentPacks/sat-vocab-context-manifest.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/ContentPacks/sat-math-mental-items.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/ContentPacks/sat-math-mental-manifest.json
+        buildPhase: resources
+        type: file
+      # Oral Exam format descriptors (MODULE_SDK_SPEC.md section 6.2)
+      - path: UnaMentis/Resources/FormatDescriptors/fr-grand-oral.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/FormatDescriptors/fr-grand-oral-practice.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/FormatDescriptors/practice-viva.json
+        buildPhase: resources
+        type: file
+      # Oral Exam syllabus starter pack (oral-syllabus/1, CC-BY-4.0)
+      - path: UnaMentis/Resources/OralSyllabus/oral-syllabus-starter-manifest.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/OralSyllabus/oral-syllabus-starter-items.json
+        buildPhase: resources
+        type: file
+      # Aural Skills starter pack (aural-items/1, MODULE_SDK_SPEC.md section 7)
+      - path: UnaMentis/Resources/AuralSkills/aural-starter-manifest.json
+        buildPhase: resources
+        type: file
+      - path: UnaMentis/Resources/AuralSkills/aural-starter-items.json
         buildPhase: resources
         type: file
     dependencies:
@@ -153,14 +230,6 @@ targets:
         excludes:
           - "**/.DS_Store"
           - E2E  # E2E tests separate
-          # Tests for excluded Modules classes
-          - "Unit/KnowledgeBowl/KBStatsManagerTests.swift"
-          # KBPracticeEngine, KBStudyMode, and the Modules KBQuestion live under
-          # Modules/KnowledgeBowl/** which is excluded from the app target (the
-          # types are duplicates of Core/). They are not linked into the test
-          # target, so this test cannot compile without re-introducing the
-          # duplicate-type conflicts the exclusions exist to prevent.
-          - "Unit/KnowledgeBowl/KBPracticeEngineTests.swift"
           # Tests with stale API signatures (need maintenance)
           - "Unit/KnowledgeBowl/KBQuestionTests.swift"
           - "Unit/KnowledgeBowl/KBReboundSimulatorTests.swift"  # stale KBQuestion API

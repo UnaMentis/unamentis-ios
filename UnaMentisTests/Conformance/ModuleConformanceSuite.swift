@@ -206,9 +206,12 @@ enum ModuleConformance {
     // MARK: - UM-Voice
 
     /// UM-Voice: the module's primary voice-first activity, driven ONLY through
-    /// the scripted voice session (zero touch/UI), reaches completion with an
-    /// evaluated attempt, emits the required `module.attempt` telemetry, honors
-    /// its claimed unified commands, and releases nothing it does not own.
+    /// the scripted voice session (zero touch/UI), observes its own terminal
+    /// event and so reaches completion, evaluates at least one spoken response,
+    /// emits the required `module.attempt` telemetry, records those attempts
+    /// through the host progress store under its own namespace, drives at least
+    /// one module-scoped voice state, honors every unified command it claims,
+    /// and releases nothing it does not own.
     ///
     /// Modules must adopt `ConformanceDrivable` to run at this level.
     @MainActor
@@ -272,10 +275,16 @@ enum ModuleConformance {
             return
         }
 
-        // --- Check 1: the activity reached completion. ---
+        // --- Check 1: the activity OBSERVED its own terminal event and so
+        // reached completion. A driver that hardcodes this makes the whole level
+        // vacuous, so `completed` must be tracked from the terminal signal
+        // (.matchEnded / .roundEnded / .sessionEnded, or the activity's own
+        // summary point); an event loop that simply ran out of events did not
+        // complete. ---
         XCTAssertTrue(
             result.completed,
-            "UM-Voice: the primary voice activity must run to completion driven only by voice (section 9).",
+            "UM-Voice: the primary voice activity must run to completion driven only by voice, and must "
+                + "report completion from the terminal event it observed, not assume it (section 9).",
             file: file, line: line
         )
 
@@ -295,8 +304,19 @@ enum ModuleConformance {
         )
 
         // --- Check 4: the required module.attempt telemetry was emitted, once
-        // per evaluated attempt. ---
-        let attemptTelemetry = await harness.telemetryRecorder.attemptCount(module: moduleId)
+        // per evaluated attempt. Engine attempt writes are fire-and-forget
+        // (QuizMatchEngine dispatches them in a Task), so the count is polled to
+        // a bounded deadline rather than read once: the check must fail on a
+        // missing event, never on a scheduling race. ---
+        let attemptTelemetry = await waitForCount(atLeast: max(1, result.attemptsEvaluated)) {
+            await harness.telemetryRecorder.attemptCount(module: moduleId)
+        }
+        XCTAssertGreaterThan(
+            attemptTelemetry, 0,
+            "UM-Voice: the activity must emit module.attempt telemetry for the responses it evaluated "
+                + "(section 5.6).",
+            file: file, line: line
+        )
         XCTAssertGreaterThanOrEqual(
             attemptTelemetry, result.attemptsEvaluated,
             "UM-Voice: every evaluated attempt must emit module.attempt telemetry "
@@ -304,16 +324,41 @@ enum ModuleConformance {
             file: file, line: line
         )
 
-        // --- Check 5: the unified command vocabulary is honored for the
-        // commands the activity claims (quit/skip where claimed). Driven by
-        // injecting the command through the scripted session during a run. ---
-        for command in module.claimedVoiceCommands where command == .quit || command == .skip {
+        // --- Check 5: the evaluated attempts reached the host's progress store
+        // under the module's own namespace. This is host-recorded evidence, so
+        // it cannot be satisfied by a driver that only reports numbers back
+        // (sections 5.4, 9). ---
+        let storedAttempts = await waitForCount(atLeast: 1) {
+            await harness.progressStore.exportAll(for: moduleId).attempts.count
+        }
+        XCTAssertGreaterThan(
+            storedAttempts, 0,
+            "UM-Voice: the attempts the activity evaluated must be recorded through the host progress "
+                + "store under the module's namespace (section 5.4).",
+            file: file, line: line
+        )
+
+        // --- Check 6: the run drove at least one module-scoped voice state.
+        // States are reported as the run enters them, so an activity that never
+        // moved through a state cannot claim one. ---
+        XCTAssertFalse(
+            result.voiceStatesEntered.isEmpty,
+            "UM-Voice: the activity must drive at least one module-scoped voice state so the host can "
+                + "scope its command vocabulary (section 5.1).",
+            file: file, line: line
+        )
+
+        // --- Check 7: the unified command vocabulary is honored for EVERY
+        // command the activity claims. Driven by injecting the command through
+        // the scripted session during a run; a command a module claims but
+        // ignores is a false advertisement to the host. ---
+        for command in module.claimedVoiceCommands.sorted(by: { $0.displayName < $1.displayName }) {
             await verifyCommandHonored(
                 command, module: module, file: file, line: line
             )
         }
 
-        // --- Check 6: the session was released cleanly at the end (the module
+        // --- Check 8: the session was released cleanly at the end (the module
         // ends by handing the floor back; the HOST owns acquisition/release, so
         // the module must NOT release a session it did not acquire). ---
         let released = await session.released
@@ -323,6 +368,26 @@ enum ModuleConformance {
                 + "pipeline lifecycle (section 5.1).",
             file: file, line: line
         )
+    }
+
+    /// Poll a host-recorded count until it reaches `minimum`, to a bounded
+    /// deadline. Some engines write attempts fire-and-forget, so a single read
+    /// races the run's last attempt; this settles the trail without ever
+    /// hanging, and returns whatever the count reached so the caller asserts on
+    /// a real value.
+    @MainActor
+    private static func waitForCount(
+        atLeast minimum: Int,
+        timeout: TimeInterval = 2.0,
+        read: () async -> Int
+    ) async -> Int {
+        var latest = await read()
+        let deadline = Date().addingTimeInterval(timeout)
+        while latest < minimum, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            latest = await read()
+        }
+        return latest
     }
 
     /// Verify that a claimed unified command terminates the activity cleanly when
@@ -365,6 +430,17 @@ enum ModuleConformance {
             result.commandsHonored.contains(command),
             "UM-Voice: the activity claims the '\(command.displayName)' command but did not honor it "
                 + "when injected (section 9, unified command vocabulary).",
+            file: file, line: line
+        )
+
+        // Handling a command must not turn the module into the session's owner:
+        // quit ends the ACTIVITY and hands the floor back, the host releases the
+        // pipeline (section 5.1).
+        let released = await session.released
+        XCTAssertFalse(
+            released,
+            "UM-Voice: handling the '\(command.displayName)' command must not release the host-owned "
+                + "voice session; the module ends its activity and hands the floor back (section 5.1).",
             file: file, line: line
         )
     }

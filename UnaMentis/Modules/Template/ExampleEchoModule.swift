@@ -195,12 +195,27 @@ enum EchoDrill {
                 }
             }
         }
+        // The watcher never outlives the drill, on any exit path: a spoken
+        // prompt that throws must not leak it.
+        defer { commandTask.cancel() }
 
         var attempts = 0
-        let statesEntered: [ModuleVoiceState] = [
-            ModuleVoiceState(rawValue: "prompting"),
-            ModuleVoiceState(rawValue: "listening")
-        ]
+
+        // The voice states the drill actually entered, recorded as it enters
+        // them (first-seen order), never listed up front: the conformance suite
+        // must see what the run did, not what it intended to do.
+        var statesEntered: [ModuleVoiceState] = []
+        func enter(_ name: String) -> ModuleVoiceState {
+            let state = ModuleVoiceState(rawValue: name)
+            if !statesEntered.contains(state) { statesEntered.append(state) }
+            return state
+        }
+
+        // Completion is TRACKED, never assumed: the drill completes when it
+        // reaches its spoken summary, either by running its scheduled rounds or
+        // by honoring a quit that ends it cleanly. A cancelled listen tears the
+        // round down mid-flight, and that is not completion (section 9).
+        var endedByCancellation = false
 
         // Register a per-state command vocabulary (section 5.1): while listening,
         // "skip" and "quit" are valid. The host filters state-valid commands.
@@ -217,17 +232,18 @@ enum EchoDrill {
             // 4a. SPEAK the prompt through the host pipeline (section 5.1). The
             // module never synthesizes audio itself. The word is spoken as its own
             // final utterance so it is unambiguous what the learner should echo.
-            await session.setActiveVoiceState(ModuleVoiceState(rawValue: "prompting"))
+            await session.setActiveVoiceState(enter("prompting"))
             try await session.speak(.text("Say this word back to me."))
             try await session.speak(.text(word))
 
             // 4b. LISTEN for the learner's echo (section 5.1). Endpointing follows
             // the host's acquired config. A cancelled listen (quit) throws.
-            await session.setActiveVoiceState(ModuleVoiceState(rawValue: "listening"))
+            await session.setActiveVoiceState(enter("listening"))
             let heard: UtteranceResult
             do {
                 heard = try await session.listen(expecting: .answer)
             } catch is CancellationError {
+                endedByCancellation = true
                 break roundLoop
             }
 
@@ -281,11 +297,10 @@ enum EchoDrill {
                 try? await Task.sleep(nanoseconds: 1_000_000)
             }
         }
-        commandTask.cancel()
 
         // The module does NOT release the session: the host owns its lifecycle.
         return ConformanceRunResult(
-            completed: true,
+            completed: !endedByCancellation,
             attemptsEvaluated: attempts,
             voiceStatesEntered: statesEntered,
             commandsHonored: await control.honored

@@ -1,0 +1,17 @@
+{
+  "formatId": "practice-viva",
+  "engine": "oral-exam/1",
+  "language": "en-US",
+  "stages": [
+    { "kind": "preparation", "seconds": 120 },
+    { "kind": "presentation", "seconds": 240, "notesAllowed": true },
+    { "kind": "questioning", "seconds": 240, "style": "conversation", "followUpDepth": 2 }
+  ],
+  "rubric": ["structure", "clarity", "argumentation", "interaction", "delivery"],
+  "examiner": { "personaCount": 1, "register": "encouraging" },
+  "evaluation": {
+    "tiers": ["llmRubric"],
+    "deliveryMetrics": ["pace", "fillerWords", "hesitations"]
+  },
+  "listening": { "responseSilenceSec": 2.0, "maxUtteranceSec": 180 }
+}

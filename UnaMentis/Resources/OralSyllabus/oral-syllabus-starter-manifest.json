@@ -1,0 +1,16 @@
+{
+  "packId": "oral-syllabus-starter",
+  "name": "Oral Exam Studio Starter Topics",
+  "version": "1.0.0",
+  "schema": "oral-syllabus/1",
+  "locale": "en-US",
+  "locales": ["en-US", "fr-FR"],
+  "license": {
+    "spdx": "CC-BY-4.0",
+    "attribution": "UnaMentis"
+  },
+  "integrity": {
+    "sha256": "ef20bd6aad5cd4bdfeb0a79e1d769c4fa1b7ac65604a9607b94dbaf3b87296de"
+  },
+  "itemCount": 13
+}

@@ -10,15 +10,23 @@
 //
 //  Each entry maps a case id to (expectedCorrect, expectedMatchType.rawValue).
 //
-//  Two entries encode real current-code quirks worth preserving as contract:
-//  - `strict-typo-rejected` / `strict-phonetic-rejected` are CORRECT at
-//    `.strict` because `.strict` gates only the ENHANCED tiers (synonym,
-//    phonetic, n-gram, token, linguistic). Baseline Levenshtein still runs, and
-//    both inputs fall within its distance threshold. Only `strictMode` (a
-//    separate Config flag) disables Levenshtein.
-//  - `nearmiss-diff-number` ("100" vs "1000") is CORRECT because Levenshtein
-//    distance is 1, inside the fuzzy threshold. The numeric evaluator inherits
-//    the same fuzzy pass the text path uses.
+//  DELIBERATE PROFILE CHANGE (2026-08, RFC 0004 item 6). Two entries used to
+//  pin false accepts that the lifted KBAnswerValidator produced, and the fuzzy
+//  tolerance was tightened to remove them. Both changed values below are the
+//  ONLY differences from the originally generated table:
+//
+//  - `nearmiss-diff-number` ("100" vs "1000") was CORRECT: the numeric answer
+//    took the text fuzzy path, where a Levenshtein distance of 1 sat inside the
+//    two-edit floor. A digit edit changes the VALUE, so numeric answers are now
+//    exact or tolerance-based only and this case is INCORRECT.
+//  - `strict-nearphonetic-rejected` ("Steven" vs "Stephen" under the Colorado
+//    strict profile) was CORRECT: `.strict` gates the enhanced tiers, including
+//    phonetics, but the two-edit floor let the phonetic variant through the
+//    baseline Levenshtein tier anyway. With the tolerance a pure fraction of
+//    the answer length (7 characters at 20 percent tolerates one edit, the pair
+//    differs by two), strict now means what it says and the case is INCORRECT.
+//
+//  Everything else still holds exactly as generated from the legacy validator.
 //
 
 enum KBGoldenParityExpected {
@@ -67,8 +75,12 @@ enum KBGoldenParityExpected {
         "nearmiss-cat-dog": (false, "none"),
         "nearmiss-diff-person": (false, "none"),
         "nearmiss-diff-place": (false, "none"),
-        "nearmiss-diff-number": (true, "fuzzy"),
+        "nearmiss-diff-number": (false, "none"),
         "nearmiss-substring": (false, "none"),
+        // Real competition answers a one-edit or two-edit tolerance used to
+        // accept. Pinned here so the tightened tolerance cannot regress.
+        "nearmiss-iran-iraq": (false, "none"),
+        "nearmiss-austria-australia": (false, "none"),
         "nearmiss-close-sci": (false, "none"),
         "empty": (false, "none"),
         "whitespace-only": (false, "none"),
@@ -78,7 +90,7 @@ enum KBGoldenParityExpected {
         "strict-typo-levenshtein-passes": (true, "fuzzy"),
         "strict-synonym-rejected": (false, "none"),
         "strict-acceptable-ok": (true, "acceptable"),
-        "strict-nearphonetic-levenshtein-passes": (true, "fuzzy"),
+        "strict-nearphonetic-rejected": (false, "none"),
         "lenient-synonym-ok": (true, "fuzzy"),
         "lenient-typo-ok": (true, "fuzzy"),
         "lenient-far-wrong": (false, "none"),

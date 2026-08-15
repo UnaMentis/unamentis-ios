@@ -1,0 +1,14 @@
+{
+  "formatId": "sat-math-mental",
+  "engine": "drill/1",
+  "itemTypes": ["drill-items/1"],
+  "sessionShapes": [
+    { "kind": "count", "value": 10 }
+  ],
+  "schedulingPolicy": "review",
+  "voice": {
+    "answerSilenceSec": 1.1,
+    "maxUtteranceSec": 8.0,
+    "answerTimeoutSec": 25.0
+  }
+}

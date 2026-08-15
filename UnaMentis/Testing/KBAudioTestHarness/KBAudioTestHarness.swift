@@ -59,11 +59,13 @@ actor KBAudioTestHarness {
     ) {
         self.audioGenerator = KBAudioGenerator()
         self.audioInjector = KBAudioInjector()
-        self.transcriptValidator = KBTranscriptValidator(
-            strictness: .standard,
-            embeddingsService: embeddingsService,
-            llmValidator: llmValidator
-        )
+        // The semantic/LLM tiers are not yet host-managed model assets
+        // (MODULE_SDK_SPEC.md section 5.2), so the host evaluation service the
+        // validator uses runs the algorithmic tiers only. These parameters are
+        // accepted for source compatibility but not currently forwarded.
+        _ = embeddingsService
+        _ = llmValidator
+        self.transcriptValidator = KBTranscriptValidator(strictness: .standard)
         self.sttService = sttService
     }
 

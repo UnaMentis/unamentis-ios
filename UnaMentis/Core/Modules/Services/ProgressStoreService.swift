@@ -20,6 +20,33 @@
 
 import Foundation
 
+// MARK: - Path Safety
+
+/// Turns a caller-supplied identifier (module id, pack id) into something that
+/// is always exactly ONE directory name under a store root.
+///
+/// Host services take these ids from module code, and a store must never let an
+/// id escape its root: `".."` used to resolve to the parent, so
+/// `deleteAll(for: "..")` pointed at the whole Documents directory.
+enum ModuleStorePath {
+    /// A safe single path component for `raw`. Separators and traversal are
+    /// neutralized rather than rejected, so a store call is always well
+    /// defined; reverse-DNS ids (the real ones) pass through unchanged.
+    static func safeComponent(_ raw: String) -> String {
+        var component = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        for separator in ["/", "\\", ":"] {
+            component = component.replacingOccurrences(of: separator, with: "_")
+        }
+        component = component.replacingOccurrences(of: "\0", with: "_")
+        // Anything starting with a dot covers "." and ".." (and keeps stores
+        // out of hidden files); prefixing makes traversal impossible.
+        if component.hasPrefix(".") {
+            component = "_" + component
+        }
+        return component.isEmpty ? "_unnamed" : component
+    }
+}
+
 // MARK: - Standard Domain
 
 /// A cross-module knowledge domain, the key of the unified proficiency model
@@ -88,14 +115,38 @@ public struct Proficiency: Codable, Sendable, Equatable {
     public let mastery: Double
     /// Number of observations that produced this value.
     public let observationCount: Int
+    /// Sum of the WEIGHTS behind `mastery`. Tracked separately from the count
+    /// because they are different quantities: a single weight-10 observation is
+    /// one observation carrying ten times the influence, and folding the next
+    /// observation in needs the weight, not the count.
+    public let totalWeight: Double
     /// When it was last updated.
     public let updatedAt: Date
 
-    public init(domain: StandardDomain, mastery: Double = 0, observationCount: Int = 0, updatedAt: Date = Date()) {
+    public init(
+        domain: StandardDomain,
+        mastery: Double = 0,
+        observationCount: Int = 0,
+        totalWeight: Double? = nil,
+        updatedAt: Date = Date()
+    ) {
         self.domain = domain
         self.mastery = min(max(mastery, 0), 100)
         self.observationCount = observationCount
+        self.totalWeight = max(0, totalWeight ?? Double(observationCount))
         self.updatedAt = updatedAt
+    }
+
+    /// Records written before `totalWeight` existed carry only a count; treat
+    /// each of those observations as weight 1, which is what they were.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        domain = try container.decode(StandardDomain.self, forKey: .domain)
+        mastery = min(max(try container.decode(Double.self, forKey: .mastery), 0), 100)
+        let count = try container.decode(Int.self, forKey: .observationCount)
+        observationCount = count
+        totalWeight = max(0, try container.decodeIfPresent(Double.self, forKey: .totalWeight) ?? Double(count))
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 }
 
@@ -222,10 +273,9 @@ public actor FileProgressStoreService: ProgressStoreService {
         root.appendingPathComponent("_proficiency.json")
     }
 
-    /// Keep module IDs safe as a path component (reverse-DNS IDs are already
-    /// path-safe, but this guards against unexpected separators).
+    /// Keep module IDs safe as a path component.
     private func sanitized(_ component: String) -> String {
-        component.replacingOccurrences(of: "/", with: "_")
+        ModuleStorePath.safeComponent(component)
     }
 
     private func ensureDirectory(_ url: URL) {
@@ -309,17 +359,30 @@ public actor FileProgressStoreService: ProgressStoreService {
     public func reportMastery(_ observation: MasteryObservation) async {
         var map = loadProficiency()
         let existing = map[observation.domain.rawValue] ?? Proficiency(domain: observation.domain)
-        // Exponentially weighted running estimate toward the observed signal.
-        // Simple and monotone-friendly; a full learner model lands later (5.10).
-        let priorWeight = Double(existing.observationCount)
-        let totalWeight = priorWeight + observation.weight
-        let newMastery = totalWeight > 0
-            ? (existing.mastery * priorWeight + observation.signal * observation.weight) / totalWeight
-            : observation.signal
+
+        // Weighted running estimate toward the observed signal. The prior term
+        // is the accumulated WEIGHT, not the observation count: mixing the two
+        // recorded a weight-10 observation as a single unit of prior influence
+        // (so the next observation diluted it as if it had been weight 1), and
+        // a weight-0 observation on a fresh domain jumped mastery to the full
+        // signal even though it was explicitly weightless.
+        let priorWeight = existing.totalWeight
+        let weight = observation.weight
+        let totalWeight = priorWeight + weight
+        let newMastery: Double
+        if weight <= 0 {
+            // A weightless observation carries no signal, whatever the history.
+            newMastery = existing.mastery
+        } else if totalWeight > 0 {
+            newMastery = (existing.mastery * priorWeight + observation.signal * weight) / totalWeight
+        } else {
+            newMastery = observation.signal
+        }
         map[observation.domain.rawValue] = Proficiency(
             domain: observation.domain,
             mastery: newMastery,
             observationCount: existing.observationCount + 1,
+            totalWeight: totalWeight,
             updatedAt: Date()
         )
         proficiencyByDomain = map

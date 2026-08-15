@@ -70,15 +70,16 @@ public actor UnifiedVoiceSessionService: VoiceSessionService {
         try await ownership.claim(holder)
         Self.logger.info("Voice pipeline acquired by module session (bargeIn: \(config.bargeIn.rawValue))")
 
-        let cues = await MainActor.run { VoiceActivityFeedback() }
+        // Construct the session (and with it the claim guard that releases the
+        // pipeline if the session is ever dropped without release()) BEFORE any
+        // other suspension point, so no await can strand the claim.
         let session = UnifiedVoiceSession(
             config: config,
             holder: holder,
             ownership: ownership,
             engineProvider: engineProvider,
             ttsResolver: ttsResolver,
-            sttFactory: sttFactory,
-            cues: cues
+            sttFactory: sttFactory
         )
         // Best-effort prewarm (TTS model load, warm engine) so the first
         // speak() has no cold start. Failures surface later as typed errors.
@@ -115,6 +116,62 @@ public actor UnifiedVoiceSessionService: VoiceSessionService {
     }
 }
 
+// MARK: - System Synthesizer TTS
+
+/// A TTS provider that owns its own playback (AVSpeechSynthesizer), emitting no
+/// PCM for the orchestrator to route.
+///
+/// Two things follow, and both used to be missed: playback on this path is not
+/// bounded by the orchestrator, and stopping it means telling the PROVIDER to
+/// stop, because there is no orchestrator to stop. Expressing that as a
+/// capability rather than a concrete-type check also makes both behaviors
+/// testable without driving the system synthesizer.
+protocol SystemSynthesizerTTS: TTSService {
+    /// Stop any in-progress speech immediately.
+    func stop() async
+}
+
+extension AppleTTSService: SystemSynthesizerTTS {}
+
+// MARK: - Claim Safety Net
+
+/// Releases the voice-pipeline claim if its owning session is deallocated
+/// without `release()` (a task cancelled between acquire and the module's
+/// defer, a throw before the defer is installed, a view model torn down on a
+/// path that misses release). Without this net a dropped session bricks the
+/// pipeline for the whole process: every later claim throws `pipelineBusy`.
+///
+/// Owner-gated release semantics are preserved: it releases exactly the holder
+/// its session claimed, so it can never free someone else's claim.
+///
+/// `@unchecked Sendable`: `armed` is mutated only from the owning session
+/// actor, and `deinit` runs when the last (that actor's) reference is gone.
+private final class PipelineClaimGuard: @unchecked Sendable {
+    private let ownership: VoicePipelineOwnership
+    private let holder: VoicePipelineHolder
+    private var armed = true
+
+    init(ownership: VoicePipelineOwnership, holder: VoicePipelineHolder) {
+        self.ownership = ownership
+        self.holder = holder
+    }
+
+    /// Called by the session when `release()` ran normally.
+    func disarm() {
+        armed = false
+    }
+
+    deinit {
+        guard armed else { return }
+        let ownership = self.ownership
+        let holder = self.holder
+        Task.detached {
+            await ownership.release(holder)
+            await AudioEngineCache.shared.scheduleRelease()
+        }
+    }
+}
+
 // MARK: - Session
 
 /// An exclusively held module voice session on the unified pipeline.
@@ -127,7 +184,12 @@ actor UnifiedVoiceSession: VoiceSession {
     private let engineProvider: UnifiedVoiceSessionService.EngineProvider
     private let ttsResolver: UnifiedVoiceSessionService.TTSResolver
     private let sttFactory: UnifiedVoiceSessionService.STTFactory
-    private let cues: VoiceActivityFeedback
+
+    /// Feedback cues, resolved on first use (MainActor-bound).
+    private var cues: VoiceActivityFeedback?
+
+    /// Frees the pipeline claim if this session is dropped without release().
+    private let claimGuard: PipelineClaimGuard
 
     /// The canonical barge-in detector (the ONE detector in the app).
     private let detector: BargeInDetector
@@ -140,6 +202,14 @@ actor UnifiedVoiceSession: VoiceSession {
     private var isSpeaking = false
     private var isListening = false
 
+    /// Set while a stop was explicitly requested for the in-progress speak, so
+    /// a stopped utterance is not reported as a synthesis failure.
+    private var stopRequested = false
+
+    /// Set when the system-synthesizer bound expired, so the failure surfaces
+    /// as a typed error once the drained stream ends.
+    private var systemSynthesisTimedOut = false
+
     /// Playback orchestrator for the in-progress speak() call.
     private var orchestrator: AudioPlaybackOrchestrator?
 
@@ -149,6 +219,25 @@ actor UnifiedVoiceSession: VoiceSession {
     private var currentTranscript = ""
     private var lastConfidence: Float = 0
     private var sttStreamTask: Task<Void, Never>?
+
+    /// True only while a listen is actually capturing (STT stream live and the
+    /// endpointer armed). `isListening` is claimed earlier, synchronously, to
+    /// close the overlapping-call race; this flag drives audio routing.
+    private var captureActive = false
+
+    /// Monotonic listen id, so a watchdog or a teardown from an earlier listen
+    /// can never act on a later one.
+    private var listenGeneration = 0
+
+    /// Wall-clock backstop for the in-progress listen.
+    private var listenWatchdogTask: Task<Void, Never>?
+
+    /// The previous listen's provider teardown. A new listen awaits it, so a
+    /// late STT cleanup can never tear down the new recognition request.
+    private var sttTeardownTask: Task<Void, Never>?
+
+    /// An end decision that arrived before the continuation was installed.
+    private var pendingFinishReason: UtteranceResult.EndReason?
 
     /// Audio stream subscription (VAD frames + STT feed), keyed to the engine
     /// instance so a recreated engine is resubscribed.
@@ -182,8 +271,7 @@ actor UnifiedVoiceSession: VoiceSession {
         ownership: VoicePipelineOwnership,
         engineProvider: @escaping UnifiedVoiceSessionService.EngineProvider,
         ttsResolver: @escaping UnifiedVoiceSessionService.TTSResolver,
-        sttFactory: @escaping UnifiedVoiceSessionService.STTFactory,
-        cues: VoiceActivityFeedback
+        sttFactory: @escaping UnifiedVoiceSessionService.STTFactory
     ) {
         self.config = config
         self.holder = holder
@@ -191,14 +279,24 @@ actor UnifiedVoiceSession: VoiceSession {
         self.engineProvider = engineProvider
         self.ttsResolver = ttsResolver
         self.sttFactory = sttFactory
-        self.cues = cues
+        self.claimGuard = PipelineClaimGuard(ownership: ownership, holder: holder)
 
         var detectorConfig = BargeInTuning.detectorConfig()
         detectorConfig.enabled = detectorConfig.enabled && (config.bargeIn != .off)
         self.detector = BargeInDetector(config: detectorConfig)
 
-        (self.eventStream, self.eventContinuation) = AsyncStream<VoiceEvent>.makeStream()
+        // Bounded buffering: a module is free never to iterate `events`
+        // (QuizMatchEngine deliberately does not), so an unbounded stream would
+        // accumulate every partial transcript for the whole session against the
+        // memory budget. Newest-N keeps the recent history a consumer needs.
+        (self.eventStream, self.eventContinuation) = AsyncStream<VoiceEvent>.makeStream(
+            bufferingPolicy: .bufferingNewest(Self.eventBufferCapacity)
+        )
     }
+
+    /// How many undelivered events the session buffers before dropping the
+    /// oldest. Large enough for a bursty consumer, bounded for a silent one.
+    static let eventBufferCapacity = 64
 
     // MARK: Preparation
 
@@ -236,6 +334,16 @@ actor UnifiedVoiceSession: VoiceSession {
     func speak(_ utterance: Utterance) async throws {
         guard !released else { throw VoiceSessionError.sessionReleased }
         guard !isSpeaking else { throw VoiceSessionError.alreadySpeaking }
+        // Claim the speaking slot SYNCHRONOUSLY, before the first suspension
+        // point: the guard above and the claim must not be separated by an
+        // await, or two overlapping calls both pass it.
+        isSpeaking = true
+        stopRequested = false
+        systemSynthesisTimedOut = false
+        defer {
+            isSpeaking = false
+            stopRequested = false
+        }
 
         guard let tts = await resolvedTTS() else {
             throw VoiceSessionError.synthesisFailed("No TTS provider available")
@@ -255,20 +363,11 @@ actor UnifiedVoiceSession: VoiceSession {
             cached = prefetched[utterance.text]
         }
 
-        isSpeaking = true
         await armBargeIn()
-        defer {
-            isSpeaking = false
-        }
 
         do {
-            if tts is AppleTTSService && cached == nil {
-                // Apple TTS plays through AVSpeechSynthesizer internally
-                // (system-managed audio); drain the stream until speech ends.
-                let stream = try await tts.synthesize(text: utterance.text)
-                for await _ in stream {
-                    if Task.isCancelled { break }
-                }
+            if let systemTTS = tts as? any SystemSynthesizerTTS, cached == nil {
+                try await playThroughSystemSynthesizer(text: utterance.text, tts: systemTTS)
             } else {
                 try await playThroughOrchestrator(
                     text: utterance.text,
@@ -281,6 +380,73 @@ actor UnifiedVoiceSession: VoiceSession {
             await disarmBargeIn()
             throw error
         }
+    }
+
+    /// Play one utterance through a provider that owns its own playback.
+    ///
+    /// There is no orchestrator on this path, so the guarantees the
+    /// orchestrator provides are reproduced here rather than dropped: the
+    /// utterance is bounded in wall-clock time, an empty stream is an error,
+    /// and a stop request ends playback immediately. A stalled or silent
+    /// synthesizer therefore surfaces as a typed error instead of a silent
+    /// hang, which is what commit 7483a6d locked in for the other path.
+    private func playThroughSystemSynthesizer(text: String, tts: any SystemSynthesizerTTS) async throws {
+        let stream = try await tts.synthesize(text: text)
+        let bound = Self.systemSynthesisBound(for: text)
+
+        let watchdog = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(bound))
+            guard !Task.isCancelled else { return }
+            await self?.expireSystemSynthesis(after: bound)
+        }
+        defer { watchdog.cancel() }
+
+        var chunkCount = 0
+        await withTaskCancellationHandler {
+            for await _ in stream {
+                chunkCount += 1
+            }
+        } onCancel: {
+            Task { [weak self] in await self?.stopSystemSynthesizer() }
+        }
+
+        if systemSynthesisTimedOut {
+            systemSynthesisTimedOut = false
+            throw VoiceSessionError.synthesisFailed(
+                "The system synthesizer did not finish within \(Int(bound)) seconds"
+            )
+        }
+        if Task.isCancelled { throw CancellationError() }
+        guard chunkCount > 0 || stopRequested else {
+            throw VoiceSessionError.synthesisFailed("The system synthesizer produced no audio")
+        }
+    }
+
+    /// Wall-clock bound for one system-synthesizer utterance: roughly twice the
+    /// estimated spoken duration (about 12 characters per second at the default
+    /// rate) plus the orchestrator's buffer timeout as slack.
+    static func systemSynthesisBound(for text: String) -> TimeInterval {
+        let estimated = Double(text.count) / 12.0
+        let slack = PlaybackOrchestratorConfig.knowledgeBowl.bufferTimeoutSeconds
+        return min(300, max(5, estimated * 2 + slack))
+    }
+
+    /// The bound expired: stop the synthesizer so the drained stream ends, and
+    /// mark the utterance failed so speak() throws instead of returning
+    /// silently.
+    private func expireSystemSynthesis(after bound: TimeInterval) async {
+        guard isSpeaking else { return }
+        systemSynthesisTimedOut = true
+        Self.logger.error("System synthesis exceeded its \(Int(bound))s bound; stopping")
+        await stopSystemSynthesizer()
+    }
+
+    /// Stop a provider that owns its own playback. This is the ONLY way to stop
+    /// that path: it has no orchestrator to stop.
+    private func stopSystemSynthesizer() async {
+        guard let systemTTS = ttsService as? any SystemSynthesizerTTS else { return }
+        stopRequested = true
+        await systemTTS.stop()
     }
 
     /// Play one segment via the shared AudioPlaybackOrchestrator. The
@@ -325,9 +491,18 @@ actor UnifiedVoiceSession: VoiceSession {
     }
 
     func stopSpeaking() async {
+        stopRequested = true
         if let orch = orchestrator {
             await orch.stopPlayback()
         }
+        // The system-synthesizer branch (Apple TTS, including the automatic
+        // fallback when Pocket TTS models fail to load) never installs an
+        // orchestrator, so stopping the orchestrator alone left narration
+        // running: barge-in could not stop it, a buzz could not cut off a
+        // tossup, and release() handed the pipeline back while the synthesizer
+        // was still speaking. Stop the provider itself so stopSpeaking()
+        // genuinely stops speech on EVERY path.
+        await stopSystemSynthesizer()
         await disarmBargeIn()
     }
 
@@ -335,9 +510,9 @@ actor UnifiedVoiceSession: VoiceSession {
 
     func prefetch(_ utterances: [Utterance]) async {
         guard !released, let tts = await resolvedTTS() else { return }
-        // Apple TTS plays via the system synthesizer and emits no PCM,
-        // so there is nothing to cache.
-        guard !(tts is AppleTTSService) else { return }
+        // A system synthesizer owns its own playback and emits no PCM, so
+        // there is nothing to cache.
+        guard !(tts is any SystemSynthesizerTTS) else { return }
 
         for utterance in utterances {
             guard utterance.preRendered == nil,
@@ -402,62 +577,156 @@ actor UnifiedVoiceSession: VoiceSession {
     func listen(expecting expectation: ListenExpectation) async throws -> UtteranceResult {
         guard !released else { throw VoiceSessionError.sessionReleased }
         guard !isListening else { throw VoiceSessionError.alreadyListening }
-
-        guard let engine = await engineProvider() else {
-            throw VoiceSessionError.audioEngineUnavailable
-        }
-        await subscribeToAudioStreamIfNeeded(engine)
-
-        guard let format = await engine.format,
-              let formatCopy = AVAudioFormat(
-                commonFormat: format.commonFormat,
-                sampleRate: format.sampleRate,
-                channels: format.channelCount,
-                interleaved: format.isInterleaved
-              ) else {
-            throw VoiceSessionError.audioEngineUnavailable
-        }
-
-        let stt = sttService ?? sttFactory()
-        sttService = stt
-        // Ensure any previous stream has fully stopped (teardown stops the
-        // provider asynchronously; back-to-back listens must not race it).
-        if await stt.isStreaming {
-            try? await stt.stopStreaming()
-        }
-        let sttStream = try await stt.startStreaming(audioFormat: formatCopy)
-
+        // Claim the listening slot SYNCHRONOUSLY, before the first suspension
+        // point. Setting it after the awaits below let two overlapping calls
+        // both pass the guard; the second overwrote listenContinuation and the
+        // first caller hung forever on an orphaned continuation.
         isListening = true
-        currentTranscript = ""
-        lastConfidence = 0
-        lastCommandTranscript = ""
-        var endpointer = UtteranceEndpointer(
-            policy: config.endpointing,
-            answerTimeout: config.answerTimeout.map { TimeInterval($0.components.seconds) }
-        )
-        endpointer.begin(at: Date().timeIntervalSince1970)
-        self.endpointer = endpointer
+        listenGeneration &+= 1
+        let generation = listenGeneration
 
-        sttStreamTask = Task { [weak self] in
-            for await result in sttStream {
-                guard let self else { break }
-                await self.handleSTTResult(result)
+        do {
+            // The previous listen's teardown stops the STT provider
+            // asynchronously (Apple Speech sleeps before tearing down), so wait
+            // for it here: otherwise that late cleanup lands on THIS listen's
+            // recognition request and no results ever arrive.
+            if let teardown = sttTeardownTask {
+                sttTeardownTask = nil
+                await teardown.value
             }
+
+            guard let engine = await engineProvider() else {
+                throw VoiceSessionError.audioEngineUnavailable
+            }
+            await subscribeToAudioStreamIfNeeded(engine)
+
+            guard let format = await engine.format,
+                  let formatCopy = AVAudioFormat(
+                    commonFormat: format.commonFormat,
+                    sampleRate: format.sampleRate,
+                    channels: format.channelCount,
+                    interleaved: format.isInterleaved
+                  ) else {
+                throw VoiceSessionError.audioEngineUnavailable
+            }
+
+            let stt = sttService ?? sttFactory()
+            sttService = stt
+            if await stt.isStreaming {
+                try? await stt.stopStreaming()
+            }
+            let sttStream = try await stt.startStreaming(audioFormat: formatCopy)
+
+            currentTranscript = ""
+            lastConfidence = 0
+            lastCommandTranscript = ""
+            pendingFinishReason = nil
+            var endpointer = UtteranceEndpointer(
+                policy: config.endpointing,
+                // Fractional seconds matter: components.seconds alone truncates
+                // 2.5 s to 2 and anything under a second to 0, which made the
+                // endpointer fire .timeout on the first silent frame.
+                answerTimeout: config.answerTimeout?.timeIntervalSeconds
+            )
+            endpointer.begin(at: Date().timeIntervalSince1970)
+            self.endpointer = endpointer
+            captureActive = true
+
+            sttStreamTask = Task { [weak self] in
+                for await result in sttStream {
+                    guard let self else { break }
+                    await self.handleSTTResult(result)
+                }
+            }
+            startListenWatchdog(generation: generation)
+        } catch {
+            // Every throw path releases the claim, so a failed listen leaves
+            // the session usable instead of permanently "already listening".
+            isListening = false
+            captureActive = false
+            endpointer = nil
+            listenWatchdogTask?.cancel()
+            listenWatchdogTask = nil
+            throw error
         }
 
         Self.logger.info("Listening started (expecting: \(expectation.rawValue))")
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                self.listenContinuation = continuation
+                // The endpointer, the STT stream, a cancellation, or a release
+                // can all land before the continuation is installed; honor
+                // whichever happened instead of waiting on a dead listen.
+                if self.released {
+                    continuation.resume(throwing: VoiceSessionError.sessionReleased)
+                } else if !self.isListening {
+                    continuation.resume(throwing: CancellationError())
+                } else if let reason = self.pendingFinishReason {
+                    self.pendingFinishReason = nil
+                    let result = UtteranceResult(
+                        transcript: self.currentTranscript,
+                        confidence: self.lastConfidence,
+                        endedBy: reason
+                    )
+                    self.teardownListening()
+                    continuation.resume(returning: result)
+                } else {
+                    self.listenContinuation = continuation
+                }
             }
         } onCancel: {
             Task { await self.cancelListening() }
         }
     }
 
+    /// Wall-clock backstop for a listen.
+    ///
+    /// The endpointer is advanced only by VAD frames from the audio engine, so
+    /// a stalled audio path (an interruption, a route change, an engine
+    /// restart, a dead STT recognition task) would otherwise leave listen()
+    /// awaiting forever with `isListening` stuck true. These deadlines honor
+    /// `answerTimeout` and `maxUtteranceDuration` in real time, no matter what
+    /// the frame delivery does.
+    private func startListenWatchdog(generation: Int) {
+        let answerTimeout = config.answerTimeout?.timeIntervalSeconds
+        let maxDuration = config.endpointing.maxUtteranceDuration
+        listenWatchdogTask = Task { [weak self] in
+            if let answerTimeout, answerTimeout > 0, answerTimeout.isFinite {
+                try? await Task.sleep(for: .seconds(answerTimeout))
+                if Task.isCancelled { return }
+                let ended = await self?.expireListen(
+                    generation: generation, reason: .timeout, onlyIfSilent: true
+                )
+                if ended == true { return }
+            }
+            guard maxDuration > 0, maxDuration.isFinite else { return }
+            try? await Task.sleep(for: .seconds(maxDuration))
+            if Task.isCancelled { return }
+            _ = await self?.expireListen(
+                generation: generation, reason: .maxUtteranceDuration, onlyIfSilent: false
+            )
+        }
+    }
+
+    /// Finish an in-flight listen from the wall-clock watchdog. Returns true
+    /// when this call ended the listen.
+    @discardableResult
+    private func expireListen(
+        generation: Int,
+        reason: UtteranceResult.EndReason,
+        onlyIfSilent: Bool
+    ) -> Bool {
+        guard isListening, generation == listenGeneration else { return false }
+        if onlyIfSilent, endpointer?.hasDetectedSpeech == true { return false }
+        Self.logger.warning(
+            "Listen watchdog fired (\(reason.rawValue)): no endpointing decision arrived in time"
+        )
+        finishListening(reason)
+        return true
+    }
+
     private func handleSTTResult(_ result: STTResult) async {
-        guard isListening else { return }
+        guard captureActive else { return }
         currentTranscript = result.transcript
         if result.confidence > 0 {
             lastConfidence = result.confidence
@@ -489,9 +758,15 @@ actor UnifiedVoiceSession: VoiceSession {
     }
 
     /// End the in-progress listen with a result. Idempotent: only the first
-    /// finish wins (the endpointer and the STT final can race).
+    /// finish wins (the endpointer, the STT final, and the watchdog can race).
     private func finishListening(_ reason: UtteranceResult.EndReason) {
-        guard let continuation = listenContinuation else { return }
+        guard isListening else { return }
+        guard let continuation = listenContinuation else {
+            // The continuation is not installed yet; record the decision so it
+            // is honored the moment listen() installs it.
+            pendingFinishReason = reason
+            return
+        }
         listenContinuation = nil
         let result = UtteranceResult(
             transcript: currentTranscript,
@@ -504,7 +779,12 @@ actor UnifiedVoiceSession: VoiceSession {
     }
 
     private func cancelListening() {
-        guard let continuation = listenContinuation else { return }
+        guard let continuation = listenContinuation else {
+            // Cancelled before the continuation landed: drop the claim anyway
+            // so the session is not stuck "already listening".
+            if isListening { teardownListening() }
+            return
+        }
         listenContinuation = nil
         teardownListening()
         continuation.resume(throwing: CancellationError())
@@ -512,12 +792,21 @@ actor UnifiedVoiceSession: VoiceSession {
 
     private func teardownListening() {
         isListening = false
+        captureActive = false
         endpointer = nil
+        pendingFinishReason = nil
+        listenWatchdogTask?.cancel()
+        listenWatchdogTask = nil
         sttStreamTask?.cancel()
         sttStreamTask = nil
         let stt = sttService
-        Task {
-            try? await stt?.stopStreaming()
+        // Cancel rather than stop: stopStreaming waits half a second for final
+        // results and then tears down whatever recognition request exists at
+        // THAT moment, which is a new listen's request if one started in the
+        // meantime. The transcript is already captured, so there is nothing to
+        // drain. The handle is kept so the next listen awaits this teardown.
+        sttTeardownTask = Task {
+            await stt?.cancelStreaming()
         }
     }
 
@@ -543,9 +832,20 @@ actor UnifiedVoiceSession: VoiceSession {
         case .countdownTick: tone = .countdownTick
         case .attention: tone = .attention
         }
-        await MainActor.run { [cues] in
-            cues.playTone(tone)
+        let feedback = await resolvedCues()
+        await MainActor.run {
+            feedback.playTone(tone)
         }
+    }
+
+    /// The MainActor-bound feedback object, created on first use so acquire()
+    /// has no suspension point between claiming the pipeline and building the
+    /// session that owns the claim.
+    private func resolvedCues() async -> VoiceActivityFeedback {
+        if let cues { return cues }
+        let feedback = await MainActor.run { VoiceActivityFeedback() }
+        cues = feedback
+        return feedback
     }
 
     // MARK: Release
@@ -559,6 +859,10 @@ actor UnifiedVoiceSession: VoiceSession {
             listenContinuation = nil
             teardownListening()
             continuation.resume(throwing: VoiceSessionError.sessionReleased)
+        } else if isListening {
+            // Released while a listen was starting up: drop the claim so the
+            // starting listen sees the release when it installs.
+            teardownListening()
         }
 
         await stopSpeaking()
@@ -575,9 +879,13 @@ actor UnifiedVoiceSession: VoiceSession {
 
         ttsService = nil
         sttService = nil
+        cues = nil
         prefetched.removeAll()
         prefetchOrder.removeAll()
 
+        // The claim is being released the normal way; the safety net must not
+        // release it a second time later.
+        claimGuard.disarm()
         await ownership.release(holder)
         await AudioEngineCache.shared.scheduleRelease()
         Self.logger.info("Voice session released")
@@ -604,7 +912,7 @@ actor UnifiedVoiceSession: VoiceSession {
     }
 
     private func processAudioFrame(_ vadResult: VADResult, buffer: sending AVAudioPCMBuffer) async {
-        if isListening {
+        if captureActive {
             do {
                 try await sttService?.sendAudio(buffer)
             } catch {
@@ -625,7 +933,7 @@ actor UnifiedVoiceSession: VoiceSession {
         }
 
         // Endpointing while listening.
-        if isListening, var activeEndpointer = endpointer {
+        if captureActive, var activeEndpointer = endpointer {
             let reason = activeEndpointer.process(vadResult)
             endpointer = activeEndpointer
             if let reason {
@@ -639,6 +947,11 @@ actor UnifiedVoiceSession: VoiceSession {
             await detector.process(vadResult)
         }
     }
+
+    /// Whether a listen is actively capturing (STT stream live, endpointer
+    /// armed). Internal, not private, so tests can wait for capture readiness
+    /// before injecting frames, the same seam `ingest` provides.
+    var isCapturing: Bool { captureActive }
 
     /// Arm the canonical detector while narrating. Internal for tests.
     func armBargeIn() async {
@@ -658,6 +971,18 @@ actor UnifiedVoiceSession: VoiceSession {
         let service = await ttsResolver()
         ttsService = service
         return service
+    }
+}
+
+// MARK: - Duration
+
+extension Duration {
+    /// The duration in seconds, fractional part included. `components.seconds`
+    /// alone truncates (2.5 s becomes 2 s, 800 ms becomes 0), which silently
+    /// broke sub-second and fractional answer timeouts.
+    var timeIntervalSeconds: TimeInterval {
+        let parts = components
+        return TimeInterval(parts.seconds) + TimeInterval(parts.attoseconds) * 1e-18
     }
 }
 

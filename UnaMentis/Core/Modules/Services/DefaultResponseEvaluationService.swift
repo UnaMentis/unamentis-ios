@@ -122,9 +122,13 @@ public actor DefaultResponseEvaluationService: ResponseEvaluationService {
             }
         }
 
-        // 3+. Fuzzy stack (numeric answers inherit the same path KB used, so
-        // numeric near-misses within Levenshtein still match, matching legacy).
-        if !spec.strictness.exactOnly, spec.evaluatorTiers.contains(.textFuzzy) || spec.evaluatorTiers.contains(.numeric) {
+        // 3+. Fuzzy stack. Numeric answers never enter it: a Levenshtein edit
+        // on digits changes the VALUE ("1002" is not "1000", "100" is not
+        // "1000"), so numeric evaluation is exact or tolerance-based only. Text
+        // answers keep the lifted KB stack.
+        if spec.category != .numeric,
+           !spec.strictness.exactOnly,
+           spec.evaluatorTiers.contains(.textFuzzy) || spec.evaluatorTiers.contains(.numeric) {
             if let fuzzy = fuzzyMatch(normalizedUser, spec: spec, tier: tier) {
                 return fuzzy
             }
@@ -160,9 +164,11 @@ public actor DefaultResponseEvaluationService: ResponseEvaluationService {
         )
         do {
             let feedback = try await evaluator.evaluate(request)
-            let mean = feedback.scores.isEmpty
-                ? 0
-                : Double(feedback.scores.reduce(0) { $0 + $1.score }) / Double(feedback.scores.count)
+            guard !feedback.scores.isEmpty else {
+                logger.error("llmRubric returned no scores; reporting the tier as unavailable")
+                return .unavailable(evaluator: .llmRubric, tier: tier)
+            }
+            let mean = Double(feedback.scores.reduce(0) { $0 + $1.score }) / Double(feedback.scores.count)
             let verdict: EvaluationResult.Verdict = mean >= 3 ? .correct : (mean >= 2 ? .partial : .incorrect)
             return EvaluationResult(
                 verdict: verdict,
@@ -173,8 +179,10 @@ public actor DefaultResponseEvaluationService: ResponseEvaluationService {
                 matchType: verdict == .incorrect ? .none : .ai
             )
         } catch {
+            // An evaluator failure is not a wrong answer. Returning `.miss`
+            // here graded the learner incorrect for an unreachable model.
             logger.error("llmRubric evaluation failed: \(error.localizedDescription)")
-            return .miss(evaluator: .llmRubric, tier: tier)
+            return .unavailable(evaluator: .llmRubric, tier: tier)
         }
     }
 
@@ -191,7 +199,8 @@ public actor DefaultResponseEvaluationService: ResponseEvaluationService {
             return .miss(evaluator: .choice, tier: tier)
         }
         let selected = options[index]
-        let isCorrect = normalize(selected, for: .choice) == normalize(spec.primaryAnswer, for: .choice)
+        let isCorrect = choiceMatches(selected: selected, at: index, answer: spec.primaryAnswer)
+            || spec.acceptableAnswers.contains { choiceMatches(selected: selected, at: index, answer: $0) }
         return EvaluationResult(
             verdict: isCorrect ? .correct : .incorrect,
             matchedAgainst: isCorrect ? selected : nil,
@@ -200,6 +209,56 @@ public actor DefaultResponseEvaluationService: ResponseEvaluationService {
             tierUsed: tier,
             matchType: isCorrect ? .exact : .none
         )
+    }
+
+    /// Compare a selected option against the spec's answer.
+    ///
+    /// The answer can be written either way, so both are handled explicitly:
+    /// a LABEL ("A", "b)", "3") is matched as a label, and full OPTION TEXT is
+    /// matched as text. The old code ran `AnswerCategory.choice` normalization
+    /// (first letter only) over the full option text, so any two options
+    /// sharing a first letter collided: picking "Neon" when the answer was
+    /// "Nitrogen" scored correct with confidence 1.0.
+    private func choiceMatches(selected: String, at index: Int, answer: String) -> Bool {
+        let trimmedAnswer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAnswer.isEmpty else { return false }
+
+        // Answer given as full option text (the common case).
+        let normalizedSelected = normalize(selected, for: .text)
+        if !normalizedSelected.isEmpty, normalizedSelected == normalize(trimmedAnswer, for: .text) {
+            return true
+        }
+
+        // Answer given as a label: a single letter (A, b, c) or a 1-based
+        // index, optionally with punctuation like "A)" or "2.".
+        switch choiceLabel(trimmedAnswer) {
+        case .letter(let letter):
+            guard index < 26 else { return false }
+            let alphabet = Array("abcdefghijklmnopqrstuvwxyz")
+            return letter == alphabet[index]
+        case .number(let number):
+            return number == index + 1
+        case nil:
+            return false
+        }
+    }
+
+    /// A choice answer expressed as a label rather than as option text.
+    private enum ChoiceLabel {
+        case letter(Character)
+        case number(Int)
+    }
+
+    private func choiceLabel(_ answer: String) -> ChoiceLabel? {
+        let stripped = answer.filter { $0.isLetter || $0.isNumber }
+        guard stripped.count == 1, let character = stripped.first else { return nil }
+        if character.isLetter {
+            return .letter(Character(character.lowercased()))
+        }
+        if let value = Int(String(character)) {
+            return .number(value)
+        }
+        return nil
     }
 
     // MARK: - Fuzzy Match (moved from KBAnswerValidator.fuzzyMatch)
@@ -213,13 +272,28 @@ public actor DefaultResponseEvaluationService: ResponseEvaluationService {
         let category = spec.category
         let profile = spec.strictness
 
+        // An empty answer is never a fuzzy match for anything.
+        guard !userAnswer.isEmpty else { return nil }
+
         // 1. Levenshtein baseline (runs at every non-exactOnly tier).
+        //
+        // The tolerance is a pure fraction of the answer's own NORMALIZED
+        // length, with no floor. The old `max(2, ...)` floor granted every
+        // candidate two free edits regardless of length, which on short answers
+        // is the whole answer: "Iraq" scored correct for "Iran" and "Austria"
+        // for "Australia" (RFC 0004 item 6 anticipated tightening this as a
+        // deliberate profile change). Confidence is a real normalized
+        // similarity over the same strings the distance was measured on; the
+        // old denominator used the RAW candidate, inflating confidence
+        // whenever normalization shortened it.
         for candidate in candidates {
             let normalizedCandidate = normalize(candidate, for: category)
+            guard !normalizedCandidate.isEmpty else { continue }
             let distance = levenshteinDistance(userAnswer, normalizedCandidate)
-            let candidateThreshold = max(2, Int(Double(candidate.count) * profile.fuzzyThresholdPercent))
+            let candidateThreshold = Int(Double(normalizedCandidate.count) * profile.fuzzyThresholdPercent)
             if distance <= candidateThreshold {
-                let confidence = 1.0 - (Float(distance) / Float(max(1, candidate.count)))
+                let span = max(normalizedCandidate.count, userAnswer.count)
+                let confidence = 1.0 - (Float(distance) / Float(max(1, span)))
                 if confidence >= profile.minimumConfidence {
                     return correct(candidate, .textFuzzy, confidence, tier, .fuzzy)
                 }

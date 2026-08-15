@@ -1,0 +1,15 @@
+{
+  "packId": "aural-starter-2026",
+  "name": "Aural Skills Starter Pack",
+  "version": "1.0.0",
+  "schema": "aural-items/1",
+  "locale": "en-US",
+  "license": {
+    "spdx": "CC-BY-4.0",
+    "attribution": "UnaMentis original ear-training content (CC-BY-4.0)"
+  },
+  "integrity": {
+    "sha256": "e102ab3e7f7333bdb8dc8818160d6fdb63cd3cc277d2103d5514c957cb609352"
+  },
+  "itemCount": 20
+}

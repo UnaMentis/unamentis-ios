@@ -14,6 +14,12 @@
 // state; on end we clear the handler and push idle. Only one session holds the
 // watch handler at a time, matching the existing single-handler model.
 //
+// That single slot is arbitrated, not assumed: `begin` hands the slot to the
+// newest registration and tells the previous holder it lost it, and `end`
+// clears the handler only if this session still owns it. Unconditional
+// install/clear let a second module session strip watch control from a live
+// first session and then, on ending, leave the first with no control at all.
+//
 // The watch plane and error sink are injected behind small protocols so the
 // service is unit-testable without WatchConnectivity or a live TelemetryEngine.
 
@@ -127,6 +133,14 @@ public final class RegisteredSession {
     private var lastProgress = ModuleSessionProgress(completedUnits: 0)
     private var ended = false
 
+    /// Whether this session still owns the single watch command-handler slot.
+    /// WatchConnectivityService holds exactly ONE handler, so a later session
+    /// takes it over; the earlier session must then stop touching it. Without
+    /// this, the second session's `end()` cleared the slot out from under the
+    /// first, leaving a live session with no watch control and a watch showing
+    /// idle.
+    private(set) var ownsWatchSlot = true
+
     init(
         descriptor: ModuleSessionDescriptor,
         watch: (any ModuleWatchControlPlane)?,
@@ -163,11 +177,22 @@ public final class RegisteredSession {
         }
     }
 
-    /// Report progress; pushes updated state to the watch.
+    /// Report progress; pushes updated state to the watch while this session
+    /// owns the watch slot (a displaced session keeps running locally but must
+    /// not overwrite the newer session's watch state).
     public func update(progress: ModuleSessionProgress) {
         guard !ended else { return }
         lastProgress = progress
+        guard ownsWatchSlot else { return }
         watch?.sync(watchState(from: progress, isActive: true))
+    }
+
+    /// Give up the watch slot to a newer registration. The session stays fully
+    /// usable; it simply stops publishing to, and clearing, the shared handler.
+    func resignWatchSlot() {
+        guard ownsWatchSlot else { return }
+        ownsWatchSlot = false
+        logger.warning("Module session '\(descriptor.title)' lost the watch slot to a newer session")
     }
 
     /// Route a module session error into the session error-log drill-down.
@@ -185,14 +210,25 @@ public final class RegisteredSession {
             await telemetry.record(.activityEnd(kind: kind), module: module)
             await telemetry.record(.sessionEnd(duration: duration), module: module)
         }
-        watch?.clearCommandHandler()
-        watch?.sync(.idle)
+        // Only the slot's current owner clears it. A displaced session ending
+        // must not strip watch control from the session that took over.
+        if ownsWatchSlot {
+            ownsWatchSlot = false
+            watch?.clearCommandHandler()
+            watch?.sync(.idle)
+        }
     }
 
     // MARK: Watch plumbing
 
     private func handleWatchCommand(_ command: SessionCommand) async -> CommandResponse {
         logger.info("Module session watch command: \(command.commandDescription)")
+        guard ownsWatchSlot else {
+            // A stale closure from a displaced session: never act on it.
+            return CommandResponse(
+                command: command, success: false, error: "Session no longer active"
+            )
+        }
         switch command {
         case .pause:
             if descriptor.controls.contains(.pause) { onPause?() }
@@ -255,6 +291,11 @@ public final class DefaultSessionRegistrationService: SessionRegistrationService
     private let watch: any ModuleWatchControlPlane
     private let errorSink: any ModuleSessionErrorSink
     private let telemetry: any ModuleTelemetryService
+    private let logger = Logger(label: "com.unamentis.modules.registration")
+
+    /// The registration that currently owns the single watch handler slot.
+    /// Weak: a session that is gone releases the slot by itself.
+    private weak var watchSlotOwner: RegisteredSession?
 
     public init(
         watch: any ModuleWatchControlPlane,
@@ -273,7 +314,17 @@ public final class DefaultSessionRegistrationService: SessionRegistrationService
         onMute: (@MainActor (Bool) -> Void)? = nil,
         onStop: (@MainActor () -> Void)? = nil
     ) -> RegisteredSession {
-        RegisteredSession(
+        // Arbitrate the single watch slot explicitly. A second module session
+        // takes it over (the newest session is the one the learner is in), and
+        // the previous holder is told so it stops publishing and, critically,
+        // does not clear the slot when it eventually ends.
+        if let existing = watchSlotOwner {
+            logger.warning(
+                "A module session is already registered; the new '\(descriptor.title)' session takes the watch slot"
+            )
+            existing.resignWatchSlot()
+        }
+        let session = RegisteredSession(
             descriptor: descriptor,
             watch: watch,
             errorSink: errorSink,
@@ -283,6 +334,8 @@ public final class DefaultSessionRegistrationService: SessionRegistrationService
             onMute: onMute,
             onStop: onStop
         )
+        watchSlotOwner = session
+        return session
     }
 }
 

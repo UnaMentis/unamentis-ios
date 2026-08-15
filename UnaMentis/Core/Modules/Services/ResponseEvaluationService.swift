@@ -193,6 +193,11 @@ public struct EvaluationResult: Sendable, Equatable {
         case correct
         case incorrect
         case partial
+        /// No judgment could be produced (the evaluator itself failed, for
+        /// example an LLM tier that could not be reached). This is explicitly
+        /// NOT a wrong answer: reporting infrastructure failure as `incorrect`
+        /// grades the learner down for an outage.
+        case unavailable
     }
 
     /// How the decision maps to KB-style match semantics. Raw values match the
@@ -239,6 +244,19 @@ public struct EvaluationResult: Sendable, Equatable {
     static func miss(evaluator: EvaluatorKind, tier: StrictnessProfile.Level) -> EvaluationResult {
         EvaluationResult(
             verdict: .incorrect,
+            matchedAgainst: nil,
+            evaluator: evaluator,
+            confidence: 0,
+            tierUsed: tier,
+            matchType: .none
+        )
+    }
+
+    /// The evaluator could not run. Distinct from `miss`: nothing about the
+    /// learner's answer was judged.
+    static func unavailable(evaluator: EvaluatorKind, tier: StrictnessProfile.Level) -> EvaluationResult {
+        EvaluationResult(
+            verdict: .unavailable,
             matchedAgainst: nil,
             evaluator: evaluator,
             confidence: 0,

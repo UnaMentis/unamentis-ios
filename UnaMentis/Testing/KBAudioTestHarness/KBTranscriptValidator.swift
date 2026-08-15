@@ -36,50 +36,32 @@ actor KBTranscriptValidator {
 
     private let strictness: StrictnessLevel
 
-    // Tier 1 matchers
-    private let phoneticMatcher: KBPhoneticMatcher
-    private let ngramMatcher: KBNGramMatcher
-    private let tokenMatcher: KBTokenMatcher
-    private let linguisticMatcher: KBLinguisticMatcher
-
-    // Tier 2 & 3 (optional)
-    private let embeddingsService: KBEmbeddingsService?
-    private let llmValidator: KBLLMValidator?
+    /// The host response-evaluation service (MODULE_SDK_SPEC.md section 5.2).
+    /// The harness no longer holds its own matchers: it evaluates through the
+    /// host service, expressing strictness as a named profile via
+    /// KBEvaluationBridge.
+    private let evaluation: any ResponseEvaluationService
 
     // MARK: - Initialization
 
     init(
         strictness: StrictnessLevel = .standard,
-        embeddingsService: KBEmbeddingsService? = nil,
-        llmValidator: KBLLMValidator? = nil
+        evaluation: any ResponseEvaluationService = DefaultResponseEvaluationService()
     ) {
         self.strictness = strictness
-        self.phoneticMatcher = KBPhoneticMatcher()
-        self.ngramMatcher = KBNGramMatcher()
-        self.tokenMatcher = KBTokenMatcher()
-        self.linguisticMatcher = KBLinguisticMatcher()
-        self.embeddingsService = embeddingsService
-        self.llmValidator = llmValidator
+        self.evaluation = evaluation
     }
 
     /// Create validator from test case validation config
     init(config: KBAudioTestCase.ValidationConfig) {
-        let strictness: StrictnessLevel
         if config.useLLMValidation || config.useEmbeddings {
-            strictness = .lenient
+            self.strictness = .lenient
         } else if config.useFuzzyMatching {
-            strictness = .standard
+            self.strictness = .standard
         } else {
-            strictness = .strict
+            self.strictness = .strict
         }
-
-        self.strictness = strictness
-        self.phoneticMatcher = KBPhoneticMatcher()
-        self.ngramMatcher = KBNGramMatcher()
-        self.tokenMatcher = KBTokenMatcher()
-        self.linguisticMatcher = KBLinguisticMatcher()
-        self.embeddingsService = nil
-        self.llmValidator = nil
+        self.evaluation = DefaultResponseEvaluationService()
     }
 
     // MARK: - Public API
@@ -100,16 +82,6 @@ actor KBTranscriptValidator {
     ) async -> KBAudioTestResult.ValidationOutcome {
         let startTime = CFAbsoluteTimeGetCurrent()
 
-        // Create a synthetic KBQuestion for the validator
-        let question = KBQuestion(
-            text: "",
-            answer: KBAnswer(
-                primary: expected,
-                answerType: answerType
-            ),
-            domain: .science
-        )
-
         // Determine strictness from config if provided
         let effectiveStrictness: KBValidationStrictness
         if let config = config {
@@ -124,26 +96,34 @@ actor KBTranscriptValidator {
             effectiveStrictness = mapToKBStrictness(strictness)
         }
 
-        // Create answer validator with appropriate config
-        let validator = KBAnswerValidator(
-            config: .init(
-                fuzzyThresholdPercent: 0.25,  // Slightly more lenient for STT errors
-                minimumConfidence: config?.minimumConfidence ?? 0.6,
-                strictMode: effectiveStrictness == .strict
-            ),
-            strictness: effectiveStrictness,
-            phoneticMatcher: phoneticMatcher,
-            ngramMatcher: ngramMatcher,
-            tokenMatcher: tokenMatcher,
-            linguisticMatcher: linguisticMatcher,
-            embeddingsService: embeddingsService,
-            llmValidator: llmValidator
+        // Build the host evaluation spec via the KB bridge. Widen the fuzzy
+        // threshold slightly (0.25) for STT errors, matching the harness's prior
+        // KBAnswerValidator config, and honor the config's minimum confidence.
+        let baseProfile = KBEvaluationBridge.profile(for: effectiveStrictness)
+        let profile = StrictnessProfile(
+            id: baseProfile.id + "-harness",
+            level: baseProfile.level,
+            fuzzyThresholdPercent: 0.25,
+            minimumConfidence: config?.minimumConfidence ?? 0.6,
+            exactOnly: baseProfile.exactOnly,
+            synonyms: baseProfile.synonyms
+        )
+        let category = KBEvaluationBridge.category(for: answerType)
+        let tiers: [EvaluatorKind] = category == .numeric
+            ? [.textExact, .numeric, .textFuzzy]
+            : (category == .choice ? [.choice] : [.textExact, .textFuzzy])
+        let spec = EvaluationSpec(
+            primaryAnswer: expected,
+            category: category,
+            strictness: profile,
+            evaluatorTiers: tiers
         )
 
-        // Validate
-        let result = await validator.validate(userAnswer: transcript, question: question)
+        let hostResult = await evaluation.evaluate(LearnerResponse(text: transcript), against: spec)
+        let result = KBEvaluationBridge.kbResult(from: hostResult)
 
         let latencyMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+        _ = latencyMs
 
         logger.info("Validation: \"\(transcript)\" vs \"\(expected)\" -> \(result.isCorrect ? "PASS" : "FAIL") (\(result.matchType.rawValue), \(String(format: "%.2f", result.confidence)))")
 

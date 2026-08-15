@@ -1,0 +1,10 @@
+{
+  "packId": "ihbb-europe-starter",
+  "name": "IHBB Europe Starter",
+  "version": "1.0.0",
+  "schema": "qb-question/1",
+  "locale": "en-GB",
+  "license": { "spdx": "CC-BY-4.0", "attribution": "UnaMentis" },
+  "integrity": { "sha256": "c445ae6121967805848a8894a26a8172505c094ce03a7b874aac315abd01d99e" },
+  "itemCount": 32
+}

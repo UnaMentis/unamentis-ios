@@ -92,7 +92,12 @@ extension KnowledgeBowlModule: ConformanceDrivable {
 /// Steps a QuizMatchEngine to completion by consuming its events, submitting
 /// scripted answers, and honoring unified commands from the voice session. This
 /// is the headless equivalent of a module's oral view-model control loop, shared
-/// by KB conformance (and available to any quiz-match module's driver).
+/// by KB conformance and Quiz Bowl conformance (and available to any quiz-match
+/// module's driver).
+///
+/// The result reports what the run OBSERVED: `completed` is true only when the
+/// engine's terminal `.matchEnded` event arrived, and the voice states are the
+/// ones the observed transitions actually entered.
 enum ConformanceEngineDriver {
     static func run(
         engine: QuizMatchEngine,
@@ -102,10 +107,21 @@ enum ConformanceEngineDriver {
     ) async throws -> ConformanceRunResult {
         var remainingAnswers = answers
         var attempts = 0
-        let statesEntered: [ModuleVoiceState] = [
-            ModuleVoiceState(rawValue: "reading"),
-            ModuleVoiceState(rawValue: "answering")
-        ]
+
+        // The voice states the run actually entered, recorded from the engine
+        // transitions the driver observes (first-seen order), never listed up
+        // front: a fabricated list would make the suite's state check vacuous.
+        var statesEntered: [ModuleVoiceState] = []
+        func enter(_ name: String) {
+            let state = ModuleVoiceState(rawValue: name)
+            if !statesEntered.contains(state) { statesEntered.append(state) }
+        }
+
+        // Completion is OBSERVED, never assumed. The loop below also exits when
+        // the event stream simply finishes (engine error, early stop, task
+        // cancellation), which is NOT the match running to its end. Only the
+        // terminal `.matchEnded` event means the activity completed (section 9).
+        var reachedTerminalEvent = false
 
         // Watch for unified commands on the session's event stream and route
         // them. Honoring a command means the activity recognized it and dispatched
@@ -130,18 +146,27 @@ enum ConformanceEngineDriver {
                 }
             }
         }
+        // The watcher never outlives the run, on any exit path including a throw.
+        defer { commandTask.cancel() }
+
+        // Subscribe BEFORE starting: the iterator must exist before the engine
+        // can emit, so no early event depends on the stream's buffering policy.
+        var iterator = engine.events.makeAsyncIterator()
 
         // Start the match on the host-owned session (the module never releases it).
         await engine.start(voice: session)
 
-        var iterator = engine.events.makeAsyncIterator()
         loop: while let event = await iterator.next() {
             switch event {
             case .matchStarted:
                 break
+            case .questionPresented:
+                enter("reading")
             case .conferenceStarted:
+                enter("conferring")
                 await engine.skipConference()
             case .answerWindowOpened:
+                enter("answering")
                 if !remainingAnswers.isEmpty {
                     let answer = remainingAnswers.removeFirst()
                     await engine.submitAnswer(answer)
@@ -149,11 +174,13 @@ enum ConformanceEngineDriver {
                     await engine.markSkipped()
                 }
             case .evaluated:
+                enter("feedback")
                 attempts += 1
                 await engine.next()
             case .answerSkipped:
                 await engine.next()
             case .matchEnded:
+                reachedTerminalEvent = true
                 break loop
             default:
                 break
@@ -170,11 +197,10 @@ enum ConformanceEngineDriver {
             }
         }
 
-        commandTask.cancel()
         let honored = await honoredBox.snapshot()
 
         return ConformanceRunResult(
-            completed: true,
+            completed: reachedTerminalEvent,
             attemptsEvaluated: attempts,
             voiceStatesEntered: statesEntered,
             commandsHonored: honored

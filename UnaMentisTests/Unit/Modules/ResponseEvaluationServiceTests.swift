@@ -232,6 +232,147 @@ final class ResponseEvaluationServiceTests: XCTestCase {
         XCTAssertEqual(negative.verdict, .incorrect)
     }
 
+    func testChoice_sameFirstLetterOptionsDoNotCollide() async {
+        // The choice normalizer keeps only the first letter, which is right for
+        // a LABEL ("A", "B") and catastrophic for full option text: any two
+        // options sharing a first letter matched each other.
+        let service = makeService()
+        let periodic = EvaluationSpec(
+            primaryAnswer: "Nitrogen",
+            category: .choice,
+            strictness: KBEvaluationBridge.kbStandard,
+            evaluatorTiers: [.choice],
+            choiceOptions: ["Hydrogen", "Neon", "Nitrogen", "Oxygen"]
+        )
+        let neon = await service.evaluate(LearnerResponse(text: "", selectedIndex: 1), against: periodic)
+        XCTAssertEqual(neon.verdict, .incorrect, "Neon is not Nitrogen")
+        let nitrogen = await service.evaluate(LearnerResponse(text: "", selectedIndex: 2), against: periodic)
+        XCTAssertEqual(nitrogen.verdict, .correct)
+
+        let capitals = EvaluationSpec(
+            primaryAnswer: "Prague",
+            category: .choice,
+            strictness: KBEvaluationBridge.kbStandard,
+            evaluatorTiers: [.choice],
+            choiceOptions: ["Paris", "Prague"]
+        )
+        let paris = await service.evaluate(LearnerResponse(text: "", selectedIndex: 0), against: capitals)
+        XCTAssertEqual(paris.verdict, .incorrect, "Paris is not Prague")
+
+        let planets = EvaluationSpec(
+            primaryAnswer: "Mars",
+            category: .choice,
+            strictness: KBEvaluationBridge.kbStandard,
+            evaluatorTiers: [.choice],
+            choiceOptions: ["Mercury", "Mars"]
+        )
+        let mercury = await service.evaluate(LearnerResponse(text: "", selectedIndex: 0), against: planets)
+        XCTAssertEqual(mercury.verdict, .incorrect, "Mercury is not Mars")
+        XCTAssertEqual(mercury.confidence, 0)
+    }
+
+    func testChoice_answerGivenAsALetterOrNumberLabelStillWorks() async {
+        let service = makeService()
+        let letter = EvaluationSpec(
+            primaryAnswer: "C",
+            category: .choice,
+            strictness: KBEvaluationBridge.kbStandard,
+            evaluatorTiers: [.choice],
+            choiceOptions: ["Neon", "Nitrogen", "Oxygen", "Argon"]
+        )
+        let third = await service.evaluate(LearnerResponse(text: "", selectedIndex: 2), against: letter)
+        XCTAssertEqual(third.verdict, .correct, "Label C selects the third option")
+        let first = await service.evaluate(LearnerResponse(text: "", selectedIndex: 0), against: letter)
+        XCTAssertEqual(first.verdict, .incorrect)
+
+        let numbered = EvaluationSpec(
+            primaryAnswer: "2)",
+            category: .choice,
+            strictness: KBEvaluationBridge.kbStandard,
+            evaluatorTiers: [.choice],
+            choiceOptions: ["Neon", "Nitrogen"]
+        )
+        let second = await service.evaluate(LearnerResponse(text: "", selectedIndex: 1), against: numbered)
+        XCTAssertEqual(second.verdict, .correct, "A 1-based numeric label selects that option")
+    }
+
+    // MARK: - Fuzzy Tolerance (RFC 0004 item 6: a deliberate profile change)
+
+    func testFuzzy_shortAnswersNoLongerGetTwoFreeEdits() async {
+        // The old `max(2, ...)` floor tolerated two edits on every candidate,
+        // which on a short answer is the whole answer.
+        let service = makeService()
+        let iran = EvaluationSpec(
+            primaryAnswer: "Iran", category: .place, strictness: KBEvaluationBridge.kbStandard
+        )
+        let iraq = await service.evaluate(LearnerResponse(text: "Iraq"), against: iran)
+        XCTAssertEqual(iraq.verdict, .incorrect, "Iraq must not be accepted for Iran")
+
+        let australia = EvaluationSpec(
+            primaryAnswer: "Australia", category: .place, strictness: KBEvaluationBridge.kbStandard
+        )
+        let austria = await service.evaluate(LearnerResponse(text: "Austria"), against: australia)
+        XCTAssertEqual(austria.verdict, .incorrect, "Austria must not be accepted for Australia")
+
+        let china = EvaluationSpec(
+            primaryAnswer: "China", category: .place, strictness: KBEvaluationBridge.kbStandard
+        )
+        let chile = await service.evaluate(LearnerResponse(text: "Chile"), against: china)
+        XCTAssertEqual(chile.verdict, .incorrect, "Chile must not be accepted for China")
+    }
+
+    func testFuzzy_genuineTyposOnLongerAnswersStillPass() async {
+        // The tightening must not cost real misspelling tolerance.
+        let service = makeService()
+        let spec = EvaluationSpec(
+            primaryAnswer: "Mississippi", strictness: KBEvaluationBridge.kbStandard
+        )
+        let typo = await service.evaluate(LearnerResponse(text: "Mississipi"), against: spec)
+        XCTAssertEqual(typo.verdict, .correct)
+        XCTAssertEqual(typo.matchType, .fuzzy)
+
+        let photosynthesis = EvaluationSpec(
+            primaryAnswer: "Photosynthesis", strictness: KBEvaluationBridge.kbStandard
+        )
+        let close = await service.evaluate(LearnerResponse(text: "Photosynthysis"), against: photosynthesis)
+        XCTAssertEqual(close.verdict, .correct)
+    }
+
+    func testNumeric_neverFuzzyMatchesOnDigitEdits() async {
+        // A digit edit changes the value, so the fuzzy stack must not run for
+        // numeric answers even when the spec lists textFuzzy.
+        let service = makeService()
+        let spec = EvaluationSpec(
+            primaryAnswer: "1000",
+            category: .numeric,
+            strictness: KBEvaluationBridge.kbStandard,
+            evaluatorTiers: [.textExact, .numeric, .textFuzzy]
+        )
+        for wrong in ["1002", "100", "10000", "2000"] {
+            let result = await service.evaluate(LearnerResponse(text: wrong), against: spec)
+            XCTAssertEqual(result.verdict, .incorrect, "\(wrong) must not match 1000")
+        }
+        let exact = await service.evaluate(LearnerResponse(text: "1,000"), against: spec)
+        XCTAssertEqual(exact.verdict, .correct, "Comma formatting still normalizes to an exact match")
+        let words = await service.evaluate(LearnerResponse(text: "thousand"), against: spec)
+        XCTAssertEqual(words.verdict, .correct, "Written numbers still normalize")
+    }
+
+    func testConfidence_usesTheNormalizedAnswerLength() async {
+        // The old denominator was the RAW candidate, so normalization that
+        // shortened the string inflated confidence.
+        let service = makeService()
+        let spec = EvaluationSpec(
+            primaryAnswer: "The Great Gatsby",
+            category: .title,
+            strictness: KBEvaluationBridge.kbStandard
+        )
+        let typo = await service.evaluate(LearnerResponse(text: "Great Gatsbi"), against: spec)
+        XCTAssertEqual(typo.verdict, .correct)
+        // "great gatsby" is 12 characters after normalization, one edit away.
+        XCTAssertEqual(typo.confidence, 1.0 - 1.0 / 12.0, accuracy: 0.001)
+    }
+
     // MARK: - Empty / Garbage
 
     func testEmptyInputIsIncorrect() async {
@@ -239,5 +380,40 @@ final class ResponseEvaluationServiceTests: XCTestCase {
         let spec = EvaluationSpec(primaryAnswer: "Photosynthesis", strictness: KBEvaluationBridge.kbStandard)
         let empty = await service.evaluate(LearnerResponse(text: ""), against: spec)
         XCTAssertEqual(empty.verdict, .incorrect)
+    }
+
+    func testEmptyInputNeverFuzzyMatchesAShortAnswer() async {
+        let service = makeService()
+        let spec = EvaluationSpec(primaryAnswer: "pi", strictness: KBEvaluationBridge.kbStandard)
+        let empty = await service.evaluate(LearnerResponse(text: "   "), against: spec)
+        XCTAssertEqual(empty.verdict, .incorrect)
+    }
+
+    // MARK: - Rubric Tier Failure
+
+    func testRubricFailure_reportsUnavailableNotIncorrect() async {
+        // An unreachable model is an infrastructure failure. Reporting it as
+        // `incorrect` grades the learner down for an outage.
+        let service = DefaultResponseEvaluationService(rubricEvaluator: FailingRubricEvaluator())
+        let spec = EvaluationSpec(
+            primaryAnswer: "the water cycle",
+            strictness: KBEvaluationBridge.kbStandard,
+            evaluatorTiers: [.llmRubric],
+            rubric: ["structure", "clarity"]
+        )
+        let result = await service.evaluate(
+            LearnerResponse(text: "Water evaporates, condenses, and falls again."), against: spec
+        )
+        XCTAssertEqual(result.verdict, .unavailable)
+        XCTAssertNotEqual(result.verdict, .incorrect)
+        XCTAssertEqual(result.evaluator, .llmRubric)
+    }
+}
+
+/// A rubric evaluator that always fails, standing in for an unreachable model.
+/// ALLOWED: an internal host seam stand-in, not a paid-API mock.
+private struct FailingRubricEvaluator: LLMRubricEvaluating {
+    func evaluate(_ request: LLMRubricRequest) async throws -> RubricFeedback {
+        throw LLMRubricError.noLLMAvailable
     }
 }

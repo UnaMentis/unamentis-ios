@@ -148,6 +148,70 @@ final class SessionRegistrationServiceTests: XCTestCase {
         XCTAssertEqual(watch.synced.last?.isActive, false, "End should publish idle state")
     }
 
+    // MARK: - Two concurrent registered sessions (single watch slot)
+
+    func testSecondSessionTakesTheWatchSlotAndTheFirstStopsPublishing() {
+        let (service, watch, _, _) = makeService()
+        let first = service.begin(descriptor(total: 10), onPause: nil, onResume: nil, onMute: nil, onStop: nil)
+        let second = service.begin(descriptor(total: 20), onPause: nil, onResume: nil, onMute: nil, onStop: nil)
+
+        XCTAssertFalse(first.ownsWatchSlot, "The newer session owns the single watch slot")
+        XCTAssertTrue(second.ownsWatchSlot)
+
+        // The displaced session must not overwrite the live session's state.
+        let syncedBefore = watch.synced.count
+        first.update(progress: ModuleSessionProgress(completedUnits: 7))
+        XCTAssertEqual(watch.synced.count, syncedBefore, "A displaced session must not publish")
+
+        second.update(progress: ModuleSessionProgress(completedUnits: 2))
+        XCTAssertEqual(watch.synced.last?.currentSegment, 2)
+        XCTAssertEqual(watch.synced.last?.totalSegments, 20)
+    }
+
+    func testDisplacedSessionEndingDoesNotStripWatchControlFromTheLiveOne() throws {
+        let (service, watch, _, _) = makeService()
+        let first = service.begin(descriptor(), onPause: nil, onResume: nil, onMute: nil, onStop: nil)
+        let second = service.begin(descriptor(), onPause: nil, onResume: nil, onMute: nil, onStop: nil)
+
+        // The first session ends while the second is still running. Clearing
+        // the handler unconditionally left the live session with no watch
+        // control and the watch showing idle.
+        first.end(summary: ModuleSessionSummary(completedUnits: 1, duration: 5))
+
+        XCTAssertEqual(watch.clearCount, 0, "A displaced session must not clear the handler")
+        XCTAssertNotNil(watch.handler, "The live session keeps watch control")
+        XCTAssertEqual(watch.synced.last?.isActive, true, "The watch must not be told the session is idle")
+
+        // The live session still ends cleanly and owns the teardown.
+        second.end(summary: ModuleSessionSummary(completedUnits: 4, duration: 9))
+        XCTAssertEqual(watch.clearCount, 1)
+        XCTAssertEqual(watch.synced.last?.isActive, false)
+        withExtendedLifetime(first) {}
+    }
+
+    func testDisplacedSessionRejectsStaleWatchCommands() async throws {
+        let (service, watch, _, _) = makeService()
+        var firstStopped = false
+        var secondStopped = false
+        let first = service.begin(
+            descriptor(), onPause: nil, onResume: nil, onMute: nil, onStop: { firstStopped = true }
+        )
+        let firstHandler = try XCTUnwrap(watch.handler)
+        let second = service.begin(
+            descriptor(), onPause: nil, onResume: nil, onMute: nil, onStop: { secondStopped = true }
+        )
+
+        // A stale closure from the displaced session must not act.
+        let staleResponse = await firstHandler(.stop)
+        XCTAssertFalse(firstStopped)
+        XCTAssertFalse(staleResponse.success)
+
+        let liveHandler = try XCTUnwrap(watch.handler)
+        _ = await liveHandler(.stop)
+        XCTAssertTrue(secondStopped)
+        withExtendedLifetime((first, second)) {}
+    }
+
     func testReportError_reachesErrorSink() async {
         let (service, _, sink, _) = makeService()
         let session = service.begin(descriptor(), onPause: nil, onResume: nil, onMute: nil, onStop: nil)

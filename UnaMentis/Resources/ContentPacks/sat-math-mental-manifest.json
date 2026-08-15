@@ -1,0 +1,15 @@
+{
+  "packId": "sat-math-mental",
+  "name": "SAT Mental Math",
+  "version": "1.0.0",
+  "schema": "drill-items/1",
+  "locale": "en-US",
+  "license": {
+    "spdx": "CC-BY-4.0",
+    "attribution": "UnaMentis"
+  },
+  "integrity": {
+    "sha256": "af3246a7892629bddd37489fe0f6683ffd78f509f12996001168f33dbc49b666"
+  },
+  "itemCount": 34
+}

@@ -1,0 +1,10 @@
+{
+  "packId": "uk-schools-challenge-starter",
+  "name": "UK Schools' Challenge Starter",
+  "version": "1.0.0",
+  "schema": "qb-question/1",
+  "locale": "en-GB",
+  "license": { "spdx": "CC-BY-4.0", "attribution": "UnaMentis" },
+  "integrity": { "sha256": "b59c93260959e319c598b1ce6ade4e64ea798ce270ed4d5dcbd919890a9133b2" },
+  "itemCount": 21
+}
