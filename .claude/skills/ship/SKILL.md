@@ -10,24 +10,55 @@ driving. His invocation is his acceptance of the risk for THIS body of work; it 
 it. This is the repo-specific variant of the personal `ship` skill, distilled from the
 2026-08-14 delivery of PRs #5, #6, and #7, where each rule below caught a real problem.
 
-Without an explicit arming, the repo's standing policy holds absolutely: stage only, commit
-only on explicit instruction, never push.
+## What arming does and does not grant
+
+`CLAUDE.md` is the authority and this skill never silently overrides it. Absent an arming,
+its policy holds absolutely: stage only, commit only on explicit real-time instruction,
+never push.
+
+An arming is itself that real-time instruction, scoped to the work Richard names and to
+nothing else. Before the first irreversible action, restate the scope back to him: which
+branches, which repos, and whether pushing is included. Then:
+
+- **Commits** inside the armed scope do not each need a new go-ahead; the arming covers
+  them. Work that was not part of the named scope does, even in the same session.
+- **Pushing is not implied by arming.** `CLAUDE.md` says pushes are the human's. Push only
+  when Richard's words grant it explicitly ("push it", "take it through CI", "get it
+  merged"). When they do not, stop at "committed locally, ready for your push" and resume
+  the CI and PR phases after he confirms the push landed.
+- **Merging** an unapproved PR, approving your own PR, dismissing a blocking review,
+  disabling checks, and force-pushing are never yours, armed or not. Hand those back.
+
+A boundary Richard states stays in force until he lifts it in a later message. Your own
+judgment that its condition is now met does not lift it.
 
 ## Non-negotiable gates
 
 1. **Machine-readable evidence only.** A phase ends on an exit code, a test count, or a
    parsed CI conclusion, never on "looks done". A reviewer's opinion never satisfies a gate.
 2. **Red CI is a critical blocker.** Diagnose immediately (download the xcresult artifact,
-   `xcrun xcresulttool get test-results summary`), fix, re-push. Never merge red, never
-   rationalize red. Verify checks actually REGISTERED: a check list without Unit Tests is
-   not green, and a poll that treats "not yet registered" as done will lie to you.
+   `xcrun xcresulttool get test-results summary`), fix, push again, rewatch. Never merge
+   red, never rationalize red.
+
+   Green means every APPLICABLE check reached a SUCCESS conclusion. Two failure modes to
+   guard against, both hit on 2026-08-14:
+   - A poll that accepts "not pending" accepts `failure`, `cancelled`, `timed_out`, and
+     `skipped` too, and one that runs before a check registers sees an incomplete list and
+     declares victory. Require each applicable check by name AND require its conclusion to
+     be success.
+   - Applicability is path-dependent. `lint.yml` and `unit-tests.yml` filter on Swift and
+     app paths, so a docs-only PR legitimately runs neither. Read the workflow triggers,
+     decide which checks apply to the changed paths, and record path-skipped checks as not
+     applicable rather than waiting forever or treating their absence as green.
 3. **Lemon law.** Two or more confirmed defects in one file force a dedicated deep pass over
    that whole file (PR #6's download path rework came from exactly this). Defects cluster.
 4. **Verify findings before fixing.** Review agents manufacture findings when asked to find
    gaps. Re-check each against the actual code; fixes for phantom bugs are real bugs.
-5. **Convergence bounds.** Apply only findings affecting correctness, data integrity, or a
-   stated requirement (the 500 ms turn budget counts). Quality and reuse findings get FILED
-   as GitHub issues and listed in the PR body, not applied mid-ship.
+5. **Convergence bounds.** Fix, before merge, any confirmed finding touching correctness,
+   data integrity, security, privacy, availability, or a stated requirement (the 500 ms
+   turn budget counts). A verified security or availability defect never ships behind a
+   filed issue. Quality, reuse, and performance-at-the-margin findings get FILED as GitHub
+   issues and listed in the PR body, since late churn adds more risk than it removes.
 6. **Report faithfully.** Failures with their output, skips named as skips, your own misses
    labeled yours (a changed assertion missed in a sibling test cost one CI round).
 
@@ -57,14 +88,19 @@ only on explicit instruction, never push.
    reason) before touching code.
 3. **Apply the accepted set in one pass**, rerun the full local gate (lint plus typecheck of
    changed files), commit with a message that reports the work and its verification.
-4. **Push, open the PR.** The body is the durable report: what it does, what review found
-   and fixed, what was deferred and why, exactly what was and was not verified locally.
-5. **Watch CI to completion** with a poll that requires Lint AND Unit Tests to be registered
-   and non-pending. On red: artifact, diagnose, fix at the cause (including pre-existing
-   breakage that blocks the gate), push, rewatch.
+4. **Push if the arming granted it, then open the PR.** If it did not, hand the push back
+   and wait. The PR body is the durable report: what it does, what review found and fixed,
+   what was deferred and why, and exactly what was and was not verified locally.
+5. **Watch CI to completion** against the applicable-checks rule in gate 2: name the checks
+   the changed paths trigger, require a success conclusion for each. On red: download the
+   artifact, diagnose, fix at the cause (including pre-existing breakage that blocks the
+   gate, as three unrelated failures did on 2026-08-14), push, rewatch.
 6. **CodeRabbit**: read its findings, verify each, fix or file. It rate-limits on busy PRs;
    when it passes without reviewing, say so in the report and substitute your own final-diff
-   pass. Address a Critical finding before its CI round fails, not after.
+   pass. Address a Critical finding before its CI round fails, not after. Its review can
+   also sit in CHANGES_REQUESTED and block merge under branch protection: comment
+   `@coderabbitai review` after pushing fixes, and if the block persists, hand Richard the
+   approve-or-dismiss click rather than working around it.
 7. **Merge** (plain merge commit, matching repo history), verify state == MERGED, confirm
    the post-merge main run goes green, then start the next wave. One wave lands fully
    before the next merges; reviews may overlap.
