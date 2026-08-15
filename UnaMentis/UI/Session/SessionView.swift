@@ -1428,6 +1428,28 @@ class SessionViewModel: ObservableObject {
         await startLLMSession(appState: appState)
     }
 
+    /// Build the on-device Pocket TTS service, falling back to Apple TTS if its
+    /// models cannot be loaded.
+    ///
+    /// Every network-backed provider in this file already degrades to Apple TTS
+    /// when its key or host is missing, but Pocket TTS had no such net: a load
+    /// failure left the session with no voice at all, showing AI text with
+    /// silence behind it. Loading eagerly here also moves the model's cold start
+    /// off the first spoken turn, so the first response is not preceded by dead
+    /// air. Knowledge Bowl has used this same pattern since its introduction
+    /// (`KBVoiceCoordinator.setup()`).
+    private func makePocketTTSWithAppleFallback() async -> any TTSService {
+        let pocket = KyutaiPocketTTSService(config: .lowLatency)
+        do {
+            try await pocket.ensureLoaded()
+            logger.info("Pocket TTS loaded (on-device)")
+            return pocket
+        } catch {
+            logger.warning("Pocket TTS unavailable, falling back to Apple TTS: \(error.localizedDescription)")
+            return AppleTTSService()
+        }
+    }
+
     /// Start a traditional LLM-based session (used when no transcript available or direct streaming fails)
     private func startLLMSession(appState: AppState) async {
         logger.info("🟢 startLLMSession called")
@@ -1568,10 +1590,10 @@ class SessionViewModel: ObservableObject {
             }
         case .pocketTTS:
             logger.info("Using Pocket TTS (on-device)")
-            ttsService = KyutaiPocketTTSService(config: .lowLatency)
+            ttsService = await makePocketTTSWithAppleFallback()
         default:
             logger.info("Using Pocket TTS as default TTS provider")
-            ttsService = KyutaiPocketTTSService(config: .lowLatency)
+            ttsService = await makePocketTTSWithAppleFallback()
         }
 
         // Configure LLM based on settings with graceful fallback
@@ -2537,18 +2559,18 @@ class SessionViewModel: ObservableObject {
 
         switch bargeInTTSProviderSetting {
         case .pocketTTS:
-            bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
+            bargeInTTSService = await makePocketTTSWithAppleFallback()
         case .vibeVoice:
             if selfHostedEnabled && !serverIP.isEmpty {
                 bargeInTTSService = SelfHostedTTSService.vibeVoice(host: serverIP, voice: ttsVoiceSetting)
             } else {
-                bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
+                bargeInTTSService = await makePocketTTSWithAppleFallback()
             }
         case .selfHosted:
             if selfHostedEnabled && !serverIP.isEmpty {
                 bargeInTTSService = SelfHostedTTSService.piper(host: serverIP, voice: ttsVoiceSetting)
             } else {
-                bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
+                bargeInTTSService = await makePocketTTSWithAppleFallback()
             }
         case .chatterbox:
             if selfHostedEnabled && !serverIP.isEmpty {
@@ -2557,12 +2579,12 @@ class SessionViewModel: ObservableObject {
                 config.seed = nil  // Barge-in doesn't need reproducibility
                 bargeInTTSService = ChatterboxTTSService.chatterbox(host: serverIP, config: config)
             } else {
-                bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
+                bargeInTTSService = await makePocketTTSWithAppleFallback()
             }
         case .appleTTS:
             bargeInTTSService = AppleTTSService()
         default:
-            bargeInTTSService = KyutaiPocketTTSService(config: .lowLatency)
+            bargeInTTSService = await makePocketTTSWithAppleFallback()
         }
 
         // Pre-render instant barge-in filler clips with the SAME TTS service the barge-in
