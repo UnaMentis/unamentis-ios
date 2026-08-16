@@ -15,6 +15,30 @@ failures discovered slowly.
 | 1. Build and simulator validation | A Claude Code session, autonomously | MacBook, iOS Simulator | [SIMULATOR_VALIDATION_RUN.md](SIMULATOR_VALIDATION_RUN.md) |
 | 2. On-device manual testing | Richard, by hand | A real iPhone | [DEVICE_MANUAL_TEST_PLAN.md](DEVICE_MANUAL_TEST_PLAN.md) |
 
+## Know what you are testing before you start
+
+As of 2026-08-15 there are **two versions of this app**, and validating the wrong one wastes the
+whole run.
+
+- **`main`** carries this week's work: curriculum reinforcement in context, model download
+  integrity, reader foveation, and the session Apple TTS fallback.
+- **`feature/module-sdk-foundation`** carries the Module SDK migration and five modules
+  (Knowledge Bowl, Quiz Bowl, Oral Exam Studio, Aural Skills, SAT Prep). It is 6 commits ahead
+  of main and **28 behind**, has no pull request, and **has never run CI even once**: the
+  workflows fire only on pushes to `main` or `develop` and on pull requests, so roughly 34,000
+  lines are unbuilt and untested by anything.
+
+The merge between them is textually clean (one auto-mergeable file, `UnaMentisApp.swift`), but
+the branch has never compiled against main's changes, so expect compile drift rather than merge
+conflicts, most likely around `Services/LLM`.
+
+**Decide first: does this validation pass cover the modules or not?**
+
+- If the answer is no, test `main` as it stands and everything below applies unchanged.
+- If yes, the branch needs a pull request so CI runs, then main merged into it, then a full
+  build and `TEST_TYPE=all` before any of the phase 1 questions are worth asking. Treat that as
+  its own piece of work, not a preamble to this one.
+
 ## Which machine can do what
 
 This matters more than it sounds, and getting it wrong wastes hours.
