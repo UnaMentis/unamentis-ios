@@ -79,11 +79,17 @@ Same screen, **Test** section. Type a short sentence, tap **Test Voice**.
 | Result | Meaning | Next |
 |---|---|---|
 | Audible, non-zero bytes | Engine healthy on device, and the device fault is resolved | Continue to 3 |
-| Zero bytes or an error | The device arm64 fault is still present | Continue; the Apple fallback is now what you are testing |
+| Zero bytes or an error | The device arm64 fault is still present | **Stop and report.** This blocks the product, and sessions will refuse to start |
 | Button disabled | Model never loaded, weights missing | Stop, the build is not set up correctly |
 
 **Report back:** the exact result string, including byte count and synthesis time. This is the
 single most valuable measurement in the whole plan.
+
+**If this test fails, the session will refuse to start, by design.** There is no automatic
+substitution of another speech engine. High-quality speech is the product, so an engine that
+cannot load is a stop-and-fix condition, not something to paper over with a voice we would never
+ship. You will see a clear message naming the speech engine as the reason. Report it and we fix
+the engine; do not work around it.
 
 ### 3. On-device model loads and generates (5 min)
 
@@ -116,15 +122,27 @@ deliberately long answer.
 **Report back:** what you heard for each, and roughly how often. For gaps, whether they fall
 between sentences or mid-sentence, because those are different bugs.
 
-### 5. Which voice you are actually demoing (3 min)
+### 5. Session versus Knowledge Bowl, which is the real A/B (3 min)
 
-Knowledge Bowl has always fallen back to Apple TTS; the session now does too. Speak a turn in a
-session, then open a Knowledge Bowl oral practice.
+Corrected 2026-08-15. An earlier version of this plan said Knowledge Bowl falls back to Apple
+TTS. **It does not**, and neither does the session any more. That fallback lived in
+`KBVoiceCoordinator.swift`, which `project.yml` excludes from the app target, so it was never
+compiled. Knowledge Bowl runs `KBOnDeviceTTS`, which logs a load failure and carries on with the
+broken engine.
 
-**Both the same Apple system voice** means Pocket TTS is failing and you are hearing the
-fallback everywhere. Different, or both clearly the Kyutai voice, means Pocket TTS is alive.
+Both surfaces should now be speaking in the same Kyutai voice. There is no second voice to
+mistake it for:
 
-**Report back:** same or different, and your description of each.
+| If Pocket TTS is | The session does | Knowledge Bowl does |
+|---|---|---|
+| Working | Speaks in the Kyutai voice | Speaks in the Kyutai voice |
+| Broken | Refuses to start, naming the speech engine | Runs, but silent |
+
+Speak a turn in a session, then open a Knowledge Bowl oral practice.
+
+**Report back:** whether both spoke, and whether they sounded like the same engine. If you hear
+any voice that sounds like the iOS system voice, something is substituting an engine and I want
+to know immediately.
 
 ### 6. Barge-in against real speech (5 min)
 

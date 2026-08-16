@@ -54,6 +54,19 @@ else
     fi
 fi
 
+# Single voice pipeline rule (docs/ios/VOICE_PIPELINE.md). A ratchet: existing
+# debt is recorded in .voice-pipeline-baseline and may only shrink.
+echo ""
+echo "3. Voice pipeline (single-resolver rule)..."
+if [ -x ./scripts/check-voice-pipeline.sh ]; then
+    if ./scripts/check-voice-pipeline.sh; then
+        echo -e "${GREEN}Voice pipeline check passed${NC}"
+    else
+        echo -e "${RED}Voice pipeline check failed${NC}"
+        FAILED=1
+    fi
+fi
+
 echo ""
 if [ $FAILED -eq 0 ]; then
     echo -e "${GREEN}All lint checks passed!${NC}"

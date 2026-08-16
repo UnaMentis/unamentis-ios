@@ -14,6 +14,11 @@ where the remaining stages are still meaningful.
 
 ## Stage 0: environment
 
+**First, confirm which version you are validating.** See the section in
+[START_HERE.md](START_HERE.md) on the two versions. If you are on
+`feature/module-sdk-foundation`, or on a merge of it, say so in the report and add stage 3.6.
+If you are on plain `main`, the modules are not present and stage 3.6 does not apply.
+
 Everything below is worthless if the inputs are wrong, and both of these fail quietly.
 
 ```bash
@@ -124,7 +129,36 @@ question during reading is answered from document content rather than genericall
 **Answer:** whether summaries generated, whether the assembled context contains the expected
 bands, and whether the answer was grounded.
 
-### 3.5 Does back-pocket curriculum material reach the prompt?
+### 3.5 Does a failed speech engine fail loudly, with no substitution?
+
+Policy as of 2026-08-15: **there is no automatic fallback to another speech engine.**
+High-quality speech is the product, so an engine that cannot load is a stop-and-fix condition.
+Substituting a lesser voice would turn a total failure into something that looks like it half
+works, which hides the bug and ships a bad experience.
+
+Force a Pocket TTS load failure (point the model path somewhere invalid, or move the weights)
+and confirm all three: the session refuses to start, the message names the speech engine as the
+reason, and **no other voice is heard anywhere**, including barge-in fillers.
+
+This replaces an earlier check of an Apple TTS fallback that has since been removed. That
+fallback was also defective, which is worth knowing if it ever gets proposed again:
+`AppleTTSService` speaks through the system synthesizer and yields a chunk with empty
+`audioData`, which `AudioPlaybackOrchestrator` correctly treats as `synthesisProducedNoAudio`,
+and stopping playback does not stop the system synthesizer, so barge-in could not interrupt it.
+
+**Answer:** whether the failure is loud, specific, and total, with no substituted voice.
+
+### 3.6 Modules, only if the Module SDK is present
+
+Skip entirely on plain `main`. If validating the module branch or a merge of it: launch each of
+the five modules from the Modules gallery, confirm each acquires and releases the voice pipeline
+cleanly, and run the conformance suite (`UnaMentisTests/Conformance/`), which encodes the
+UM-Core and UM-Voice certification checks. Note that the suite is explicit about what it cannot
+check headlessly; report those as unverified rather than passed.
+
+**Answer:** per module, whether it launches, speaks, and releases; plus the conformance results.
+
+### 3.7 Does back-pocket curriculum material reach the prompt?
 
 Shipped the same day in PR #5. Import a curriculum whose UMCF carries `alternativeExplanations`
 and `misconceptions`, then confirm they appear in the working context and that the spoken

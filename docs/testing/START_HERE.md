@@ -1,9 +1,24 @@
-# Start here: validating this client
+# Start here
 
 **Class:** living · **Audience:** a Claude Code session on the MacBook, and Richard
 
 This is the gateway. If you have just pulled the repo and been told "read this and go", you are
-in the right place. Read this page, then open the one plan it routes you to.
+in the right place. Read this page, then work the order below.
+
+## Do this in order
+
+1. **Read `../ios/VOICE_PIPELINE.md` and do the migration in it.** This comes before testing.
+   The system is supposed to have exactly one voice pipeline and currently has 52 direct engine
+   constructions across 12 files, including two separate provider switches inside
+   `SessionView.swift` alone. Testing a pipeline that exists in five variants tells you almost
+   nothing, because a fix in one place does not reach the others. Start with migration step 1,
+   `SessionView`, which is 31 of the 52 and is the surface the demo uses.
+   `./scripts/check-voice-pipeline.sh --list` shows the live list and lint enforces the ratchet.
+2. **Then phase 1**, the simulator validation below.
+3. **Then phase 2**, the on-device manual pass, which is Richard's.
+
+If time forces a choice, do step 1 and step 3. A hand-verified device run against a unified
+pipeline is worth more than a thorough simulator run against a fragmented one.
 
 Validation runs in two phases, in order. **Phase 1 is machine work and no human should sit
 through it. Phase 2 is human work and only a human with a real iPhone can do it.** Do not start
@@ -14,6 +29,30 @@ failures discovered slowly.
 |---|---|---|---|
 | 1. Build and simulator validation | A Claude Code session, autonomously | MacBook, iOS Simulator | [SIMULATOR_VALIDATION_RUN.md](SIMULATOR_VALIDATION_RUN.md) |
 | 2. On-device manual testing | Richard, by hand | A real iPhone | [DEVICE_MANUAL_TEST_PLAN.md](DEVICE_MANUAL_TEST_PLAN.md) |
+
+## Know what you are testing before you start
+
+As of 2026-08-15 there are **two versions of this app**, and validating the wrong one wastes the
+whole run.
+
+- **`main`** carries this week's work: curriculum reinforcement in context, model download
+  integrity, reader foveation, and the session Apple TTS fallback.
+- **`feature/module-sdk-foundation`** carries the Module SDK migration and five modules
+  (Knowledge Bowl, Quiz Bowl, Oral Exam Studio, Aural Skills, SAT Prep). It is 6 commits ahead
+  of main and **28 behind**, has no pull request, and **has never run CI even once**: the
+  workflows fire only on pushes to `main` or `develop` and on pull requests, so roughly 34,000
+  lines are unbuilt and untested by anything.
+
+The merge between them is textually clean (one auto-mergeable file, `UnaMentisApp.swift`), but
+the branch has never compiled against main's changes, so expect compile drift rather than merge
+conflicts, most likely around `Services/LLM`.
+
+**Decide first: does this validation pass cover the modules or not?**
+
+- If the answer is no, test `main` as it stands and everything below applies unchanged.
+- If yes, the branch needs a pull request so CI runs, then main merged into it, then a full
+  build and `TEST_TYPE=all` before any of the phase 1 questions are worth asking. Treat that as
+  its own piece of work, not a preamble to this one.
 
 ## Which machine can do what
 

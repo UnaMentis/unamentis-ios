@@ -170,6 +170,37 @@ The pre-commit hook enforces code quality for Swift:
 
 **Swift exception:** Mocks for paid external APIs (LLM, STT, TTS, Embeddings) are allowed in `UnaMentisTests/Helpers/MockServices.swift`.
 
+## MANDATORY: One Voice Pipeline
+
+**There is exactly one voice pipeline. Application code never constructs a speech engine.**
+
+Every part of this system, core sessions, modules, the reader, Knowledge Bowl, announcements,
+barge-in, and anything added later, uses the same resolved pipeline. Not a copy of it, not a
+variant tuned for one surface, not a second one for testing. One mature, consistent, best of
+breed pipeline that everything shares.
+
+This is not a style preference. Every place that builds its own engine also invents its own
+provider switch, its own failure policy, and its own lifecycle, and they drift apart silently.
+That is how five different TTS resolution sites came to exist, each behaving differently when
+the engine failed.
+
+### The rules
+
+1. **Never write `KyutaiPocketTTSService(...)`, `AppleTTSService()`, or any other concrete
+   engine, STT service, or VAD service in application code.** Ask the resolver for a pipeline.
+2. **No automatic substitution of engines.** High-quality speech is the product. An engine that
+   cannot load is a stop-and-fix failure surfaced to the user, never silently swapped for a
+   lesser voice. A fallback is only worth having when the degraded state is one we would ship,
+   and a system voice is not.
+3. **Adding a surface does not mean adding a pipeline.** New modules and features consume the
+   existing one.
+
+`./scripts/check-voice-pipeline.sh` enforces this in lint and CI as a ratchet: existing debt is
+recorded in `.voice-pipeline-baseline` and may only shrink. A new construction site fails the
+build. If one is genuinely unavoidable, annotate it `// VOICE-PIPELINE-EXEMPT: <reason>`.
+
+Full architecture, the current debt, and the migration order: `docs/ios/VOICE_PIPELINE.md`.
+
 ## MANDATORY: Tool Trust Doctrine
 
 **All findings from security and quality tools are presumed legitimate until proven otherwise through rigorous analysis.**
