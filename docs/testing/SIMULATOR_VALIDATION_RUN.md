@@ -129,21 +129,24 @@ question during reading is answered from document content rather than genericall
 **Answer:** whether summaries generated, whether the assembled context contains the expected
 bands, and whether the answer was grounded.
 
-### 3.5 Does the Apple TTS fallback survive the orchestrator?
+### 3.5 Does a failed speech engine fail loudly, with no substitution?
 
-Known broken as of 2026-08-15, so this is a fix-verification rather than an open question.
-`AppleTTSService.synthesize` speaks through the system synthesizer and yields a single chunk
-with empty `audioData`, while `AudioPlaybackOrchestrator.collectChunksWithTimeout` treats zero
-total bytes as `synthesisProducedNoAudio`. Stopping playback also does not stop the system
-synthesizer, so barge-in cannot interrupt it.
+Policy as of 2026-08-15: **there is no automatic fallback to another speech engine.**
+High-quality speech is the product, so an engine that cannot load is a stop-and-fix condition.
+Substituting a lesser voice would turn a total failure into something that looks like it half
+works, which hides the bug and ships a bad experience.
 
-Force a Pocket TTS load failure and confirm the observed behavior in the simulator, then confirm
-whichever fix has landed actually resolves both halves: no spurious per-segment error, and
-barge-in genuinely silences the speech. Note that `KBOnDeviceTTS` already branches on this case
-and `UnifiedVoiceSessionService` on the module branch models it as a protocol, so prefer
-whichever of those shapes the fix adopted rather than inventing a third.
+Force a Pocket TTS load failure (point the model path somewhere invalid, or move the weights)
+and confirm all three: the session refuses to start, the message names the speech engine as the
+reason, and **no other voice is heard anywhere**, including barge-in fillers.
 
-**Answer:** what the fallback actually does now, and whether both halves are fixed.
+This replaces an earlier check of an Apple TTS fallback that has since been removed. That
+fallback was also defective, which is worth knowing if it ever gets proposed again:
+`AppleTTSService` speaks through the system synthesizer and yields a chunk with empty
+`audioData`, which `AudioPlaybackOrchestrator` correctly treats as `synthesisProducedNoAudio`,
+and stopping playback does not stop the system synthesizer, so barge-in could not interrupt it.
+
+**Answer:** whether the failure is loud, specific, and total, with no substituted voice.
 
 ### 3.6 Modules, only if the Module SDK is present
 

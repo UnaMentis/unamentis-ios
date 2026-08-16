@@ -1428,25 +1428,45 @@ class SessionViewModel: ObservableObject {
         await startLLMSession(appState: appState)
     }
 
-    /// Build the on-device Pocket TTS service, falling back to Apple TTS if its
-    /// models cannot be loaded.
+    /// Build the on-device Pocket TTS service, loaded eagerly so a broken engine
+    /// is a visible, immediate failure.
     ///
-    /// Every network-backed provider in this file already degrades to Apple TTS
-    /// when its key or host is missing, but Pocket TTS had no such net: a load
-    /// failure left the session with no voice at all, showing AI text with
-    /// silence behind it. Loading eagerly here also moves the model's cold start
-    /// off the first spoken turn, so the first response is not preceded by dead
-    /// air. Knowledge Bowl has used this same pattern since its introduction
-    /// (`KBVoiceCoordinator.setup()`).
-    private func makePocketTTSWithAppleFallback() async -> any TTSService {
+    /// There is deliberately no automatic substitution of another engine here.
+    /// High-quality speech is the product, not a nice-to-have on top of it, so an
+    /// engine that cannot load is a failure to surface and fix, not one to paper
+    /// over with a voice we would never ship. Silently swapping in a lesser voice
+    /// turns a total failure into something that looks like it half works, which
+    /// is strictly worse: the user gets a bad experience and nobody gets a bug
+    /// report. Apple TTS remains available as an explicit user choice in
+    /// Settings, which is a different thing from an automatic downgrade.
+    ///
+    /// Loading here rather than lazily also means the failure appears at session
+    /// start with a clear message instead of mid-conversation, and it keeps the
+    /// engine's cold start off the first spoken turn.
+    ///
+    /// - Returns: the loaded service, or nil when it could not load. A nil result
+    ///   must abort session start rather than continue with a substitute.
+    /// Abort session start because the speech engine is unavailable.
+    ///
+    /// Kept as one place so the wording stays consistent and the reason stays
+    /// explicit: this is a hard stop by design, not a missing fallback.
+    private func failSessionStartForUnavailableSpeechEngine() {
+        errorMessage = "The on-device speech engine could not load, so the session cannot start. "
+            + "High-quality speech is required, and the app will not substitute a different voice. "
+            + "Check Settings, Voice, Pocket TTS."
+        showError = true
+        state = .idle
+    }
+
+    private func makePocketTTS() async -> (any TTSService)? {
         let pocket = KyutaiPocketTTSService(config: .lowLatency)
         do {
             try await pocket.ensureLoaded()
             logger.info("Pocket TTS loaded (on-device)")
             return pocket
         } catch {
-            logger.warning("Pocket TTS unavailable, falling back to Apple TTS: \(error.localizedDescription)")
-            return AppleTTSService()
+            logger.error("Pocket TTS failed to load: \(error.localizedDescription)")
+            return nil
         }
     }
 
@@ -1590,10 +1610,18 @@ class SessionViewModel: ObservableObject {
             }
         case .pocketTTS:
             logger.info("Using Pocket TTS (on-device)")
-            ttsService = await makePocketTTSWithAppleFallback()
+            guard let pocket = await makePocketTTS() else {
+                failSessionStartForUnavailableSpeechEngine()
+                return
+            }
+            ttsService = pocket
         default:
             logger.info("Using Pocket TTS as default TTS provider")
-            ttsService = await makePocketTTSWithAppleFallback()
+            guard let pocket = await makePocketTTS() else {
+                failSessionStartForUnavailableSpeechEngine()
+                return
+            }
+            ttsService = pocket
         }
 
         // Configure LLM based on settings with graceful fallback
@@ -2559,18 +2587,18 @@ class SessionViewModel: ObservableObject {
 
         switch bargeInTTSProviderSetting {
         case .pocketTTS:
-            bargeInTTSService = await makePocketTTSWithAppleFallback()
+            bargeInTTSService = await makePocketTTS()
         case .vibeVoice:
             if selfHostedEnabled && !serverIP.isEmpty {
                 bargeInTTSService = SelfHostedTTSService.vibeVoice(host: serverIP, voice: ttsVoiceSetting)
             } else {
-                bargeInTTSService = await makePocketTTSWithAppleFallback()
+                bargeInTTSService = await makePocketTTS()
             }
         case .selfHosted:
             if selfHostedEnabled && !serverIP.isEmpty {
                 bargeInTTSService = SelfHostedTTSService.piper(host: serverIP, voice: ttsVoiceSetting)
             } else {
-                bargeInTTSService = await makePocketTTSWithAppleFallback()
+                bargeInTTSService = await makePocketTTS()
             }
         case .chatterbox:
             if selfHostedEnabled && !serverIP.isEmpty {
@@ -2579,12 +2607,12 @@ class SessionViewModel: ObservableObject {
                 config.seed = nil  // Barge-in doesn't need reproducibility
                 bargeInTTSService = ChatterboxTTSService.chatterbox(host: serverIP, config: config)
             } else {
-                bargeInTTSService = await makePocketTTSWithAppleFallback()
+                bargeInTTSService = await makePocketTTS()
             }
         case .appleTTS:
             bargeInTTSService = AppleTTSService()
         default:
-            bargeInTTSService = await makePocketTTSWithAppleFallback()
+            bargeInTTSService = await makePocketTTS()
         }
 
         // Pre-render instant barge-in filler clips with the SAME TTS service the barge-in
