@@ -1,0 +1,16 @@
+# Direct voice-engine construction outside the resolver.
+# Format: <count><TAB><path>. This may only ever shrink.
+# See docs/ios/VOICE_PIPELINE.md. Regenerate with:
+#   ./scripts/check-voice-pipeline.sh --update
+2	UnaMentis/Core/Audio/UnifiedAnnouncer.swift
+5	UnaMentis/Modules/KnowledgeBowl/Services/KBVoiceCoordinator.swift
+1	UnaMentis/Services/KnowledgeBowl/KBOnDeviceSTT.swift
+3	UnaMentis/Services/KnowledgeBowl/KBOnDeviceTTS.swift
+1	UnaMentis/Testing/BargeInHarness/BargeInMeasurementHarness.swift
+2	UnaMentis/Testing/KBAudioTestHarness/KBAudioGenerator.swift
+1	UnaMentis/Testing/KBAudioTestHarness/KBAudioInjector.swift
+2	UnaMentis/Testing/LatencyHarness/LatencyTestCoordinator.swift
+2	UnaMentis/UI/Debug/DebugConversationViewModel.swift
+31	UnaMentis/UI/Session/SessionView.swift
+1	UnaMentis/UI/Settings/ChatterboxSettingsViewModel.swift
+1	UnaMentis/UI/Settings/KyutaiPocketSettingsViewModel.swift
