@@ -14,6 +14,11 @@ where the remaining stages are still meaningful.
 
 ## Stage 0: environment
 
+**First, confirm which version you are validating.** See the section in
+[START_HERE.md](START_HERE.md) on the two versions. If you are on
+`feature/module-sdk-foundation`, or on a merge of it, say so in the report and add stage 3.6.
+If you are on plain `main`, the modules are not present and stage 3.6 does not apply.
+
 Everything below is worthless if the inputs are wrong, and both of these fail quietly.
 
 ```bash
@@ -124,7 +129,33 @@ question during reading is answered from document content rather than genericall
 **Answer:** whether summaries generated, whether the assembled context contains the expected
 bands, and whether the answer was grounded.
 
-### 3.5 Does back-pocket curriculum material reach the prompt?
+### 3.5 Does the Apple TTS fallback survive the orchestrator?
+
+Known broken as of 2026-08-15, so this is a fix-verification rather than an open question.
+`AppleTTSService.synthesize` speaks through the system synthesizer and yields a single chunk
+with empty `audioData`, while `AudioPlaybackOrchestrator.collectChunksWithTimeout` treats zero
+total bytes as `synthesisProducedNoAudio`. Stopping playback also does not stop the system
+synthesizer, so barge-in cannot interrupt it.
+
+Force a Pocket TTS load failure and confirm the observed behavior in the simulator, then confirm
+whichever fix has landed actually resolves both halves: no spurious per-segment error, and
+barge-in genuinely silences the speech. Note that `KBOnDeviceTTS` already branches on this case
+and `UnifiedVoiceSessionService` on the module branch models it as a protocol, so prefer
+whichever of those shapes the fix adopted rather than inventing a third.
+
+**Answer:** what the fallback actually does now, and whether both halves are fixed.
+
+### 3.6 Modules, only if the Module SDK is present
+
+Skip entirely on plain `main`. If validating the module branch or a merge of it: launch each of
+the five modules from the Modules gallery, confirm each acquires and releases the voice pipeline
+cleanly, and run the conformance suite (`UnaMentisTests/Conformance/`), which encodes the
+UM-Core and UM-Voice certification checks. Note that the suite is explicit about what it cannot
+check headlessly; report those as unverified rather than passed.
+
+**Answer:** per module, whether it launches, speaks, and releases; plus the conformance results.
+
+### 3.7 Does back-pocket curriculum material reach the prompt?
 
 Shipped the same day in PR #5. Import a curriculum whose UMCF carries `alternativeExplanations`
 and `misconceptions`, then confirm they appear in the working context and that the spoken

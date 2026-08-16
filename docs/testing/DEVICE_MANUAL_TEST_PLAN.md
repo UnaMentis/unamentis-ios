@@ -79,11 +79,19 @@ Same screen, **Test** section. Type a short sentence, tap **Test Voice**.
 | Result | Meaning | Next |
 |---|---|---|
 | Audible, non-zero bytes | Engine healthy on device, and the device fault is resolved | Continue to 3 |
-| Zero bytes or an error | The device arm64 fault is still present | Continue; the Apple fallback is now what you are testing |
+| Zero bytes or an error | The device arm64 fault is still present | Continue; the Apple fallback is now what you are testing, and see the warning below |
 | Button disabled | Model never loaded, weights missing | Stop, the build is not set up correctly |
 
 **Report back:** the exact result string, including byte count and synthesis time. This is the
 single most valuable measurement in the whole plan.
+
+**If this test fails, expect the fallback itself to misbehave.** The Apple TTS fallback added in
+PR #14 has a known defect, found 2026-08-15 and not yet fixed: `AppleTTSService` speaks through
+its own system synthesizer and hands the playback orchestrator a chunk containing no audio
+bytes, which the orchestrator correctly treats as a synthesis failure. So the likely symptom is
+**an Apple voice that speaks, followed by an error state after each segment, and barge-in that
+cannot interrupt it** (stopping the audio engine does not stop the system synthesizer). That is
+a known bug, not a new discovery, so note it and move on rather than chasing it.
 
 ### 3. On-device model loads and generates (5 min)
 
@@ -116,15 +124,24 @@ deliberately long answer.
 **Report back:** what you heard for each, and roughly how often. For gaps, whether they fall
 between sentences or mid-sentence, because those are different bugs.
 
-### 5. Which voice you are actually demoing (3 min)
+### 5. Session versus Knowledge Bowl, which is the real A/B (3 min)
 
-Knowledge Bowl has always fallen back to Apple TTS; the session now does too. Speak a turn in a
-session, then open a Knowledge Bowl oral practice.
+Corrected 2026-08-15. An earlier version of this plan said Knowledge Bowl falls back to Apple
+TTS. **It does not.** That fallback lives in `KBVoiceCoordinator.swift`, which `project.yml`
+excludes from the app target, so it has never been compiled. Knowledge Bowl actually runs
+`KBOnDeviceTTS`, which logs a Pocket TTS load failure and carries on with the broken engine.
 
-**Both the same Apple system voice** means Pocket TTS is failing and you are hearing the
-fallback everywhere. Different, or both clearly the Kyutai voice, means Pocket TTS is alive.
+So the two surfaces now behave differently on purpose, and that difference is the diagnostic:
 
-**Report back:** same or different, and your description of each.
+| If Pocket TTS is | The session does | Knowledge Bowl does |
+|---|---|---|
+| Working | Speaks in the Kyutai voice | Speaks in the Kyutai voice |
+| Broken | Speaks in the Apple voice, probably with an error after each segment | **Stays silent** |
+
+Speak a turn in a session, then open a Knowledge Bowl oral practice.
+
+**Report back:** which voice each used, or which was silent. Session speaking while Knowledge
+Bowl is silent is the clearest possible signal that the device fault is still present.
 
 ### 6. Barge-in against real speech (5 min)
 
